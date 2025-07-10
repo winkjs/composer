@@ -36,7 +36,7 @@
     "bugs": {
         "url": "https://github.com/winkjs/wink-composer/issues"
     },
-    "homepage": "http://winkjs.org/",
+    "homepage": "http://winkjs.org/wink-composer/#/",
     "devDependencies": {
         "benchmark": "^2.1.4",
         "chai": "^4.3.7",

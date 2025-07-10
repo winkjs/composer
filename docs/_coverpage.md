@@ -10,7 +10,7 @@
 > **🎯 Build exactly what you need, playfully simple**
 
 - ✨ **Real-time Analytics** that Sparks Joy
-- 💫 **Compose from Simple Nodes** → Countless Possibilities  
+- 💫 **Compose from Simple Nodes** — Countless Possibilities
 - 🔍 **Total Transparency** — Every Decision Explainable
 - ⚡ **Edge-Ready Performance** — Runs on Raspberry Pi!
 - 🧠 **Intelligent by Design** — Statistical Learning to LLMs
