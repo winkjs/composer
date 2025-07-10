@@ -1,7 +1,5 @@
 # wink-composer ♫
 
-*Composable Streaming Intelligence*
-
 ### [![Stability](https://img.shields.io/badge/stability-1--experimental-orange.svg)](https://nodejs.org/api/documentation.html#documentation_stability_index)
 
 ## ✨ Real-time analytics that sparks joy
