@@ -1,90 +1,134 @@
 # wink-composer ♫
 
+*Composable Streaming Intelligence*
+
 ### [![Stability](https://img.shields.io/badge/stability-1--experimental-orange.svg)](https://nodejs.org/api/documentation.html#documentation_stability_index)
 
-## Low-Code, AI-Native Streaming Intelligence
+## ✨ Real-time analytics that sparks joy
 
 [<img align="right" src="https://decisively.github.io/wink-logos/logo-title.png" width="100px" >](http://winkjs.org/)
 
-WinkComposer is an **upcoming** Open Source, high-performance JavaScript framework built on Node.js for real-time streaming analytics. It transforms continuous data streams into actionable insights. It does so by running lightweight processing **Nodes** inside a responsive, back‑pressure‑aware **Flow**.  The engine follows reactive‑streams principles while offering a familiar flow‑based user experience.
+WinkComposer is an upcoming open-source framework that makes building streaming intelligence playfully simple. Connect intuitive nodes, experiment freely, perfect it in an iteration or two. From edge-ready AI algorithms to built-in resilience, everything you need for production comes standard. No complexity, no black boxes - just the joy of creating exactly what you need.
 
-It prioritizes control over data messages, manages backpressure effectively, and uses adaptive yielding to stay responsive under varying loads. It ensures that both asynchronous and synchronous operations are executed efficiently without overwhelming the system.
+## Why Composability Matters
 
-Each node is lightweight and modular, designed to execute streaming algorithms in real time. Nodes support both CPU-bound operations—such as filtering, transformation, and specialized algorithms for aggregation, statistical analysis, anomaly detection, and more—and I/O-bound tasks like database queries or LLM-based inference. This versatility makes WinkComposer suitable for domains such as IoT, telematics, smart infrastructure, finance, and healthcare.
+**🎯 Create What You Need** — With composability, you're the inventor: Correlate vibration with weather? Done. Detect micro-trends before they become macro? Built. 
 
-WinkComposer goes beyond basic analytics by integrating statistical methods and machine learning algorithms directly into its streaming engine. A knowledge graph unifies business entities, patterns, and events. By persisting it in graph databases like Neo4j or ArangoDB, it forms a digital twin of your domain—enabling semantically rich queries and deeper contextual insights.
+**💫 Countless Possibilities** — Dozens of nodes → Endless pipelines. Like few music notes creating captivating symphonies.
 
-At its core, WinkComposer includes an ontology-driven, LLM-powered reasoning layer that analyzes event streams to uncover patterns, identify root causes, and generate real-time, actionable recommendations. This empowers teams to make faster decisions, resolve issues efficiently, and onboard new members more effectively through embedded contextual knowledge.
+**🌱 Evolve Naturally** — Start: `sensor → threshold → alert`. Grow: Add intelligence: `sensor → normalize → smooth → detect → confirm → alert`. Unconstrained by vendor feature lists.
 
-## Key Features
+**🔍 Total Transparency** — See which node triggered, what threshold crossed, why it alerted. Every decision is explainable.
 
-### Reactive Flow Execution
-- Adaptive Yield Threshold keeps the event loop responsive.
+## Build Exactly What You Need
 
-- Backpressure Management handles peak loads without memory overflow.
+Build precise analytics for your unique patterns:
 
-- Priority Scheduling ensures control > data > async messages.
+```javascript
+// Detect bearing failure in rotating equipment
+vibration → isolateSignal → extractPeaks → measureIntensity →
+      trackChanges → triggerAlert
 
-- Built-in Monitoring & Memory Tracking for observability.
+// Monitor chemical process quality
+temperature → removeNoise → smoothFast → smoothSlow → findDivergence →
+      detectChange → waitForPersistence
 
-- Node-Level Error Isolation prevents local failures from crashing the flow.
+// Find correlated sensor behaviors
+[sensor1, sensor2] → trackCorrelation → compareToNormal → raiseFlag
 
-- Periodic Snapshots enable quick recovery from faults.
+// Calculate real-time OEE
+machine → trackState → sumTime → countOutput →
+      checkQuality → calculateScore
+```
 
-### Low-Code Workflow DSL
-- Define pipelines in a declarative manner.
+Each node is simple:
+- `removeNoise`: Median of last few values (removes sensor spikes).
+- `smoothFast`: Average of last 10 values (recent trend).
+- `smoothSlow`: Average of last 100 values (baseline trend).
+- `findDivergence`: Fast trend - slow trend (unusual behavior?).
+- `trackCorrelation`: Smart correlation (learns relationships between sensors)
 
-- Drag-and-drop UI is already planned.
+_Node names and details are illustrative - actual implementations may vary._
 
-### Extensible Node Architecture
-- Simple & uniform pattern for custom/new node development.
-
-- Includes rich starter pack: statistical summaries, anomaly detectors, Count-Min Sketch, MQTT/Kafka sources, and Neo4j/Parquet sinks.
-
-- Emphasis on numerical stability.
-
-### Ontology, Knowledge Graph & Digital Twin
-- Ontologies modeled in graph DBs like Neo4j or ArangoDB.
-
-- Patterns, aggregates, and events as first-class graph elements.
-
-- Query the digital twin for root cause, impact, and what-if analysis.
-
-- LLM-assisted reasoning explains anomalies and suggests next steps.
-
-## Core Concepts
-| Term                | What it means                             |
-| ------------------- | ----------------------------------------- |
-| **Flow**            | Runnable graph of Nodes and Edges—the artefact you deploy         |
-| **Node**            | Modular operator that transforms, enriches, or routes Messages    |
-| **Message**         | Atomic data packet that travels through a Flow                    |
-| **Edge**            | Interconnects nodes for message flow                 |
-| **Smart Scheduler** | Runtime that enforces priority, adaptive yield & back‑pressure    |
-| **Workflow DSL**    | YAML/JSON syntax to declare Flows (visual builder in the roadmap) |
-
-## Our Focus
-
-1. Ease of Use – A declarative design simplifies development and enables rapid iteration.
-
-1. Extensibility – Modular, loosely coupled components for easy customization and contributions.
-
-1. Open Source & Lightweight LLMs – Prioritizing efficient, accessible models for developers.
-
-1. Safety & Security – Aligned with responsible AI principles and OpenSSF best practices.
+Every arrow is a conscious choice. Every node has a purpose. No magic, just simple intuitive math.
 
 
-## Contributions Welcome
+## Your Analytics Journey
 
-WinkComposer is in active early development — we invite you to [join the conversation on GitHub Discussions](https://github.com/winkjs/wink-composer/discussions) or reach out via email at wink@graype.in.
+**Start Simple**  
+`sensor → threshold → alert`
 
-Let’s shape the future of real-time streaming analytics together!
+**Evolve Naturally**  
+`sensor → validate → normalize → threshold → debounce → alert`
+
+**Scale Intelligently**  
+`sensor → [parallel: statistics | patterns | anomalies] → correlate → decide → act`
+
+Your analytics grow with your understanding, and are never limited by any tool's feature list.
+
+## Designed for the Real World
+
+### Industrial IoT
+From simple threshold monitoring to complex predictive maintenance - compose what fits your equipment, your patterns, your physics. **Move intelligence to the edge** with analytics that run on industrial Raspberry Pis. Works alongside your existing systems to handle your unique requirements.
+
+### Financial Services  
+Build fraud detection you can explain to auditors. Every decision traceable, every threshold justified.
+
+### Smart Infrastructure
+Energy optimization with transparent logic. See why the system made each decision.
+
+## Production-Grade Resilience
+Real streams have noise. Sensors fail. Networks hiccup. WinkComposer handles it all:
+
+- **Node-level fault isolation** - One bad reading doesn't crash your pipeline
+- **Automatic state recovery** - Snapshot and restore without missing a beat
+- **Built-in observability** - Know what's happening in every node, every partition
+- **Adaptive execution** - Maintains responsiveness under varying load
+
+
+## Core Principles
+
+| Principle | What it means |
+|-----------|---------------|
+| **Atomic Operations** | Each node does one thing perfectly |
+| **Pure Functions** | Predictable, testable, composable |
+| **Transparent Logic** | Understand every decision |
+| **Production Ready** | Built for high-throughput streaming with microsecond-scale latency |
+| **AI-Native Intelligence** | From statistical learning nodes to LLM reasoning - intelligence at every level |
+| **Built for Reality** | Node-level fault isolation, automatic recovery, and comprehensive observability |
+
+## What's Coming
+
+### 🎉 **Opening Our Doors in 2025**
+WinkComposer is transitioning to open source development in 2025. Join the [early conversation](https://github.com/winkjs/wink-composer/discussions) and help shape the future of composable streaming analytics. You can even reach out directly at wink@graype.in.
+
+**Together, we're building:**
+
+- **Rich Node Library**: Statistical, filtering, detection, transformation, and control nodes
+- **Edge-Ready Intelligence**: Advanced algorithms like smart correlation, change point detection, and regression inference - AI-like capabilities without heavyweight frameworks
+- **Pipeline Builder**: Define your analytics flows declaratively (visual tools planned)
+- **Edge-Ready Performance**: Process data efficiently, even on resource-constrained devices (**tested on Raspberry Pi**)
+- **Knowledge Graph Integration**: Build digital twins with Neo4j/ArangoDB for contextual intelligence
+- **AI-Native Reasoning**: When patterns emerge, LLMs explain why. When anomalies occur, get actionable recommendations. Open-source models keep intelligence at the edge.
+
+
+## The Vision
+
+Finally, build solutions that fit your exact problems, not the other way around.
+
+Every industry has unique patterns. Every process has specific physics. Every business has particular rules. WinkComposer gives you the building blocks to create exactly what you need.
+
+Domain-specific platforms excel at standard use cases. WinkComposer shines when you need something unique, beyond standard use cases. Standard use cases always included - they're just the beginning of what's possible!
+
 
 
 ## About winkJS
-[WinkJS](https://github.com/winkjs) is a family of open source packages for **Natural Language Processing**, **Machine Learning**, and **Statistical Analysis** in Javascript. The code is **thoroughly documented** for easy human comprehension and has a **test coverage of ~100%** for reliability to build production grade solutions.
+
+WinkComposer joins the winkJS family - production-grade open-source packages for Natural Language Processing, Machine Learning, and Statistical Analysis in JavaScript. Built for reliability with ~100% test coverage.
+
 
 ## Copyright & License
 
-**WinkComposer** is copyright 2024-25 [GRAYPE Systems Private Limited](https://graype.in/).
+**Wink Composer** is copyright 2017-25 [GRAYPE Systems Private Limited](https://graype.in/).
 
 It is licensed under the terms of the MIT License.

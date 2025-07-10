@@ -3,14 +3,24 @@
 
 # wink-composer <small>♫</small>
 
-> Low-Code, AI-Native Streaming Intelligence
+> **Composable Streaming Intelligence**
 
-- 📊 Real-time Streaming Analytics
-- 🕸️ Knowledge Graph Digital Twin
-- 🔌 Modular Plugin Architecture
-- 🔄 Reactive Processing Graph
-- 🧠 LLM-powered Reasoning
-- 🚀 Low-Code Development
+<br>
 
-[GitHub](https://github.com/winkjs/wink-composer)
-[Get Started](#docsify)
+### 🎯 Build exactly what you need, playfully simple
+
+- ✨ **Real-time Analytics** that Sparks Joy
+- 💫 **Compose from Simple Nodes** → Countless Possibilities  
+- 🔍 **Total Transparency** — Every Decision Explainable
+- ⚡ **Edge-Ready Performance** — Runs on Raspberry Pi!
+- 🧠 **Intelligent by Design** — Statistical Learning to LLMs
+- 🚀 **Production Resilient** — Fault isolation, automatic recovery, & observability
+
+<br>
+
+> 🎉 **Transitioning to Open Source in 2025** — Join the journey!
+
+<br>
+
+[**Explore on GitHub** →](https://github.com/winkjs/wink-composer)
+[**Read the Docs** →](#docsify)

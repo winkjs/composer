@@ -1,18 +1,20 @@
 {
     "name": "wink-composer",
     "version": "0.0.0",
-    "description": "Streaming Data. Orchestrated. Explained.",
+    "description": "Composable Streaming Intelligence.",
     "keywords": [
-        "agents",
-        "analytics",
-        "llm",
-        "machine learning",
-        "ontology",
-        "statistics",
-        "streaming",
-        "wink-composer",
-        "winkjs",
-        "wink"
+        "iot",
+        "statistical-learning",
+        "stream-processing",
+        "statistical-analysis",
+        "event-driven",
+        "composable",
+        "real-time-analytics",
+        "anomaly-detection",
+        "edge-computing",
+        "edgi-ai",
+        "streaming-analytics",
+        "industrial-iot"
     ],
     "main": "src/composer.js",
     "scripts": {
