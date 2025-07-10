@@ -14,13 +14,13 @@
 - 🔍 **Total Transparency** — Every Decision Explainable
 - ⚡ **Edge-Ready Performance** — Runs on Raspberry Pi!
 - 🧠 **Intelligent by Design** — Statistical Learning to LLMs
-- 🚀 **Production Resilient** — Fault isolation, automatic recovery, & observability
+- 🚀 **Production Resilient** — Fault isolation, recovery, & observability
 
 <br>
 
 > 🎉 **Transitioning to Open Source in 2025**
 
-<br>
+
 
 [**Explore on GitHub** →](https://github.com/winkjs/wink-composer)
 [**Read the Docs** →](#docsify)
