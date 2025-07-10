@@ -3,11 +3,11 @@
 
 # wink-composer <small>♫</small>
 
-> **Composable Streaming Intelligence**
+**Composable Streaming Intelligence**
 
 <br>
 
-### 🎯 Build exactly what you need, playfully simple
+> **🎯 Build exactly what you need, playfully simple**
 
 - ✨ **Real-time Analytics** that Sparks Joy
 - 💫 **Compose from Simple Nodes** → Countless Possibilities  
@@ -18,7 +18,7 @@
 
 <br>
 
-> 🎉 **Transitioning to Open Source in 2025** — Join the journey!
+> 🎉 **Transitioning to Open Source in 2025**
 
 <br>
 
