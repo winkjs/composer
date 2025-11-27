@@ -98,7 +98,7 @@ Real streams have noise. Sensors fail. Networks hiccup. WinkComposer handles it 
 ## What's Coming
 
 ### 🎉 **Opening Our Doors in 2025**
-WinkComposer is transitioning to open source development in 2025. Join the [early conversation](https://github.com/winkjs/wink-composer/discussions) and help shape the future of composable streaming analytics. You can even reach out directly at wink@graype.in.
+WinkComposer is transitioning to open source development in 2025. Join the [early conversation](https://github.com/winkjs/composer/discussions) and help shape the future of composable streaming analytics. You can even reach out directly at wink@graype.in.
 
 **Together, we're building:**
 

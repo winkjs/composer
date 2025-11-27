@@ -1,6 +1,6 @@
 {
-    "name": "wink-composer",
-    "version": "0.0.1",
+    "name": "@winkjs/composer",
+    "version": "0.0.2",
     "description": "Composable Streaming Intelligence.",
     "keywords": [
         "iot",
@@ -29,14 +29,14 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/winkjs/wink-composer.git"
+        "url": "git+https://github.com/winkjs/composer.git"
     },
     "author": "Sanjaya Kumar Saxena",
     "license": "MIT",
     "bugs": {
-        "url": "https://github.com/winkjs/wink-composer/issues"
+        "url": "https://github.com/winkjs/composer/issues"
     },
-    "homepage": "http://winkjs.org/wink-composer/#/",
+    "homepage": "http://winkjs.org/composer/#/",
     "devDependencies": {
         "benchmark": "^2.1.4",
         "chai": "^4.3.7",
