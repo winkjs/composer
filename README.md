@@ -30,16 +30,16 @@ await flow( 'temperature-monitor' )                               // Name the fl
 ```
 
 ## Why Composability
-**Build exactly what you need.**
+**Build exactly what you need.**<br/>
 Most platforms give you fixed features—often as black boxes. WinkComposer gives you building blocks. You compose only what your use case demands.
 
-**Evolve as you go.**
+**Evolve as you go.**<br/>
 Start simple: sensor → threshold → alert. Add smoothing when there’s noise. Add persistence to cut false positives. Pipelines grow with your understanding.
 
-**Stay clear and traceable.**
+**Know what’s happening.**<br/>
 Each node does one job. Every decision is visible. When an alert fires, you know exactly where—and why—it happened.
 
-**Unlock possibilities.**
+**Unlock possibilities.**<br/>
 Focused nodes combine like musical notes. Simple patterns build into powerful, custom intelligence.
 
 ## Built to Stay Clear
