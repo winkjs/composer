@@ -15,7 +15,7 @@ Smooth noisy data. Detect threshold breaches. Confirm they persist. Broadcast al
 
 ```javascript
 await flow( 'temperature-monitor' )                               // Name the flow
-    .partition( 'sensorId' )                                      // Isolate per sensor
+    .assetId( 'sensorId' )                                        // Isolate per asset
     .source( csv, { path: './sensor-data.csv' } )                 // Dev/debug data source
     .emitter( mqtt, { brokerUrl: 'mqtt://localhost:1883' } )      // Define alert channel
     .esMean( 'smooth', 'temperature',
@@ -28,6 +28,23 @@ await flow( 'temperature-monitor' )                               // Name the fl
         { target: 'mqtt', signalType: 'temperatureAlert' } ) 
     .run();                                                       // Start the flow
 ```
+
+### Layered Flows
+Hello Flow is one layer. That's enough for smaller setups. When the fleet grows, add another layer:
+
+**Layer 1: local flows**
+- One flow per asset class—a production line, a vehicle model, a building zone.
+- Partitioned by assetId to handle many assets in isolation.
+- Each emits events, anomalies, and digests.
+
+**Layer 2: confluent flow**
+- One flow for the full fleet.
+- Listens to all local flows.
+- Builds trends, aggregates, transforms.
+- Persists to a time-series database: **QuestDB**.
+
+Same flow(). Same nodes. New scope. In rare cases, use more layers.
+
 
 ## Why Composability
 **Build exactly what you need.**<br/>
@@ -101,8 +118,8 @@ WinkComposer is in active development. Open source transition planned for **Q1 2
 - Tested from Raspberry Pi to cloud
 
 ### In Progress
-- MCP Server — Chat with your streaming data. Trace anomalies. Discover root causes in near real time.
-- DuckDB + Parquet Archival — Policy-driven local storage and export to Parquet. Seamlessly move data to platforms like Databricks or BigQuery for downstream ML and analytics.
+- MCP Server — Chat with your streaming data. Trace anomalies. Discover root causes in near real time. Get actionable insights.
+- QuestDB storage — Fast ingest, SQL queries, and history for dashboards and MCP. Export to Parquet for downstream analytics.
 - Real-time dashboard framework
 
 ### Planned
