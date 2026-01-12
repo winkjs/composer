@@ -30,20 +30,20 @@ await flow( 'temperature-monitor' )                               // Name the fl
 ```
 
 ### Layered Flows
-Hello Flow is one layer. That's enough for smaller setups. When the fleet grows, add another layer:
+Hello, Flow is one layer. That's enough for smaller setups. When the fleet grows, add another layer:
 
-**Layer 1: local flows**
+**Layer 1: upstream flows**
 - One flow per asset class—a production line, a vehicle model, a building zone.
-- Partitioned by assetId to handle many assets in isolation.
-- Each emits events, anomalies, and digests.
+- Partitioned by assetId. Each asset runs in isolation.
+- Emits events, anomalies, and digests.
 
-**Layer 2: confluent flow**
+**Layer 2: aggregator flow**
 - One flow for the full fleet.
-- Listens to all local flows.
-- Builds trends, aggregates, transforms.
+- Listens to all upstream flows.
+- Builds trends and fleet-wide views.
 - Persists to a time-series database: **QuestDB**.
 
-Same flow(). Same nodes. New scope. In rare cases, use more layers.
+Same flow(). Same nodes. New scope. Rarely, add more layers.
 
 
 ## Why Composability
@@ -89,10 +89,12 @@ No drag-and-drop spaghetti. WinkComposer uses clean, linear flows with control s
 
 ### Core Capabilities
 
+- **Layered flows** — Scale from single pipeline to fleet-wide analytics. Same flow(), same nodes, new scope.
 - **Adaptive pipelines** — Analyze only when needed. Reset baselines on mode changes.
-- **Isolated state** — Each sensor, user, or session runs independently. Failures don’t cascade.
+- **Isolated state** — Each sensor, user, or session runs independently. Failures don't cascade.
 - **Production-ready** — Offline queuing, circuit breakers, auto-recovery.
 - **Context-aware thresholds** — Parameters adapt to real-time context.
+- **Semantics** — Give data meaning. Define once as Single Source of Truth (SSOT). For example, raw `42` becomes 42°C with limits.
 
 ### Performance
 
