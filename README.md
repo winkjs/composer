@@ -69,4 +69,5 @@ Each asset runs in its own isolated state — a fault in one never affects anoth
 
 ## About winkJS
 
-[winkJS](https://winkjs.org) is the open-source home of two high-performance, production-grade tools — built from first principles, tested to near-perfection, and trusted by thousands of projects worldwide.
+## About winkJS
+**[winkJS](https://winkjs.org)** is an open-source ecosystem of high-performance, production-grade libraries — built from first principles, tested to near-perfection, and trusted by thousands of projects worldwide.
