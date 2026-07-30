@@ -1,0 +1,26 @@
+{
+    "name": "simplePump",
+    "description": "Simple pump system",
+    "columns": {
+        "ts": {
+            "type": "timestamp",
+            "description": "Measurement timestamp"
+        },
+        "state": {
+            "type": "int64",
+            "enumRef": "machineState"
+        },
+        "pressure": {
+            "type": "float64",
+            "unit": "bar",
+            "physicalRange": { "min": 0, "max": 100 },
+            "operational": { "warningHigh": 80 }
+        }
+    },
+    "insightTypes": {
+        "monitoring": {
+            "columns": ["ts", "state", "pressure"],
+            "designatedTimestamp": "ts"
+        }
+    }
+}

@@ -1,0 +1,16 @@
+{
+    "name": "pump",
+    "columns": {
+        "ts": { "type": "timestamp" },
+        "state": {
+            "type": "int64",
+            "enumRef": "missingEnum"
+        }
+    },
+    "insightTypes": {
+        "basic": {
+            "columns": [ "ts", "state" ],
+            "designatedTimestamp": "ts"
+        }
+    }
+}

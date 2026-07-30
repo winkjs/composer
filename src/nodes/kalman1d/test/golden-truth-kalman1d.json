@@ -1,0 +1,567 @@
+{
+  "S1-constant-input": {
+    "R": 1,
+    "Q": 0.01,
+    "F": 1,
+    "H": 1,
+    "G": 0,
+    "initXHat": 100.0,
+    "initP": 1.0,
+    "trace": [
+      {
+        "step": 2,
+        "xHat": 100.0,
+        "P": 0.5024875621890547,
+        "K": 0.5024875621890548,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 3,
+        "xHat": 100.0,
+        "P": 0.33883753823887375,
+        "K": 0.33883753823887375,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 4,
+        "xHat": 100.0,
+        "P": 0.25862087045289217,
+        "K": 0.25862087045289217,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 5,
+        "xHat": 100.0,
+        "P": 0.21174243362163486,
+        "K": 0.21174243362163486,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 6,
+        "xHat": 100.0,
+        "P": 0.1814968748890218,
+        "K": 0.1814968748890218,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 7,
+        "xHat": 100.0,
+        "P": 0.1607195779735958,
+        "K": 0.16071957797359576,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 8,
+        "xHat": 100.0,
+        "P": 0.14582448366422227,
+        "K": 0.14582448366422227,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 9,
+        "xHat": 100.0,
+        "P": 0.13481673547027123,
+        "K": 0.13481673547027123,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 10,
+        "xHat": 100.0,
+        "P": 0.1264977449956503,
+        "K": 0.12649774499565034,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 11,
+        "xHat": 100.0,
+        "P": 0.12010384146971866,
+        "K": 0.12010384146971866,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 12,
+        "xHat": 100.0,
+        "P": 0.11512556341770902,
+        "K": 0.115125563417709,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 13,
+        "xHat": 100.0,
+        "P": 0.1112103106409071,
+        "K": 0.11121031064090708,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 14,
+        "xHat": 100.0,
+        "P": 0.10810666784862223,
+        "K": 0.10810666784862223,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 15,
+        "xHat": 100.0,
+        "P": 0.1056309484996403,
+        "K": 0.10563094849964029,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 16,
+        "xHat": 100.0,
+        "P": 0.10364623593057089,
+        "K": 0.10364623593057089,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 17,
+        "xHat": 100.0,
+        "P": 0.10204877658981829,
+        "K": 0.10204877658981829,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 18,
+        "xHat": 100.0,
+        "P": 0.10075886862932787,
+        "K": 0.10075886862932787,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 19,
+        "xHat": 100.0,
+        "P": 0.09971459311056763,
+        "K": 0.09971459311056763,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 20,
+        "xHat": 100.0,
+        "P": 0.09886739688899099,
+        "K": 0.09886739688899097,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 21,
+        "xHat": 100.0,
+        "P": 0.09817891408334889,
+        "K": 0.09817891408334888,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      }
+    ],
+    "finalP": 0.09817891408334889
+  },
+  "S2-step-change-exclude": {
+    "R": 1,
+    "Q": 0.01,
+    "chi2Threshold": 6.63,
+    "warmUpP": 0.11512556341770902,
+    "firstExcluded": {
+      "xHat": 100.0,
+      "P": 0.12512556341770903,
+      "innovation": 100.0,
+      "innovationGate": 8887.896893590929
+    },
+    "excludedPSequence": [
+      0.12512556341770903,
+      0.13512556341770904,
+      0.14512556341770905,
+      0.15512556341770906,
+      0.16512556341770906,
+      0.17512556341770907,
+      0.18512556341770908,
+      0.1951255634177091,
+      0.2051255634177091
+    ],
+    "trace": [
+      {
+        "step": 12,
+        "z": 100.0,
+        "xHat": 100.0,
+        "P": 0.11512556341770902,
+        "innovation": 0.0,
+        "innovationGate": 0.0,
+        "label": "normal"
+      },
+      {
+        "step": 13,
+        "z": 200.0,
+        "xHat": 100.0,
+        "P": 0.12512556341770903,
+        "innovation": 100.0,
+        "innovationGate": 8887.896893590929,
+        "label": "EXCLUDED"
+      },
+      {
+        "step": 14,
+        "z": 200.0,
+        "xHat": 100.0,
+        "P": 0.13512556341770904,
+        "innovation": 100.0,
+        "innovationGate": 8809.598094056975,
+        "label": "EXCLUDED"
+      },
+      {
+        "step": 15,
+        "z": 200.0,
+        "xHat": 100.0,
+        "P": 0.14512556341770905,
+        "innovation": 100.0,
+        "innovationGate": 8732.6668091788,
+        "label": "EXCLUDED"
+      },
+      {
+        "step": 16,
+        "z": 200.0,
+        "xHat": 100.0,
+        "P": 0.15512556341770906,
+        "innovation": 100.0,
+        "innovationGate": 8657.067522956258,
+        "label": "EXCLUDED"
+      },
+      {
+        "step": 17,
+        "z": 200.0,
+        "xHat": 100.0,
+        "P": 0.16512556341770906,
+        "innovation": 100.0,
+        "innovationGate": 8582.76593869128,
+        "label": "EXCLUDED"
+      }
+    ]
+  },
+  "S3-ramp-with-control": {
+    "R": 1,
+    "Q": 0.01,
+    "G": 1.0,
+    "initZ": 100.0,
+    "rampIncrement": 5.0,
+    "trace": [
+      {
+        "step": 2,
+        "z": 105.0,
+        "xHat": 105.0,
+        "P": 0.5024875621890547,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 3,
+        "z": 110.0,
+        "xHat": 110.0,
+        "P": 0.33883753823887375,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 4,
+        "z": 115.0,
+        "xHat": 115.0,
+        "P": 0.25862087045289217,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 5,
+        "z": 120.0,
+        "xHat": 120.0,
+        "P": 0.21174243362163486,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 6,
+        "z": 125.0,
+        "xHat": 125.0,
+        "P": 0.1814968748890218,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 7,
+        "z": 130.0,
+        "xHat": 130.0,
+        "P": 0.1607195779735958,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 8,
+        "z": 135.0,
+        "xHat": 135.0,
+        "P": 0.14582448366422227,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 9,
+        "z": 140.0,
+        "xHat": 140.0,
+        "P": 0.13481673547027123,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 10,
+        "z": 145.0,
+        "xHat": 145.0,
+        "P": 0.1264977449956503,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      },
+      {
+        "step": 11,
+        "z": 150.0,
+        "xHat": 150.0,
+        "P": 0.12010384146971866,
+        "innovation": 0.0,
+        "innovationGate": 0.0
+      }
+    ]
+  },
+  "S4-dare-steady-state": {
+    "cases": [
+      {
+        "QoverR": 0.001,
+        "Pss": 0.031126729201736945,
+        "Kss": 0.03112672920173695,
+        "PEmpirical": 0.031126729201736994
+      },
+      {
+        "QoverR": 0.01,
+        "Pss": 0.09512492197250394,
+        "Kss": 0.09512492197250395,
+        "PEmpirical": 0.09512492197250394
+      },
+      {
+        "QoverR": 0.1,
+        "Pss": 0.27015621187164235,
+        "Kss": 0.27015621187164235,
+        "PEmpirical": 0.27015621187164246
+      },
+      {
+        "QoverR": 0.5,
+        "Pss": 0.5,
+        "Kss": 0.5,
+        "PEmpirical": 0.5
+      },
+      {
+        "QoverR": 1.0,
+        "Pss": 0.6180339887498949,
+        "Kss": 0.6180339887498948,
+        "PEmpirical": 0.6180339887498949
+      }
+    ]
+  },
+  "S5-non-unity-HF": {
+    "H": 2,
+    "F": 0.99,
+    "R": 1,
+    "Q": 0.01,
+    "initXHat": 100.0,
+    "initP": 0.25,
+    "trace": [
+      {
+        "step": 2,
+        "xHat": 99.50497500123757,
+        "P": 0.12624375030939064,
+        "innovation": 2.0,
+        "innovationGate": 1.9800999950497498
+      },
+      {
+        "step": 3,
+        "xHat": 99.02922046403262,
+        "P": 0.0871256984313056,
+        "innovation": 2.980149497549604,
+        "innovationGate": 5.786136292689219
+      },
+      {
+        "step": 4,
+        "xHat": 98.58054592662965,
+        "P": 0.06904613125850226,
+        "innovation": 3.9221434812154143,
+        "innovationGate": 11.13460508150837
+      },
+      {
+        "step": 5,
+        "xHat": 98.16488843923412,
+        "P": 0.05926054591349761,
+        "innovation": 4.810519065273297,
+        "innovationGate": 17.655678299935413
+      },
+      {
+        "step": 6,
+        "xHat": 97.78613141508119,
+        "P": 0.0535093303084867,
+        "innovation": 5.633520890316447,
+        "innovationGate": 24.943749843110943
+      },
+      {
+        "step": 7,
+        "xHat": 97.44616247535848,
+        "P": 0.049964470255930114,
+        "innovation": 6.383459798139256,
+        "innovationGate": 32.604638339057225
+      },
+      {
+        "step": 8,
+        "xHat": 97.14511350233494,
+        "P": 0.047715104588388645,
+        "innovation": 7.05659829879022,
+        "innovationGate": 40.29157440532499
+      },
+      {
+        "step": 9,
+        "xHat": 96.88170874040115,
+        "P": 0.04626136276113698,
+        "innovation": 7.652675265376814,
+        "innovationGate": 47.72654078514571
+      },
+      {
+        "step": 10,
+        "xHat": 96.65364990492796,
+        "P": 0.045310656645181815,
+        "innovation": 8.174216694005707,
+        "innovationGate": 54.70758162225095
+      },
+      {
+        "step": 11,
+        "xHat": 96.45798337573567,
+        "P": 0.04468410848709349,
+        "innovation": 8.625773188242647,
+        "innovationGate": 61.10526405977798
+      }
+    ]
+  },
+  "S6-follow-mode": {
+    "R": 1,
+    "Q": 0.01,
+    "chi2Threshold": 6.63,
+    "followReset": {
+      "xHat": 200.0,
+      "P": 1.0,
+      "innovation": 100.0,
+      "innovationGate": 8887.896893590929
+    },
+    "trace": [
+      {
+        "step": 12,
+        "z": 100.0,
+        "xHat": 100.0,
+        "P": 0.11512556341770902,
+        "innovation": 0.0,
+        "innovationGate": 0.0,
+        "label": "normal"
+      },
+      {
+        "step": 13,
+        "z": 200.0,
+        "xHat": 200.0,
+        "P": 1.0,
+        "innovation": 100.0,
+        "innovationGate": 8887.896893590929,
+        "label": "FOLLOW-RESET"
+      },
+      {
+        "step": 14,
+        "z": 200.0,
+        "xHat": 200.0,
+        "P": 0.5024875621890547,
+        "innovation": 0.0,
+        "innovationGate": 0.0,
+        "label": "normal"
+      },
+      {
+        "step": 15,
+        "z": 200.0,
+        "xHat": 200.0,
+        "P": 0.33883753823887375,
+        "innovation": 0.0,
+        "innovationGate": 0.0,
+        "label": "normal"
+      },
+      {
+        "step": 16,
+        "z": 200.0,
+        "xHat": 200.0,
+        "P": 0.25862087045289217,
+        "innovation": 0.0,
+        "innovationGate": 0.0,
+        "label": "normal"
+      }
+    ]
+  },
+  "S7-basic-innovation": {
+    "initZ": 100.0,
+    "updateZ": 102.0,
+    "R": 1,
+    "Q": 0.01,
+    "H": 1,
+    "F": 1,
+    "G": 0,
+    "xHat": 101.0049751243781,
+    "P": 0.5024875621890547,
+    "K": 0.5024875621890548,
+    "innovation": 2.0,
+    "innovationGate": 1.9900497512437814
+  },
+  "S8-missing-control": {
+    "G": 1.0,
+    "initZ": 100.0,
+    "updateZ": 105.0,
+    "xPred": 100.0,
+    "PPred": 1.01,
+    "innovation": 5.0,
+    "innovationGate": 12.437810945273633,
+    "isExcluded": true,
+    "xHat": 100.0,
+    "P": 1.01
+  },
+  "S9-decaying-state": {
+    "F": 0.95,
+    "initZ": 100.0,
+    "updateZ": 100.0,
+    "R": 1,
+    "Q": 0.01,
+    "H": 1,
+    "xPred": 95.0,
+    "innovation": 5.0,
+    "xHat": 97.38562091503267,
+    "P": 0.4771241830065359
+  },
+  "S10-negative-control": {
+    "G": -1.0,
+    "initZ": 100.0,
+    "updateZ": 98.0,
+    "u": 2.0,
+    "R": 1,
+    "Q": 0.01,
+    "H": 1,
+    "F": 1,
+    "xPred": 98.0,
+    "innovation": 0.0,
+    "innovationGate": 0.0,
+    "xHat": 98.0,
+    "P": 0.5024875621890547
+  }
+}

@@ -3,7 +3,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Status](https://img.shields.io/badge/status-transitioning%20to%20open%20source-blue.svg)](https://github.com/winkjs/composer)
 
 ## Composable Streaming Intelligence
-[<img align="right" src="https://decisively.github.io/wink-logos/logo-title.png" width="100px" >](https://winkjs.org/)
 
 A sensor spikes. An engine runs hot. A building's energy use surges. A server degrades. A cold chain breaks.
 
@@ -11,8 +10,7 @@ winkComposer turns live data streams into clear, actionable insights by composin
 
 A high-performance JavaScript framework for IIoT and beyond. Runs on a Raspberry Pi or a production server or k8 cluster on cloud. Purpose-built for SMBs and MSMEs. Integrates with QuestDB, Grafana, and Mosquitto — open source, end to end.
 
-winkComposer calls its building blocks nodes — each with a single responsibility, wired through a declarative flow language. Its flow language is a fluent, chainable
-JavaScript DSL. Small vocabulary, unbounded composition — the same nodes that detect bearing wear also catch server latency degradation and process yield drift.
+winkComposer calls its building blocks nodes — each with a single responsibility, wired through a declarative flow language. Small vocabulary, unbounded composition — the same nodes that detect bearing wear also catch server latency degradation and process yield drift.
 
 > [!NOTE]
 > The [documentation site](https://composer.winkjs.org) is live and growing — interactive demos run real winkComposer nodes in your browser, no installation or sign-up required. winkComposer is transitioning to open source; the repository and full source will follow as development progresses. MCP integration for AI-driven queries over pre-computed insights is in active development.
@@ -68,4 +66,5 @@ Each asset runs in its own isolated state — a fault in one never affects anoth
 
 
 ## About winkJS
-**[winkJS](https://winkjs.org)** is an open-source ecosystem of high-performance, production-grade libraries — built from first principles, tested to near-perfection, and trusted by thousands of projects worldwide.
+
+[winkJS](https://winkjs.org) is the open-source home of two high-performance, production-grade tools — built from first principles, tested to near-perfection, and trusted by thousands of projects worldwide.

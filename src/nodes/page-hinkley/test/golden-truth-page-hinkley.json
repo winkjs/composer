@@ -1,0 +1,462 @@
+{
+  "S1-running-mean-basics": {
+    "values": [
+      10.0,
+      20.0,
+      30.0
+    ],
+    "delta": 0.005,
+    "lambda": 45,
+    "means": [
+      10.0,
+      15.0,
+      20.0
+    ],
+    "cumSums": [
+      -0.005,
+      4.99,
+      14.985
+    ],
+    "testStatistics": [
+      0.0,
+      4.995,
+      14.99
+    ]
+  },
+  "S2-es-basics": {
+    "values": [
+      10.0,
+      20.0,
+      30.0
+    ],
+    "alpha": 0.5,
+    "halfLife": 1.0,
+    "delta": 0.005,
+    "lambda": 45,
+    "means": [
+      10.0,
+      15.0,
+      22.5
+    ],
+    "cumSums": [
+      -0.005,
+      4.99,
+      12.485
+    ],
+    "testStatistics": [
+      0.0,
+      4.995,
+      12.49
+    ]
+  },
+  "S3-shift-detection": {
+    "values": [
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0
+    ],
+    "delta": 0.01,
+    "lambda": 10,
+    "detectionIndex": 11,
+    "detectionCount": 12,
+    "testStatisticAtDetection": 17.404242424242426,
+    "trace": [
+      {
+        "mean": 10.0,
+        "cumSum": -0.01,
+        "minCumSum": -0.01,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.02,
+        "minCumSum": -0.02,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.03,
+        "minCumSum": -0.03,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.04,
+        "minCumSum": -0.04,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.05,
+        "minCumSum": -0.05,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.060000000000000005,
+        "minCumSum": -0.060000000000000005,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.07,
+        "minCumSum": -0.07,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.08,
+        "minCumSum": -0.08,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.09,
+        "minCumSum": -0.09,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.09999999999999999,
+        "minCumSum": -0.09999999999999999,
+        "testStatistic": 0.0,
+        "shiftDetected": false
+      },
+      {
+        "mean": 10.909090909090908,
+        "cumSum": 8.980909090909092,
+        "minCumSum": -0.09999999999999999,
+        "testStatistic": 9.080909090909092,
+        "shiftDetected": false
+      },
+      {
+        "mean": 11.666666666666666,
+        "cumSum": 0.0,
+        "minCumSum": 0.0,
+        "testStatistic": 17.404242424242426,
+        "shiftDetected": true
+      }
+    ]
+  },
+  "S4-constant-input": {
+    "values": [
+      50.0
+    ],
+    "repetitions": 100,
+    "delta": 0.005,
+    "lambda": 45,
+    "finalMean": 50.0,
+    "finalTestStatistic": 0.0,
+    "anyDetection": false
+  },
+  "S5-zero-values": {
+    "values": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "finalMean": 0.0
+  },
+  "S6-negative-values": {
+    "values": [
+      -10.0,
+      -20.0,
+      -30.0
+    ],
+    "means": [
+      -10.0,
+      -15.0,
+      -20.0
+    ]
+  },
+  "S7-detect-drop": {
+    "values": [
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      50.0,
+      50.0
+    ],
+    "delta": 0.01,
+    "lambda": 10,
+    "detectionIndex": 10,
+    "detectionCount": 11
+  },
+  "S8-reset-warm-again": {
+    "preValues": [
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0
+    ],
+    "postValues": [
+      200.0,
+      200.0,
+      200.0,
+      200.0,
+      200.0
+    ],
+    "delta": 0.005,
+    "lambda": 45,
+    "preResetFinalMean": 100.0,
+    "postResetMeans": [
+      200.0,
+      200.0,
+      200.0,
+      200.0,
+      200.0
+    ],
+    "postResetTestStatistics": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "S9-post-detection-state": {
+    "detectionIndex": 11,
+    "cumSumAfterDetection": 0.0,
+    "minCumSumAfterDetection": 0.0,
+    "meanAtDetection": 11.666666666666666,
+    "countAtDetection": 12
+  },
+  "S10-es-shift-detection": {
+    "values": [
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      10.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0,
+      25.0
+    ],
+    "alpha": 0.3,
+    "halfLife": 1.943358209874732,
+    "delta": 0.01,
+    "lambda": 8,
+    "detectionIndex": 15,
+    "detectionCount": 16,
+    "testStatisticAtDetection": 10.49,
+    "trace": [
+      {
+        "mean": 10.0,
+        "cumSum": -0.01,
+        "minCumSum": -0.01,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 1
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.02,
+        "minCumSum": -0.02,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 2
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.03,
+        "minCumSum": -0.03,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 3
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.04,
+        "minCumSum": -0.04,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 4
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.05,
+        "minCumSum": -0.05,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 5
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.060000000000000005,
+        "minCumSum": -0.060000000000000005,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 6
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.07,
+        "minCumSum": -0.07,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 7
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.08,
+        "minCumSum": -0.08,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 8
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.09,
+        "minCumSum": -0.09,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 9
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.09999999999999999,
+        "minCumSum": -0.09999999999999999,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 10
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.10999999999999999,
+        "minCumSum": -0.10999999999999999,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 11
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.11999999999999998,
+        "minCumSum": -0.11999999999999998,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 12
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.12999999999999998,
+        "minCumSum": -0.12999999999999998,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 13
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.13999999999999999,
+        "minCumSum": -0.13999999999999999,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 14
+      },
+      {
+        "mean": 10.0,
+        "cumSum": -0.15,
+        "minCumSum": -0.15,
+        "testStatistic": 0.0,
+        "shiftDetected": false,
+        "count": 15
+      },
+      {
+        "mean": 14.5,
+        "cumSum": 0.0,
+        "minCumSum": 0.0,
+        "testStatistic": 10.49,
+        "shiftDetected": true,
+        "count": 16
+      },
+      {
+        "mean": 17.65,
+        "cumSum": 7.340000000000002,
+        "minCumSum": 0.0,
+        "testStatistic": 7.340000000000002,
+        "shiftDetected": false,
+        "count": 17
+      }
+    ]
+  }
+}

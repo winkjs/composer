@@ -1,0 +1,9 @@
+{
+    "name": "machineState",
+    "description": "Machine operating states",
+    "values": {
+        "0": "Idle",
+        "1": "Running",
+        "2": "Error"
+    }
+}

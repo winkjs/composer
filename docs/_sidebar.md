@@ -1,2 +1,0 @@
-* [Home](/)
-* [Contributing](CONTRIBUTING.md)

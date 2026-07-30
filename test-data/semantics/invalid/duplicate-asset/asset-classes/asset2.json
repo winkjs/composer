@@ -1,0 +1,13 @@
+{
+    "name": "duplicateName",
+    "columns": {
+        "ts": { "type": "timestamp" },
+        "pressure": { "type": "float64" }
+    },
+    "insightTypes": {
+        "basic": {
+            "columns": [ "ts", "pressure" ],
+            "designatedTimestamp": "ts"
+        }
+    }
+}

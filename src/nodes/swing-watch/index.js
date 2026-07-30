@@ -1,0 +1,17 @@
+// @fileoverview
+// index.js — standard node exports per ADR-004.
+//
+// Re-exports all lifecycle functions and shared control signals. The
+// introspection metadata (getSupportedStats, getDSLMetadata, etc.) is
+// re-exported via the wildcard export from introspect.js.
+
+export { default as init } from './init.js';
+export { default as update } from './update.js';
+export { default as reset } from './reset.js';
+export { default as recompute } from './recompute.js';
+export { default as publishTo } from './publish-to.js';
+export { default as disable } from '../../core/utils/node/disable.js';
+export { default as enable } from '../../core/utils/node/enable.js';
+export { default as pause } from '../../core/utils/node/pause.js';
+export { default as unpause } from '../../core/utils/node/unpause.js';
+export * from './introspect.js';

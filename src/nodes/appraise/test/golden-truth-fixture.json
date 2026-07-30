@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "generator": "golden-truth-appraise.py",
+    "numpy": "2.2.1",
+    "scipy": "1.17.1",
+    "description": "Golden-truth expected values for appraise node JS tests. Decay dynamics computed via scipy.integrate.solve_ivp. MM normalization, BLI injection, threshold comparison are arithmetic from mathematical definitions (no library equivalent)."
+  },
+  "mm": {
+    "d0_theta3": 0.0,
+    "d3_theta3": 0.5,
+    "d6_theta3": 0.6666666666666666,
+    "d1e12_theta1": 0.999999999999
+  },
+  "bli": {
+    "coldStart_c0_n05_df1": 0.5,
+    "pureDecay_c05_n0_df05": 0.25,
+    "df0_n0": 0,
+    "df0_n05": 0.5,
+    "formula_c06_n04_df07": 0.652,
+    "pureDecay10Steps_c09_df09": 0.3138105960900001
+  },
+  "receptor": {
+    "subThreshold_n04_df1": {
+      "membrane": 0.4,
+      "spike": 0.0,
+      "fired": 0,
+      "charge": 0.4,
+      "rate": 0.0
+    },
+    "twoStep_n06_df1": {
+      "step1_membrane": 0.6,
+      "step1_spike": 0.0,
+      "step2_membrane": 0.19999999999999996,
+      "step2_spike": 1.2,
+      "step2_fired": 1,
+      "step2_charge": 0.84,
+      "step2_rate": 1.0
+    },
+    "decayInject_m08_n01_df05": {
+      "membrane": 0.5
+    },
+    "decay_m08_c06_r2_df05": {
+      "membrane": 0.4,
+      "charge": 0.3,
+      "rate": 1.0,
+      "spike": 0.0,
+      "fired": 0
+    }
+  },
+  "decision": {
+    "synaptic_single": 1.5,
+    "synaptic_mixed": 0.39999999999999997,
+    "synaptic_zero": 0.0,
+    "synaptic_inhibitory": -0.3333333333333333,
+    "membrane_accumulate": 2.8,
+    "membrane_floor": 0,
+    "membrane_decay": 1.8,
+    "membrane_zero_pos": 1.5,
+    "readout_half": 0.5,
+    "readout_zero": 0.0,
+    "readout_large": 0.999000999000999,
+    "readout_3_1": 0.75
+  },
+  "calibration": {
+    "warmup_tau10_rate1": 50,
+    "warmup_tau10_rate03": 15,
+    "warmup_tiny": 1,
+    "cTarget_025": 0.08333333333333333,
+    "cTarget_06": 0.19999999999999998,
+    "theta_V2_l2mem2": 22.0
+  },
+  "e2e": {
+    "tau": 34.624680981335125,
+    "messages": [
+      {
+        "deviation": 6.0,
+        "norm": 0.6666666666666666,
+        "decayFactor": 1.0,
+        "spike": 0.0,
+        "fired": 0,
+        "membrane": 0.6666666666666666,
+        "charge": 0.6666666666666666,
+        "rate": 0.0,
+        "I2": 0.0,
+        "l2Membrane": 0,
+        "combined": 0.0
+      },
+      {
+        "deviation": 6.0,
+        "norm": 0.6666666666666666,
+        "decayFactor": 0.9715319411536059,
+        "spike": 1.3143546274357374,
+        "fired": 1,
+        "membrane": 0.3143546274357374,
+        "charge": 0.8825626535896902,
+        "rate": 1.0,
+        "I2": 1.3143546274357374,
+        "l2Membrane": 1.3143546274357374,
+        "combined": 0.5679141009137473
+      }
+    ]
+  }
+}

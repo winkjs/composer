@@ -1,0 +1,132 @@
+{
+  "\u00a71-basic-alpha05": {
+    "halfLife": 1.0,
+    "alpha": 0.5,
+    "input": [
+      100.0,
+      110.0,
+      90.0,
+      100.0
+    ],
+    "esm": [
+      100.0,
+      105.0,
+      97.5,
+      98.75
+    ]
+  },
+  "\u00a72-basic-alpha01": {
+    "halfLife": 6.578813478960583,
+    "alpha": 0.1,
+    "input": [
+      100.0,
+      110.0,
+      90.0,
+      100.0
+    ],
+    "esm": [
+      100.0,
+      101.0,
+      99.9,
+      99.91000000000001
+    ]
+  },
+  "\u00a73-default-halflife": {
+    "halfLife": 3.1062837195053903,
+    "alpha": 0.19999999999999996
+  },
+  "\u00a74-nan-recovery": {
+    "halfLife": 1.943358209874732,
+    "alpha": 0.3,
+    "validInput": [
+      50.0,
+      60.0,
+      70.0
+    ],
+    "fullSequence": [
+      50,
+      60,
+      "NaN",
+      70
+    ],
+    "esm": [
+      50.0,
+      53.0,
+      58.1
+    ]
+  },
+  "\u00a75-floating-point": {
+    "halfLife": 6.578813478960583,
+    "alpha": 0.1,
+    "cases": [
+      {
+        "input": [
+          0.1,
+          0.2
+        ],
+        "esm": 0.11
+      },
+      {
+        "input": [
+          1e-10,
+          2e-10
+        ],
+        "esm": 1.1e-10
+      },
+      {
+        "input": [
+          10000000000.0,
+          10000000100.0
+        ],
+        "esm": 10000000010.0
+      }
+    ]
+  },
+  "\u00a76-adaptive-behavioral": {
+    "halfLife": 3.10628371950539,
+    "baseAlpha": 0.19999999999999996,
+    "note": "Custom extension (EMA of |innovation| with bounded alpha boost). No standard library equivalent. Tests verify behavioral properties only."
+  },
+  "\u00a77-alpha-capping": {
+    "cap": 0.95,
+    "baseAlpha": 0.9,
+    "note": "Behavioral test \u2014 currentAlpha must not exceed 0.95"
+  },
+  "\u00a78-publish-sequence": {
+    "halfLife": 2.409420839653209,
+    "alpha": 0.25,
+    "input": [
+      20.0,
+      24.0,
+      22.0,
+      23.0
+    ],
+    "esm": [
+      20.0,
+      21.0,
+      21.25,
+      21.6875
+    ]
+  },
+  "\u00a79-nan-lifecycle": {
+    "halfLife": 3.1062837195053903,
+    "alpha": 0.19999999999999996,
+    "fullSequence": [
+      10,
+      "NaN",
+      20,
+      "NaN",
+      30
+    ],
+    "validInput": [
+      10.0,
+      20.0,
+      30.0
+    ],
+    "esm": [
+      10.0,
+      12.0,
+      15.599999999999998
+    ]
+  }
+}

@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kernel Node Test Jig - WinkComposer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        
+        .test-section {
+            margin-bottom: 30px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .test-result {
+            margin: 5px 0;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .test-pass {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .test-fail {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .control-group {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        select, input, button {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .viz-container {
+            margin: 20px 0;
+        }
+        
+        .viz-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #495057;
+        }
+        
+        svg {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        
+        .signal-line {
+            fill: none;
+            stroke-width: 2;
+        }
+        
+        .input-signal {
+            stroke: #0066cc;
+        }
+        
+        .output-signal {
+            stroke: #ff6600;
+        }
+        
+        .kernel-bar {
+            fill: #28a745;
+        }
+        
+        .kernel-bar.negative {
+            fill: #dc3545;
+        }
+        
+        .window-indicator {
+            fill: rgba(0, 123, 255, 0.1);
+            stroke: #007bff;
+            stroke-width: 2;
+        }
+        
+        .axis {
+            font-size: 12px;
+        }
+        
+        .grid-line {
+            stroke: #e0e0e0;
+            stroke-dasharray: 2,2;
+        }
+        
+        .legend {
+            font-size: 14px;
+        }
+        
+        .window-state {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        
+        .window-value {
+            padding: 8px;
+            background: white;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            min-width: 60px;
+            text-align: center;
+        }
+        
+        .window-value.current {
+            background: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        
+        #error-log {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .tab-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 10px 20px;
+            color: #6c757d;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .tab-button.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Kernel Node Test Jig</h1>
+        <p class="subtitle">Visual testing environment for WinkComposer's Kernel node</p>
+        
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="switchTab('validation')">Validation Tests</button>
+            <button class="tab-button" onclick="switchTab('interactive')">Interactive Testing</button>
+            <button class="tab-button" onclick="switchTab('presets')">Preset Gallery</button>
+        </div>
+        
+        <!-- Validation Tests Tab -->
+        <div id="validation-tab" class="tab-content active">
+            <div class="test-section">
+                <h3>🧪 Spec Validation Tests</h3>
+                <p>These tests verify the node's validation logic (replacing test.js assertions)</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <button onclick="runValidationTest('validSpec')">Valid Spec</button>
+                    <button onclick="runValidationTest('invalidNodeType')">Invalid Node Type</button>
+                    <button onclick="runValidationTest('missingFrom')">Missing 'from' Field</button>
+                    <button onclick="runValidationTest('bothPresetAndKernel')">Both Preset & Kernel</button>
+                    <button onclick="runValidationTest('neitherPresetNorKernel')">Neither Preset Nor Kernel</button>
+                    <button onclick="runValidationTest('invalidPreset')">Invalid Preset Name</button>
+                    <button onclick="runValidationTest('invalidKernel')">Invalid Kernel Array</button>
+                    <button onclick="runValidationTest('emptyKernel')">Empty Kernel</button>
+                </div>
+                <div id="validation-results" style="margin-top: 15px;"></div>
+            </div>
+            
+            <div class="test-section">
+                <h3>🔄 Behavioral Tests</h3>
+                <p>Test node behavior with various inputs</p>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <button onclick="runBehaviorTest('startupDelay')">Startup Delay</button>
+                    <button onclick="runBehaviorTest('nanHandling')">NaN Handling</button>
+                    <button onclick="runBehaviorTest('undefinedHandling')">Undefined Handling</button>
+                    <button onclick="runBehaviorTest('resetFunction')">Reset Function</button>
+                    <button onclick="runBehaviorTest('customKernelCalc')">Custom Kernel Math</button>
+                </div>
+                <div id="behavior-results" style="margin-top: 15px;"></div>
+            </div>
+        </div>
+        
+        <!-- Interactive Testing Tab -->
+        <div id="interactive-tab" class="tab-content">
+            <div class="controls">
+                <div class="control-group">
+                    <label for="signal-type">Signal Type</label>
+                    <select id="signal-type" onchange="updateSignal()">
+                        <option value="sine">Sine Wave</option>
+                        <option value="square">Square Wave</option>
+                        <option value="sawtooth">Sawtooth</option>
+                        <option value="noise">Random Noise</option>
+                        <option value="step">Step Function</option>
+                        <option value="impulse">Impulse</option>
+                        <option value="custom">Custom (Edit Below)</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="preset-select">Preset</label>
+                    <select id="preset-select" onchange="updateKernel()">
+                        <option value="smooth3">smooth3 - 3-point Gaussian</option>
+                        <option value="smooth5">smooth5 - 5-point Gaussian</option>
+                        <option value="rate">rate - Forward difference</option>
+                        <option value="rate3">rate3 - Centered difference</option>
+                        <option value="accel">accel - 2nd derivative</option>
+                        <option value="sg5">sg5 - Savitzky-Golay 5-point</option>
+                        <option value="sg7">sg7 - Savitzky-Golay 7-point</option>
+                        <option value="sgRate5">sgRate5 - SG 1st derivative</option>
+                        <option value="binomial5">binomial5 - Binomial 5-point</option>
+                        <option value="binomial7">binomial7 - Binomial 7-point</option>
+                        <option value="debounce5">debounce5 - Digital debounce</option>
+                        <option value="spike3">spike3 - Spike detection</option>
+                        <option value="edge5">edge5 - Edge enhancement</option>
+                        <option value="impulse">impulse - Impulse detection</option>
+                        <option value="shock">shock - Shock detection</option>
+                        <option value="jerk">jerk - 3rd derivative</option>
+                        <option value="envelope">envelope - Envelope extraction</option>
+                        <option value="momentum5">momentum5 - Weighted momentum</option>
+                        <option value="volatility">volatility - Local variance</option>
+                        <option value="custom">Custom Kernel</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="custom-kernel">Custom Kernel (comma-separated)</label>
+                    <input type="text" id="custom-kernel" placeholder="e.g., 0.25, 0.5, 0.25" onchange="updateKernel()">
+                </div>
+                
+                <div class="control-group">
+                    <label>Signal Controls</label>
+                    <button onclick="runLiveTest()">Run Test</button>
+                    <button onclick="resetNode()">Reset Node</button>
+                    <button onclick="injectNaN()">Inject NaN</button>
+                </div>
+            </div>
+            
+            <div class="viz-container">
+                <div class="viz-title">📊 Input vs Output Signals</div>
+                <svg id="signal-viz" width="100%" height="300"></svg>
+            </div>
+            
+            <div class="viz-container">
+                <div class="viz-title">🎚️ Kernel Weights</div>
+                <svg id="kernel-viz" width="100%" height="150"></svg>
+            </div>
+            
+            <div class="viz-container">
+                <div class="viz-title">🪟 Current Window State</div>
+                <div id="window-state" class="window-state">
+                    <span>Window:</span>
+                    <div id="window-values"></div>
+                    <span>→ Output:</span>
+                    <div id="window-output" class="window-value">-</div>
+                </div>
+            </div>
+            
+            <div class="viz-container">
+                <div class="viz-title">📝 Custom Signal Data (editable)</div>
+                <textarea id="custom-signal" rows="4" style="width: 100%; font-family: monospace; display: none;">10, 20, 15, 25, 20, 30, 25, 35, 30, 40</textarea>
+            </div>
+        </div>
+        
+        <!-- Preset Gallery Tab -->
+        <div id="presets-tab" class="tab-content">
+            <div class="test-section">
+                <h3>🎨 Preset Comparison Gallery</h3>
+                <p>Compare all presets on the same signal</p>
+                <div class="control-group" style="max-width: 300px;">
+                    <label for="gallery-signal">Test Signal</label>
+                    <select id="gallery-signal" onchange="updateGallery()">
+                        <option value="sine">Sine + Noise</option>
+                        <option value="step">Step Changes</option>
+                        <option value="impulse">Impulses</option>
+                        <option value="ramp">Linear Ramp</option>
+                    </select>
+                </div>
+                <div id="preset-gallery" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin-top: 20px;"></div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🐛 Debug Log</h3>
+            <div id="error-log"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global functions that need to be accessible from onclick handlers
+        // These will be populated by the module script below
+        window.switchTab = function(tabName) {
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.querySelector(`#${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+        };
+        
+        // Placeholder functions that will be replaced by the module
+        window.runValidationTest = function() { alert('Module still loading...'); };
+        window.runBehaviorTest = function() { alert('Module still loading...'); };
+        window.updateSignal = function() { alert('Module still loading...'); };
+        window.updateKernel = function() { alert('Module still loading...'); };
+        window.runLiveTest = function() { alert('Module still loading...'); };
+        window.resetNode = function() { alert('Module still loading...'); };
+        window.injectNaN = function() { alert('Module still loading...'); };
+        window.updateGallery = function() { alert('Module still loading...'); };
+    </script>
+    
+    <script type="module">
+        // Import the actual kernel node modules
+        let kernel;
+        try {
+            kernel = await import('./index.js');
+            console.log('Kernel module loaded successfully', kernel);
+        } catch (error) {
+            console.error('Failed to load kernel module:', error);
+            document.getElementById('error-log').innerHTML = `
+                <div style="color: #dc3545; font-weight: bold;">
+                    Failed to load kernel module: ${error.message}<br>
+                    <br>
+                    Debugging info:<br>
+                    - Current URL: ${window.location.href}<br>
+                    - Import attempted: ./index.js<br>
+                    - Full error URL: ${error.message.match(/http[s]?:\/\/[^\s]+/) || 'N/A'}<br>
+                    <br>
+                    Make sure:<br>
+                    1. You're serving files via HTTP (not file://)<br>
+                    2. test-jig.html is in the same directory as index.js<br>
+                    3. File structure matches: src/nodes/kernel/[all files]<br>
+                    <br>
+                    Run from project root: npx http-server -c-1
+                </div>
+            `;
+            throw error;
+        }
+        
+        // Global state for the test jig
+        let nodeState = null;
+        let currentSignal = [];
+        let currentOutput = [];
+        
+        // Debug logging
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('error-log');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#6c757d';
+            logDiv.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        // Validation test cases
+        const validationTests = {
+            validSpec: {
+                name: "Valid Spec with Preset",
+                spec: {
+                    nodeType: 'Kernel',
+                    name: 'test1',
+                    from: { x: 'temperature' },
+                    stats: { filtered: { storeAs: 'smoothed' } },
+                    preset: 'smooth3'
+                },
+                shouldPass: true
+            },
+            invalidNodeType: {
+                name: "Invalid Node Type",
+                spec: {
+                    nodeType: 'WrongType',
+                    name: 'test2',
+                    from: { x: 'temp' },
+                    stats: { filtered: { storeAs: 'out' } },
+                    preset: 'smooth3'
+                },
+                shouldPass: false
+            },
+            missingFrom: {
+                name: "Missing 'from' Field",
+                spec: {
+                    nodeType: 'Kernel',
+                    name: 'test3',
+                    stats: { filtered: { storeAs: 'out' } },
+                    preset: 'smooth3'
+                },
+                shouldPass: false
+            },
+            bothPresetAndKernel: {
+                name: "Both Preset and Kernel Provided",
+                spec: {
+                    nodeType: 'Kernel',
+                    name: 'test4',
+                    from: { x: 'signal' },
+                    stats: { filtered: { storeAs: 'out' } },
+                    preset: 'smooth3',
+                    kernel: [0.25, 0.5, 0.25]
+                },
+                shouldPass: false
+            },
+            neitherPresetNorKernel: {
+                name: "Neither Preset Nor Kernel",
+                spec: {
+                    nodeType: 'Kernel',
+                    name: 'test5',
+                    from: { x: 'signal' },
+                    stats: { filtered: { storeAs: 'out' } }
+                },
+                shouldPass: false
+            },
+            invalidPreset: {
+                name: "Invalid Preset Name",
+                spec: {
+                    nodeType: 'Kernel',
+                    name: 'test6',
+                    from: { x: 'signal' },
+                    stats: { filtered: { storeAs: 'out' } },
+                    preset: 'nonexistent'
+                },
+                shouldPass: false
+            },
+            invalidKernel: {
+                name: "Invalid Kernel (not array)",
+                spec: {
+                    nodeType: 'Kernel',
+                    name: 'test7',
+                    from: { x: 'signal' },
+                    stats: { filtered: { storeAs: 'out' } },
+                    kernel: "not-an-array"
+                },
+                shouldPass: false
+            },
+            emptyKernel: {
+                name: "Empty Kernel Array",
+                spec: {
+                    nodeType: 'Kernel',
+                    name: 'test8',
+                    from: { x: 'signal' },
+                    stats: { filtered: { storeAs: 'out' } },
+                    kernel: []
+                },
+                shouldPass: false
+            }
+        };
+        
+        // Run validation test
+        window.runValidationTest = function(testName) {
+            const test = validationTests[testName];
+            const resultsDiv = document.getElementById('validation-results');
+            
+            try {
+                const state = kernel.init(test.spec);
+                if (test.shouldPass) {
+                    resultsDiv.innerHTML += `<div class="test-result test-pass">✓ ${test.name}: Correctly initialized</div>`;
+                    log(`${test.name} passed`, 'success');
+                } else {
+                    resultsDiv.innerHTML += `<div class="test-result test-fail">✗ ${test.name}: Should have failed but didn't</div>`;
+                    log(`${test.name} failed - should have thrown error`, 'error');
+                }
+            } catch (error) {
+                if (test.shouldPass) {
+                    resultsDiv.innerHTML += `<div class="test-result test-fail">✗ ${test.name}: ${error.message}</div>`;
+                    log(`${test.name} failed: ${error.message}`, 'error');
+                } else {
+                    resultsDiv.innerHTML += `<div class="test-result test-pass">✓ ${test.name}: Correctly rejected - ${error.message}</div>`;
+                    log(`${test.name} correctly rejected`, 'success');
+                }
+            }
+        };
+        
+        // Behavioral tests
+        window.runBehaviorTest = function(testName) {
+            const resultsDiv = document.getElementById('behavior-results');
+            
+            switch(testName) {
+                case 'startupDelay': {
+                    try {
+                        const state = kernel.init({
+                            nodeType: 'Kernel',
+                            name: 'startup',
+                            from: { x: 'value' },
+                            stats: { filtered: { storeAs: 'out' } },
+                            preset: 'smooth3'  // 3-point kernel
+                        });
+                        
+                        const outputs = [];
+                        for (let i = 1; i <= 5; i++) {
+                            const msg = { value: i * 10 };
+                            kernel.update(state, msg);
+                            kernel.publishTo(state, msg);
+                            outputs.push(msg.out);
+                        }
+                        
+                        // First 2 should be undefined (window not full)
+                        const correct = outputs[0] === undefined && 
+                                      outputs[1] === undefined && 
+                                      outputs[2] !== undefined;
+                        
+                        if (correct) {
+                            resultsDiv.innerHTML += `<div class="test-result test-pass">✓ Startup Delay: No output for first 2 samples (kernel size 3)</div>`;
+                        } else {
+                            resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Startup Delay: Incorrect - outputs were ${outputs.join(', ')}</div>`;
+                        }
+                    } catch (error) {
+                        resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Startup Delay: ${error.message}</div>`;
+                    }
+                    break;
+                }
+                
+                case 'nanHandling': {
+                    try {
+                        const state = kernel.init({
+                            nodeType: 'Kernel',
+                            name: 'nan',
+                            from: { x: 'value' },
+                            stats: { filtered: { storeAs: 'out' } },
+                            kernel: [0.5, 0.5]
+                        });
+                        
+                        // Fill window first
+                        kernel.update(state, { value: 10 });
+                        kernel.update(state, { value: 20 });
+                        
+                        // Now inject NaN
+                        const msg = { value: NaN };
+                        kernel.update(state, msg);
+                        kernel.publishTo(state, msg);
+                        
+                        // Output should still be 15 (previous valid calculation)
+                        if (msg.out === 15) {
+                            resultsDiv.innerHTML += `<div class="test-result test-pass">✓ NaN Handling: Correctly ignored NaN input</div>`;
+                        } else {
+                            resultsDiv.innerHTML += `<div class="test-result test-fail">✗ NaN Handling: Output was ${msg.out}, expected 15</div>`;
+                        }
+                    } catch (error) {
+                        resultsDiv.innerHTML += `<div class="test-result test-fail">✗ NaN Handling: ${error.message}</div>`;
+                    }
+                    break;
+                }
+                
+                case 'resetFunction': {
+                    try {
+                        const state = kernel.init({
+                            nodeType: 'Kernel',
+                            name: 'reset',
+                            from: { x: 'value' },
+                            stats: { filtered: { storeAs: 'out' } },
+                            kernel: [1, 0]  // Simple identity
+                        });
+                        
+                        // Process some data
+                        kernel.update(state, { value: 100 });
+                        kernel.update(state, { value: 200 });
+                        
+                        // Reset
+                        kernel.reset(state);
+                        
+                        // Process new data - should have startup delay again
+                        const msg1 = { value: 50 };
+                        kernel.update(state, msg1);
+                        kernel.publishTo(state, msg1);
+                        
+                        if (msg1.out === undefined) {
+                            resultsDiv.innerHTML += `<div class="test-result test-pass">✓ Reset Function: Correctly cleared window state</div>`;
+                        } else {
+                            resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Reset Function: Expected undefined, got ${msg1.out}</div>`;
+                        }
+                    } catch (error) {
+                        resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Reset Function: ${error.message}</div>`;
+                    }
+                    break;
+                }
+                
+                case 'customKernelCalc': {
+                    try {
+                        const state = kernel.init({
+                            nodeType: 'Kernel',
+                            name: 'custom',
+                            from: { x: 'value' },
+                            stats: { filtered: { storeAs: 'out' } },
+                            kernel: [0.25, 0.5, 0.25]  // Should average with weights
+                        });
+                        
+                        // Process: 10, 20, 30
+                        kernel.update(state, { value: 10 });
+                        kernel.update(state, { value: 20 });
+                        const msg = { value: 30 };
+                        kernel.update(state, msg);
+                        kernel.publishTo(state, msg);
+                        
+                        // Expected: 10*0.25 + 20*0.5 + 30*0.25 = 2.5 + 10 + 7.5 = 20
+                        const expected = 20;
+                        const actual = msg.out;
+                        
+                        if (Math.abs(actual - expected) < 0.0001) {
+                            resultsDiv.innerHTML += `<div class="test-result test-pass">✓ Custom Kernel Math: Correct convolution result (${actual})</div>`;
+                        } else {
+                            resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Custom Kernel Math: Expected ${expected}, got ${actual}</div>`;
+                        }
+                    } catch (error) {
+                        resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Custom Kernel Math: ${error.message}</div>`;
+                    }
+                    break;
+                }
+                
+                case 'undefinedHandling': {
+                    try {
+                        const state = kernel.init({
+                            nodeType: 'Kernel',
+                            name: 'undef',
+                            from: { x: 'value' },
+                            stats: { filtered: { storeAs: 'out' } },
+                            kernel: [0, 1]  // Simple delay-1 passthrough (minimum 2 elements)
+                        });
+                        
+                        const msg = { notValue: 42 };  // 'value' field is undefined
+                        kernel.update(state, msg);
+                        kernel.publishTo(state, msg);
+                        
+                        if (msg.out === undefined) {
+                            resultsDiv.innerHTML += `<div class="test-result test-pass">✓ Undefined Handling: Correctly handled missing field</div>`;
+                        } else {
+                            resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Undefined Handling: Unexpected output ${msg.out}</div>`;
+                        }
+                    } catch (error) {
+                        resultsDiv.innerHTML += `<div class="test-result test-fail">✗ Undefined Handling: ${error.message}</div>`;
+                    }
+                    break;
+                }
+            }
+        };
+        
+        // Signal generation functions
+        function generateSignal(type, length = 100) {
+            const signals = {
+                sine: () => {
+                    const data = [];
+                    for (let i = 0; i < length; i++) {
+                        data.push(50 + 30 * Math.sin(i * 0.1) + (Math.random() - 0.5) * 5);
+                    }
+                    return data;
+                },
+                square: () => {
+                    const data = [];
+                    for (let i = 0; i < length; i++) {
+                        data.push(i % 20 < 10 ? 30 : 70);
+                    }
+                    return data;
+                },
+                sawtooth: () => {
+                    const data = [];
+                    for (let i = 0; i < length; i++) {
+                        data.push(20 + (i % 20) * 3);
+                    }
+                    return data;
+                },
+                noise: () => {
+                    const data = [];
+                    for (let i = 0; i < length; i++) {
+                        data.push(50 + (Math.random() - 0.5) * 40);
+                    }
+                    return data;
+                },
+                step: () => {
+                    const data = [];
+                    for (let i = 0; i < length; i++) {
+                        if (i < 20) data.push(30);
+                        else if (i < 40) data.push(60);
+                        else if (i < 60) data.push(45);
+                        else if (i < 80) data.push(75);
+                        else data.push(50);
+                    }
+                    return data;
+                },
+                impulse: () => {
+                    const data = new Array(length).fill(50);
+                    data[25] = 80;
+                    data[50] = 20;
+                    data[75] = 90;
+                    return data;
+                },
+                custom: () => {
+                    const text = document.getElementById('custom-signal').value;
+                    return text.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+                }
+            };
+            
+            return signals[type] ? signals[type]() : signals.sine();
+        }
+        
+        // Update signal
+        window.updateSignal = function() {
+            const type = document.getElementById('signal-type').value;
+            currentSignal = generateSignal(type);
+            if (type === 'custom') {
+                document.getElementById('custom-signal').style.display = 'block';
+            } else {
+                document.getElementById('custom-signal').style.display = 'none';
+            }
+            visualizeResults();
+        };
+        
+        // Update kernel
+        window.updateKernel = function() {
+            const presetSelect = document.getElementById('preset-select').value;
+            const customInput = document.getElementById('custom-kernel');
+            
+            if (presetSelect === 'custom') {
+                customInput.disabled = false;
+                customInput.focus();
+            } else {
+                customInput.disabled = true;
+                customInput.value = '';
+            }
+        };
+        
+        // Run live test
+        window.runLiveTest = function() {
+            try {
+                // Re-generate signal in case custom data changed
+                const signalType = document.getElementById('signal-type').value;
+                currentSignal = generateSignal(signalType);
+                
+                const presetSelect = document.getElementById('preset-select').value;
+                const customKernel = document.getElementById('custom-kernel').value;
+                
+                const spec = {
+                    nodeType: 'Kernel',
+                    name: 'liveTest',
+                    from: { x: 'value' },
+                    stats: { filtered: { storeAs: 'out' } }
+                };
+                
+                if (presetSelect === 'custom' && customKernel) {
+                    spec.kernel = customKernel.split(',').map(v => parseFloat(v.trim()));
+                } else if (presetSelect !== 'custom') {
+                    spec.preset = presetSelect;
+                } else {
+                    alert('Please select a preset or enter a custom kernel');
+                    return;
+                }
+                
+                nodeState = kernel.init(spec);
+                currentOutput = [];
+                
+                // Process signal
+                for (const value of currentSignal) {
+                    const msg = { value };
+                    kernel.update(nodeState, msg);
+                    kernel.publishTo(nodeState, msg);
+                    currentOutput.push(msg.out !== undefined ? msg.out : null);
+                }
+                
+                log(`Processed ${currentSignal.length} samples with ${presetSelect} kernel`, 'success');
+                visualizeResults();
+                visualizeKernel();
+                
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                alert(`Error: ${error.message}`);
+            }
+        };
+        
+        // Visualize results
+        function visualizeResults() {
+            const svg = d3.select('#signal-viz');
+            svg.selectAll('*').remove();
+            
+            if (!currentSignal.length || !currentOutput.length) return;
+            
+            const width = svg.node().getBoundingClientRect().width;
+            const height = 300;
+            const margin = { top: 20, right: 80, bottom: 30, left: 50 };
+            
+            const xScale = d3.scaleLinear()
+                .domain([0, currentSignal.length - 1])
+                .range([margin.left, width - margin.right]);
+                
+            const yExtent = d3.extent([...currentSignal, ...currentOutput.filter(v => v !== null)]);
+            const yScale = d3.scaleLinear()
+                .domain(yExtent)
+                .nice()
+                .range([height - margin.bottom, margin.top]);
+            
+            // Add grid
+            svg.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height - margin.bottom})`)
+                .call(d3.axisBottom(xScale).tickSize(-height + margin.top + margin.bottom).tickFormat(''))
+                .style('stroke-dasharray', '2,2')
+                .style('opacity', 0.3);
+                
+            svg.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(${margin.left},0)`)
+                .call(d3.axisLeft(yScale).tickSize(-width + margin.left + margin.right).tickFormat(''))
+                .style('stroke-dasharray', '2,2')
+                .style('opacity', 0.3);
+            
+            // Add axes
+            svg.append('g')
+                .attr('transform', `translate(0,${height - margin.bottom})`)
+                .call(d3.axisBottom(xScale));
+                
+            svg.append('g')
+                .attr('transform', `translate(${margin.left},0)`)
+                .call(d3.axisLeft(yScale));
+            
+            // Input signal line
+            const inputLine = d3.line()
+                .x((d, i) => xScale(i))
+                .y(d => yScale(d));
+                
+            svg.append('path')
+                .datum(currentSignal)
+                .attr('class', 'signal-line input-signal')
+                .attr('d', inputLine);
+            
+            // Output signal line (skip nulls)
+            const outputData = currentOutput.map((v, i) => ({ x: i, y: v }))
+                .filter(d => d.y !== null);
+                
+            const outputLine = d3.line()
+                .x(d => xScale(d.x))
+                .y(d => yScale(d.y));
+                
+            svg.append('path')
+                .datum(outputData)
+                .attr('class', 'signal-line output-signal')
+                .attr('d', outputLine);
+            
+            // Legend
+            const legend = svg.append('g')
+                .attr('class', 'legend')
+                .attr('transform', `translate(${width - margin.right + 10}, ${margin.top})`);
+                
+            legend.append('line')
+                .attr('x1', 0).attr('x2', 20)
+                .attr('y1', 0).attr('y2', 0)
+                .style('stroke', '#0066cc')
+                .style('stroke-width', 2);
+            legend.append('text')
+                .attr('x', 25).attr('y', 4)
+                .text('Input');
+                
+            legend.append('line')
+                .attr('x1', 0).attr('x2', 20)
+                .attr('y1', 20).attr('y2', 20)
+                .style('stroke', '#ff6600')
+                .style('stroke-width', 2);
+            legend.append('text')
+                .attr('x', 25).attr('y', 24)
+                .text('Output');
+        }
+        
+        // Visualize kernel
+        function visualizeKernel() {
+            if (!nodeState) return;
+            
+            const svg = d3.select('#kernel-viz');
+            svg.selectAll('*').remove();
+            
+            const width = svg.node().getBoundingClientRect().width;
+            const height = 150;
+            const margin = { top: 20, right: 20, bottom: 30, left: 50 };
+            
+            // Reverse kernel back for display (since we reversed it in init)
+            const kernel = nodeState.kernel.slice().reverse();
+            
+            const xScale = d3.scaleBand()
+                .domain(kernel.map((_, i) => i))
+                .range([margin.left, width - margin.right])
+                .padding(0.1);
+                
+            const yMax = Math.max(...kernel.map(Math.abs));
+            const yScale = d3.scaleLinear()
+                .domain([-yMax, yMax])
+                .nice()
+                .range([height - margin.bottom, margin.top]);
+            
+            // Add axes
+            svg.append('g')
+                .attr('transform', `translate(0,${yScale(0)})`)
+                .call(d3.axisBottom(xScale));
+                
+            svg.append('g')
+                .attr('transform', `translate(${margin.left},0)`)
+                .call(d3.axisLeft(yScale));
+            
+            // Add bars
+            svg.selectAll('.kernel-bar')
+                .data(kernel)
+                .enter().append('rect')
+                .attr('class', d => `kernel-bar ${d < 0 ? 'negative' : ''}`)
+                .attr('x', (d, i) => xScale(i))
+                .attr('y', d => d >= 0 ? yScale(d) : yScale(0))
+                .attr('width', xScale.bandwidth())
+                .attr('height', d => Math.abs(yScale(d) - yScale(0)));
+            
+            // Add values on top
+            svg.selectAll('.kernel-text')
+                .data(kernel)
+                .enter().append('text')
+                .attr('x', (d, i) => xScale(i) + xScale.bandwidth() / 2)
+                .attr('y', d => yScale(d) - 5)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '12px')
+                .text(d => d.toFixed(3));
+        }
+        
+        // Reset node
+        window.resetNode = function() {
+            if (nodeState) {
+                kernel.reset(nodeState);
+                log('Node state reset', 'success');
+                runLiveTest();
+            }
+        };
+        
+        // Inject NaN
+        window.injectNaN = function() {
+            if (!nodeState) {
+                alert('Please run a test first');
+                return;
+            }
+            
+            const beforeResult = nodeState.result;
+            const msg = { value: NaN };
+            kernel.update(nodeState, msg);
+            kernel.publishTo(nodeState, msg);
+            
+            log(`Injected NaN - Result before: ${beforeResult}, after: ${nodeState.result}`, 'info');
+            alert(`NaN injected. Previous result: ${beforeResult}, Current result: ${nodeState.result}`);
+        };
+        
+        // Update gallery
+        window.updateGallery = function() {
+            const signalType = document.getElementById('gallery-signal').value;
+            const gallery = document.getElementById('preset-gallery');
+            gallery.innerHTML = '';
+            
+            const testSignal = generateSignal(signalType, 80);
+            const presets = kernel.getPresets();
+            
+            Object.keys(presets).forEach(presetName => {
+                const container = document.createElement('div');
+                container.style.background = '#f8f9fa';
+                container.style.padding = '10px';
+                container.style.borderRadius = '4px';
+                
+                const title = document.createElement('h4');
+                title.textContent = presetName;
+                title.style.margin = '0 0 10px 0';
+                container.appendChild(title);
+                
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.style.width = '100%';
+                svg.style.height = '150px';
+                container.appendChild(svg);
+                
+                // Process signal with this preset
+                try {
+                    const state = kernel.init({
+                        nodeType: 'Kernel',
+                        name: 'gallery',
+                        from: { x: 'value' },
+                        stats: { filtered: { storeAs: 'out' } },
+                        preset: presetName
+                    });
+                    
+                    const output = [];
+                    for (const value of testSignal) {
+                        const msg = { value };
+                        kernel.update(state, msg);
+                        kernel.publishTo(state, msg);
+                        output.push(msg.out !== undefined ? msg.out : null);
+                    }
+                    
+                    // Mini visualization
+                    const width = 280;
+                    const height = 150;
+                    const margin = { top: 10, right: 10, bottom: 20, left: 30 };
+                    
+                    const xScale = d3.scaleLinear()
+                        .domain([0, testSignal.length - 1])
+                        .range([margin.left, width - margin.right]);
+                        
+                    const yExtent = d3.extent([...testSignal, ...output.filter(v => v !== null)]);
+                    const yScale = d3.scaleLinear()
+                        .domain(yExtent)
+                        .nice()
+                        .range([height - margin.bottom, margin.top]);
+                    
+                    const svgD3 = d3.select(svg);
+                    
+                    // Input line
+                    const inputLine = d3.line()
+                        .x((d, i) => xScale(i))
+                        .y(d => yScale(d));
+                        
+                    svgD3.append('path')
+                        .datum(testSignal)
+                        .attr('fill', 'none')
+                        .attr('stroke', '#0066cc')
+                        .attr('stroke-width', 1)
+                        .attr('opacity', 0.5)
+                        .attr('d', inputLine);
+                    
+                    // Output line
+                    const outputData = output.map((v, i) => ({ x: i, y: v }))
+                        .filter(d => d.y !== null);
+                        
+                    const outputLine = d3.line()
+                        .x(d => xScale(d.x))
+                        .y(d => yScale(d.y));
+                        
+                    svgD3.append('path')
+                        .datum(outputData)
+                        .attr('fill', 'none')
+                        .attr('stroke', '#ff6600')
+                        .attr('stroke-width', 2)
+                        .attr('d', outputLine);
+                    
+                } catch (error) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.style.color = '#dc3545';
+                    errorDiv.textContent = `Error: ${error.message}`;
+                    container.appendChild(errorDiv);
+                }
+                
+                gallery.appendChild(container);
+            });
+        };
+        
+        // Make kernel available globally for debugging
+        window.kernel = kernel;
+        
+        // Initialize on load
+        window.addEventListener('load', () => {
+            log('Kernel Node Test Jig loaded', 'info');
+            log('Kernel module loaded with exports: ' + Object.keys(kernel).join(', '), 'success');
+            
+            // Generate initial signal
+            currentSignal = generateSignal('sine');
+            
+            // Set up custom kernel input
+            document.getElementById('custom-kernel').disabled = true;
+        });
+        
+        // Module loading error handler
+        window.addEventListener('error', (e) => {
+            if (e.filename && e.filename.includes('.js')) {
+                const errorMsg = `Module loading error: ${e.message} in ${e.filename}:${e.lineno}:${e.colno}`;
+                console.error(errorMsg);
+                document.getElementById('error-log').innerHTML += `<div style="color: #dc3545">${errorMsg}</div>`;
+            }
+        });
+    </script>
+</body>
+</html>

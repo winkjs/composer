@@ -1,12 +1,34 @@
 import globals from 'globals';
 import pluginJs from '@eslint/js';
+import pluginSecurity from 'eslint-plugin-security';
 
 
 export default [
+  {
+    ignores: [ '**/archive/**', '**/examples/**' ]
+  },
   { languageOptions: { globals: { ...globals.browser, ...globals.node } } },
   pluginJs.configs.recommended,
+  // Minimal OpenSSF-aligned security rules (earns silver static_analysis_common_vulnerabilities).
+  // Scoped to production source only — tests, demos, and scratchpad are developer-controlled
+  // code running in dev/CI and do not constitute an attack surface. Broader rules like
+  // detect-object-injection are disabled because composer processes untrusted message field
+  // keys by design (prototype pollution prevented via Object.create( null ) discipline per
+  // ADR-004, not via this rule).
+  {
+    files: [ 'src/**/*.js' ],
+    ignores: [ '**/test/**', '**/*.specs.js', '**/demo*.js' ],
+    plugins: { security: pluginSecurity },
+    rules: {
+        'security/detect-unsafe-regex': 'error',
+        'security/detect-non-literal-regexp': 'error',
+        'security/detect-non-literal-fs-filename': 'error'
+    }
+  },
   {
   'rules': {
+        // Ignore args that start with an underscore, for ignoring controls if not applicable
+        'no-unused-vars': [ 'error', { 'argsIgnorePattern': '^_' } ],
         'accessor-pairs': 'error',
         'array-bracket-spacing': [
             'error',
@@ -248,7 +270,7 @@ export default [
                 'before': false
             }
         ],
-        'sort-imports': 'error',
+        'sort-imports': 'off',
         'sort-keys': 'off',
         'sort-vars': 'error',
         'space-before-blocks': 'error',

@@ -1,0 +1,587 @@
+{
+  "numeric": [
+    {
+      "label": "clean3-high-side-worst",
+      "note": "baseline 3-phase, high channel is worst (highWins === true)",
+      "fields": [
+        "c0",
+        "c1",
+        "c2"
+      ],
+      "values": [
+        110.0,
+        100.0,
+        96.0
+      ],
+      "expected": {
+        "mean": 102.0,
+        "min": 96.0,
+        "max": 110.0,
+        "range": 14.0,
+        "maxDev": 8.0,
+        "unbalance": 7.8431372549019605,
+        "worstIndex": 0,
+        "worstDev": 8.0
+      }
+    },
+    {
+      "label": "clean3-low-side-worst",
+      "note": "one channel sags far below the mean (highWins === false)",
+      "fields": [
+        "c0",
+        "c1",
+        "c2"
+      ],
+      "values": [
+        100.0,
+        100.0,
+        70.0
+      ],
+      "expected": {
+        "mean": 90.0,
+        "min": 70.0,
+        "max": 100.0,
+        "range": 30.0,
+        "maxDev": 20.0,
+        "unbalance": 22.22222222222222,
+        "worstIndex": 2,
+        "worstDev": -20.0
+      }
+    },
+    {
+      "label": "four-redundant-sensors-one-drifting",
+      "note": "N=4; the fourth sensor reads high",
+      "fields": [
+        "c0",
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "values": [
+        50.0,
+        50.0,
+        50.0,
+        56.0
+      ],
+      "expected": {
+        "mean": 51.5,
+        "min": 50.0,
+        "max": 56.0,
+        "range": 6.0,
+        "maxDev": 4.5,
+        "unbalance": 8.737864077669903,
+        "worstIndex": 3,
+        "worstDev": 4.5
+      }
+    },
+    {
+      "label": "six-battery-cells-one-weak",
+      "note": "N=6; cell 5 is the weak (low-side) cell",
+      "fields": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "values": [
+        3.95,
+        3.97,
+        3.96,
+        3.98,
+        3.99,
+        3.8
+      ],
+      "expected": {
+        "mean": 3.941666666666667,
+        "min": 3.8,
+        "max": 3.99,
+        "range": 0.1900000000000004,
+        "maxDev": 0.14166666666666705,
+        "unbalance": 3.5940803382663944,
+        "worstIndex": 5,
+        "worstDev": -0.14166666666666705
+      }
+    },
+    {
+      "label": "twelve-channels-one-outlier",
+      "note": "N=12; proves there is no field cap; outlier on the high side",
+      "fields": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c11"
+      ],
+      "values": [
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        100.0,
+        130.0
+      ],
+      "expected": {
+        "mean": 102.5,
+        "min": 100.0,
+        "max": 130.0,
+        "range": 30.0,
+        "maxDev": 27.5,
+        "unbalance": 26.82926829268293,
+        "worstIndex": 11,
+        "worstDev": 27.5
+      }
+    },
+    {
+      "label": "near-equal-tight-spread",
+      "note": "small percentage; precision near the noise floor",
+      "fields": [
+        "c0",
+        "c1",
+        "c2"
+      ],
+      "values": [
+        100.0,
+        100.2,
+        99.9
+      ],
+      "expected": {
+        "mean": 100.03333333333335,
+        "min": 99.9,
+        "max": 100.2,
+        "range": 0.29999999999999716,
+        "maxDev": 0.1666666666666572,
+        "unbalance": 0.16661112962344937,
+        "worstIndex": 1,
+        "worstDev": 0.1666666666666572
+      }
+    },
+    {
+      "label": "signed-values-nonzero-mean",
+      "note": "bipolar inputs (e.g. signed active power), mean stays well above zero",
+      "fields": [
+        "c0",
+        "c1",
+        "c2"
+      ],
+      "values": [
+        50.0,
+        -10.0,
+        30.0
+      ],
+      "expected": {
+        "mean": 23.333333333333332,
+        "min": -10.0,
+        "max": 50.0,
+        "range": 60.0,
+        "maxDev": 33.33333333333333,
+        "unbalance": 142.85714285714283,
+        "worstIndex": 1,
+        "worstDev": -33.33333333333333
+      }
+    },
+    {
+      "label": "large-magnitude",
+      "note": "precision under scale (~1e6)",
+      "fields": [
+        "c0",
+        "c1",
+        "c2"
+      ],
+      "values": [
+        1000000.0,
+        1010000.0,
+        985000.0
+      ],
+      "expected": {
+        "mean": 998333.3333333334,
+        "min": 985000.0,
+        "max": 1010000.0,
+        "range": 25000.0,
+        "maxDev": 13333.333333333372,
+        "unbalance": 1.3355592654424078,
+        "worstIndex": 2,
+        "worstDev": -13333.333333333372
+      }
+    }
+  ],
+  "electrical": {
+    "fields": [
+      "i0",
+      "i1",
+      "i2"
+    ],
+    "note": "Source usecases/abc-ems/pipeline/golden-fixture.json field i. storedFraction is the old fraction form; expected.unbalance is percent = storedFraction * 100.",
+    "rows": [
+      {
+        "values": [
+          1181.2586666667,
+          93.6873333333,
+          121.98
+        ],
+        "storedFraction": 1.5368387445004958,
+        "expected": {
+          "mean": 465.64200000000005,
+          "min": 93.6873333333,
+          "max": 1181.2586666667,
+          "range": 1087.5713333334,
+          "maxDev": 715.6166666667,
+          "unbalance": 153.6838744500496,
+          "worstIndex": 0,
+          "worstDev": 715.6166666667
+        }
+      },
+      {
+        "values": [
+          1179.8313333333,
+          93.9546666667,
+          122.2466666667
+        ],
+        "storedFraction": 1.5353948260044168,
+        "expected": {
+          "mean": 465.3442222222334,
+          "min": 93.9546666667,
+          "max": 1179.8313333333,
+          "range": 1085.8766666666002,
+          "maxDev": 714.4871111110667,
+          "unbalance": 153.5394826004417,
+          "worstIndex": 0,
+          "worstDev": 714.4871111110667
+        }
+      },
+      {
+        "values": [
+          1171.0476666667,
+          93.32,
+          121.4313333333
+        ],
+        "storedFraction": 1.5351028540214708,
+        "expected": {
+          "mean": 461.933,
+          "min": 93.32,
+          "max": 1171.0476666667,
+          "range": 1077.7276666667,
+          "maxDev": 709.1146666667,
+          "unbalance": 153.51028540214708,
+          "worstIndex": 0,
+          "worstDev": 709.1146666667
+        }
+      },
+      {
+        "values": [
+          1164.384,
+          93.6833333333,
+          121.9083333333
+        ],
+        "storedFraction": 1.5313141995017077,
+        "expected": {
+          "mean": 459.9918888888667,
+          "min": 93.6833333333,
+          "max": 1164.384,
+          "range": 1070.7006666667,
+          "maxDev": 704.3921111111333,
+          "unbalance": 153.13141995017077,
+          "worstIndex": 0,
+          "worstDev": 704.3921111111333
+        }
+      },
+      {
+        "values": [
+          1162.11,
+          93.616,
+          121.8813333333
+        ],
+        "storedFraction": 1.5307138802494407,
+        "expected": {
+          "mean": 459.2024444444333,
+          "min": 93.616,
+          "max": 1162.11,
+          "range": 1068.494,
+          "maxDev": 702.9075555555667,
+          "unbalance": 153.07138802494407,
+          "worstIndex": 0,
+          "worstDev": 702.9075555555667
+        }
+      },
+      {
+        "values": [
+          1166.5103333333,
+          93.6286666667,
+          121.836
+        ],
+        "storedFraction": 1.5322679498543028,
+        "expected": {
+          "mean": 460.6583333333333,
+          "min": 93.6286666667,
+          "max": 1166.5103333333,
+          "range": 1072.8816666666,
+          "maxDev": 705.8519999999667,
+          "unbalance": 153.22679498543027,
+          "worstIndex": 0,
+          "worstDev": 705.8519999999667
+        }
+      },
+      {
+        "values": [
+          1155.908,
+          93.3786666667,
+          121.414
+        ],
+        "storedFraction": 1.529891525064249,
+        "expected": {
+          "mean": 456.90022222223325,
+          "min": 93.3786666667,
+          "max": 1155.908,
+          "range": 1062.5293333333,
+          "maxDev": 699.0077777777667,
+          "unbalance": 152.98915250642492,
+          "worstIndex": 0,
+          "worstDev": 699.0077777777667
+        }
+      },
+      {
+        "values": [
+          1164.8223333333,
+          93.4933333333,
+          121.8443333333
+        ],
+        "storedFraction": 1.5319289067935262,
+        "expected": {
+          "mean": 460.05333333330003,
+          "min": 93.4933333333,
+          "max": 1164.8223333333,
+          "range": 1071.3290000000002,
+          "maxDev": 704.769,
+          "unbalance": 153.19289067935262,
+          "worstIndex": 0,
+          "worstDev": 704.769
+        }
+      },
+      {
+        "values": [
+          1161.291,
+          93.168,
+          121.227
+        ],
+        "storedFraction": 1.5324623496931715,
+        "expected": {
+          "mean": 458.56199999999995,
+          "min": 93.168,
+          "max": 1161.291,
+          "range": 1068.123,
+          "maxDev": 702.729,
+          "unbalance": 153.24623496931716,
+          "worstIndex": 0,
+          "worstDev": 702.729
+        }
+      },
+      {
+        "values": [
+          1164.09,
+          93.5203333333,
+          121.7196666667
+        ],
+        "storedFraction": 1.5318596709996881,
+        "expected": {
+          "mean": 459.77666666666664,
+          "min": 93.5203333333,
+          "max": 1164.09,
+          "range": 1070.5696666667,
+          "maxDev": 704.3133333333333,
+          "unbalance": 153.18596709996882,
+          "worstIndex": 0,
+          "worstDev": 704.3133333333333
+        }
+      },
+      {
+        "values": [
+          1165.351,
+          93.5316666667,
+          121.7016666667
+        ],
+        "storedFraction": 1.5322994876805773,
+        "expected": {
+          "mean": 460.1947777778,
+          "min": 93.5316666667,
+          "max": 1165.351,
+          "range": 1071.8193333333002,
+          "maxDev": 705.1562222222001,
+          "unbalance": 153.22994876805774,
+          "worstIndex": 0,
+          "worstDev": 705.1562222222001
+        }
+      },
+      {
+        "values": [
+          1162.2966666667,
+          93.241,
+          121.257
+        ],
+        "storedFraction": 1.5326144009854883,
+        "expected": {
+          "mean": 458.9315555555667,
+          "min": 93.241,
+          "max": 1162.2966666667,
+          "range": 1069.0556666667,
+          "maxDev": 703.3651111111333,
+          "unbalance": 153.26144009854883,
+          "worstIndex": 0,
+          "worstDev": 703.3651111111333
+        }
+      }
+    ]
+  },
+  "skip": [
+    {
+      "label": "skip-one-of-five-high-worst",
+      "note": "N=5, field 2 missing; the high field is worst among the 4 present",
+      "fields": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "values": [
+        100.0,
+        102.0,
+        null,
+        98.0,
+        110.0
+      ],
+      "minPresent": 2,
+      "presentCount": 4,
+      "expected": {
+        "blanked": false,
+        "mean": 102.5,
+        "min": 98.0,
+        "max": 110.0,
+        "range": 12.0,
+        "maxDev": 7.5,
+        "unbalance": 7.317073170731707,
+        "worstIndex": 4,
+        "worstDev": 7.5
+      }
+    },
+    {
+      "label": "skip-one-of-five-low-worst",
+      "note": "N=5, field 3 missing; a low field is worst among the 4 present",
+      "fields": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "values": [
+        100.0,
+        100.0,
+        99.0,
+        null,
+        70.0
+      ],
+      "minPresent": 2,
+      "presentCount": 4,
+      "expected": {
+        "blanked": false,
+        "mean": 92.25,
+        "min": 70.0,
+        "max": 100.0,
+        "range": 30.0,
+        "maxDev": 22.25,
+        "unbalance": 24.119241192411923,
+        "worstIndex": 4,
+        "worstDev": -22.25
+      }
+    },
+    {
+      "label": "skip-two-of-six",
+      "note": "N=6, two cells missing; metric over the 4 present, low cell worst",
+      "fields": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5"
+      ],
+      "values": [
+        3.95,
+        null,
+        3.96,
+        3.98,
+        null,
+        3.8
+      ],
+      "minPresent": 2,
+      "presentCount": 4,
+      "expected": {
+        "blanked": false,
+        "mean": 3.9225000000000003,
+        "min": 3.8,
+        "max": 3.98,
+        "range": 0.18000000000000016,
+        "maxDev": 0.1225000000000005,
+        "unbalance": 3.123008285532199,
+        "worstIndex": 5,
+        "worstDev": -0.1225000000000005
+      }
+    },
+    {
+      "label": "floor-breach-two-present-min-three",
+      "note": "only 2 of 5 present but minPresent 3 -> blanked; presentCount still 2",
+      "fields": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4"
+      ],
+      "values": [
+        100.0,
+        null,
+        null,
+        null,
+        96.0
+      ],
+      "minPresent": 3,
+      "presentCount": 2,
+      "expected": {
+        "blanked": true
+      }
+    },
+    {
+      "label": "all-missing",
+      "note": "every channel missing -> blanked; presentCount 0",
+      "fields": [
+        "c0",
+        "c1",
+        "c2"
+      ],
+      "values": [
+        null,
+        null,
+        null
+      ],
+      "minPresent": 2,
+      "presentCount": 0,
+      "expected": {
+        "blanked": true
+      }
+    }
+  ]
+}

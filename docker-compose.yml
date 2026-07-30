@@ -1,0 +1,86 @@
+# composer/docker-compose.yml
+#
+# Local services for composer's integration tests (e2e-*.specs.js).
+# Brings up QuestDB and Mosquitto with the settings QuestDB itself
+# recommends for production-leaning workloads — so test results are
+# representative of what real deployments would see.
+#
+# Usage:
+#   docker compose up -d        # start
+#   docker compose down         # stop (data persists in named volume)
+#   docker compose down -v      # stop AND wipe data
+#
+# References:
+#   QuestDB capacity planning — https://questdb.com/docs/getting-started/capacity-planning/
+#   QuestDB Docker deployment — https://questdb.com/docs/deployment/docker/
+
+services:
+
+    # `vm.max_map_count` is a global (non-namespaced) kernel
+    # parameter. Docker refuses to set it via per-container
+    # `sysctls:` because changing it would silently affect every
+    # container. We set it at the VM level once at compose-up via
+    # a privileged one-shot. QuestDB waits for it to finish.
+    sysctl-init:
+        image: alpine:3
+        container_name: sysctl-init
+        command: sysctl -w vm.max_map_count=1048576
+        privileged: true
+        restart: "no"
+
+    questdb:
+        image: questdb/questdb:9.4.3
+        container_name: questdb
+        depends_on:
+            sysctl-init:
+                condition: service_completed_successfully
+        ports:
+            - "9000:9000"     # HTTP / ILP / Web Console
+            - "8812:8812"     # PostgreSQL wire (read path)
+            - "9003:9003"     # Minimal health server
+        ulimits:
+            # Per-process file-descriptor limit. QDB opens many
+            # partition files; the default 1024 is far too low for
+            # any non-trivial workload.
+            nofile:
+                soft: 1048576
+                hard: 1048576
+        environment:
+            # Smaller default partition for hardening tests that span
+            # minutes, not days. Production overrides per-table via
+            # `PARTITION BY HOUR/DAY/MONTH` in the CREATE TABLE DDL.
+            QDB_CAIRO_DEFAULT_PARTITION_BY: HOUR
+            # Instance identifier — surfaces in the web console and
+            # in disk snapshots. Empty by default, which the console
+            # warns about. A short stable label makes it obvious which
+            # instance you're talking to during dev.
+            QDB_CAIRO_SNAPSHOT_INSTANCE_ID: composer-qdb
+        volumes:
+            - questdb-data:/var/lib/questdb
+        restart: unless-stopped
+
+    mosquitto:
+        image: eclipse-mosquitto:2
+        container_name: mosquitto
+        ports:
+            - "1883:1883"
+        # Production-leaning broker config — see config/mosquitto.conf
+        # for rationale. A 100 k-message burst test surfaced that
+        # Mosquitto's default `max_queued_messages: 1000` clipped the
+        # burst at ~1040 received, masking the composer emitter as if
+        # it were losing messages. Defaults are tuned for typical IoT,
+        # not for high-throughput sustained loads.
+        #
+        # The named volume holds mosquitto.db — persistent sessions
+        # and their queued messages survive a broker restart (see the
+        # persistence settings in config/mosquitto.conf). Same wipe
+        # semantics as QuestDB: `down` keeps it, `down -v` wipes it.
+        volumes:
+            - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+            - mosquitto-data:/mosquitto/data
+        restart: unless-stopped
+
+volumes:
+
+    questdb-data:
+    mosquitto-data:
