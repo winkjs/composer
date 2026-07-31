@@ -1,8 +1,9 @@
 # winkComposer
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Status](https://img.shields.io/badge/status-transitioning%20to%20open%20source-blue.svg)](https://github.com/winkjs/composer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Composable Streaming Intelligence
+[<img align="right" src="https://decisively.github.io/wink-logos/logo-title.png" width="100px" >](https://winkjs.org/)
 
 A sensor spikes. An engine runs hot. A building's energy use surges. A server degrades. A cold chain breaks.
 
@@ -13,7 +14,7 @@ A high-performance JavaScript framework for IIoT and beyond. Runs on a Raspberry
 winkComposer calls its building blocks nodes — each with a single responsibility, wired through a declarative flow language. Small vocabulary, unbounded composition — the same nodes that detect bearing wear also catch server latency degradation and process yield drift.
 
 > [!NOTE]
-> The [documentation site](https://composer.winkjs.org) is live and growing — interactive demos run real winkComposer nodes in your browser, no installation or sign-up required. winkComposer is transitioning to open source; the repository and full source will follow as development progresses. MCP integration for AI-driven queries over pre-computed insights is in active development.
+> The [documentation site](https://composer.winkjs.org) is live and growing — interactive demos run real winkComposer nodes in your browser, no installation or sign-up required. The full source now lives in this repository, MIT-licensed. MCP integration for AI-driven queries over pre-computed insights is in active development.
 
 
 ## Explore Possibilities
