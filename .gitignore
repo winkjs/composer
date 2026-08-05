@@ -44,3 +44,6 @@ benchmark/*/results/
 
 # Browser-test screenshots
 .playwright-screenshots/
+
+# Playwright MCP session artifacts (page snapshots, console logs)
+.playwright-mcp/
