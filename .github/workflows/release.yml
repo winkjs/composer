@@ -1,0 +1,127 @@
+# Release pipeline: publish @winkjs/composer to npm with provenance
+# and build the GitHub Release page from CHANGELOG.md.
+#
+# Trigger: a release-shaped tag push — numeric semver, no v prefix;
+# the legacy 0.0.x range never matches. The tag is validated as
+# strict semver and must equal package.json's version. Publishing
+# uses npm trusted publishing (OIDC): no tokens live anywhere, and
+# provenance is generated automatically. A prerelease tag (name
+# contains "-") publishes under the npm dist-tag "next" and gets a
+# minimal page marked Pre-release. A stable tag takes "latest" and
+# gets its CHANGELOG entry as the release page body.
+#
+# The workflow FILENAME is load-bearing: npm's trusted-publisher
+# config binds to "release.yml". Renaming this file breaks publishing.
+
+name: release
+
+on:
+  push:
+    tags:
+      - '0.[1-9]*.[0-9]*'
+      - '[1-9]*.[0-9]*.[0-9]*'
+
+permissions:
+  contents: write   # create the GitHub Release
+  id-token: write   # OIDC token for npm trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or later; the runner's
+      # bundled npm may be older.
+      - name: Update npm
+        run: npm install -g npm@latest && npm --version
+
+      # The tag rulesets allow only release-shaped names; this check
+      # tightens that to strict semver (integer X.Y.Z, no leading
+      # zeros, optional -suffix) and pins the tag to the version the
+      # tree actually declares.
+      - name: Validate the tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          SEMVER='^(0\.[1-9][0-9]*\.(0|[1-9][0-9]*)|[1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))(-[0-9A-Za-z.-]+)?$'
+          if ! [[ "$TAG" =~ $SEMVER ]]; then
+            echo "tag '$TAG' is not release-shaped strict semver"
+            exit 1
+          fi
+          PKG="$( node -p "JSON.parse(require('fs').readFileSync('package.json')).version" )"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "tag '$TAG' does not equal package.json version '$PKG'"
+            exit 1
+          fi
+
+      # Pack the tarball, install it into a clean directory (deps
+      # come from the registry, as they would for a real user), and
+      # prove the package loads with its public exports present.
+      - name: Smoke check the packed tarball
+        run: |
+          npm pack
+          TARBALL="$( ls winkjs-composer-*.tgz )"
+          mkdir -p /tmp/smoke
+          cp "$TARBALL" /tmp/smoke/
+          cd /tmp/smoke
+          npm init -y > /dev/null
+          npm install "./$TARBALL" > /dev/null
+          cat > smoke.mjs <<'EOF'
+          import { flow, headlessDriver, jsonCodec, msgpackCodec } from '@winkjs/composer';
+          const checks = { flow, headlessDriver, jsonCodec, msgpackCodec };
+          for ( const [ name, value ] of Object.entries( checks ) ) {
+              if ( value === undefined ) {
+                  console.error( `smoke: missing export: ${name}` );
+                  process.exit( 1 );
+              }
+          }
+          console.log( 'smoke: package loads clean, public exports present' );
+          EOF
+          node smoke.mjs
+
+      - name: Publish to npm
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" == *-* ]]; then
+            npm publish --tag next
+          else
+            npm publish
+          fi
+
+      # Stable releases get their CHANGELOG entry as the page body.
+      # The entry runs from its "## Version" heading to the next
+      # "# [" title line; the title is the line above the heading.
+      # An empty extraction means the release contract in
+      # CHANGELOG.md was broken — fail loudly, never publish a bare
+      # page.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" == *-* ]]; then
+            gh release create "$TAG" --prerelease \
+              --title "Prerelease $TAG" \
+              --notes "Prerelease published under the npm dist-tag \"next\". See the next stable entry in CHANGELOG.md."
+            exit 0
+          fi
+          TITLE="$( awk -v ver="$TAG" '
+              $0 ~ ("^## Version " ver " ") { print prev; exit }
+              { prev = $0 }
+          ' CHANGELOG.md | sed -E 's/^# \[(.*)\]\(.*\)$/\1/' )"
+          TITLE="${TITLE:-$TAG}"
+          awk -v ver="$TAG" '
+              inentry && /^# \[/ { exit }
+              inentry { print }
+              $0 ~ ("^## Version " ver " ") { inentry = 1 }
+          ' CHANGELOG.md > /tmp/notes.md
+          if ! [ -s /tmp/notes.md ]; then
+            echo "release contract broken: no CHANGELOG entry for $TAG"
+            exit 1
+          fi
+          gh release create "$TAG" --title "$TITLE" --notes-file /tmp/notes.md
