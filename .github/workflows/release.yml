@@ -12,6 +12,10 @@
 #
 # The workflow FILENAME is load-bearing: npm's trusted-publisher
 # config binds to "release.yml". Renaming this file breaks publishing.
+#
+# The publish job runs only in winkjs/composer. In any other
+# repository — the private development repo, or a fork — the job
+# skips. A skipped run is silent; a failed one emails its owner.
 
 name: release
 
@@ -27,6 +31,12 @@ permissions:
 
 jobs:
   publish:
+    # Repository guard. This file syncs to the private development
+    # repo, where the release tag is pushed first and the publish
+    # must not run. npm's trusted-publisher binding would refuse
+    # that repo anyway; the guard turns the refusal into a quiet
+    # skip, here and in any fork.
+    if: github.repository == 'winkjs/composer'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
