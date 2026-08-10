@@ -28,6 +28,26 @@
   always names its replacement.
 -->
 
+# [Runnable example and sharper npm discovery](https://github.com/winkjs/composer/releases/tag/0.4.1)
+## Version 0.4.1 — August 10, 2026
+
+### ✨ Features
+
+- A new `examples/` directory holds small, runnable example projects.
+  The convention they follow is recorded in `examples/README.md`.
+- The first example is `hello-flow`: the README Quick Start flow as a
+  working project. It needs Node.js 22 and nothing else.
+
+### ⚙️ Updates
+
+- The README is rewritten for the first-time visitor.
+- A public `ROADMAP.md` now describes where the project is heading.
+- The npm keywords now match what people search for: `iiot`,
+  `industrial-iot`, `streaming-analytics`, `edge-computing`,
+  `anomaly-detection`, and `predictive-maintenance`.
+- Two redundant keywords are removed: `edge` (covered by
+  `edge-computing`) and `wink-composer` (covered by the package name).
+
 # [First public release](https://github.com/winkjs/composer/releases/tag/0.4.0)
 ## Version 0.4.0 — August 8, 2026
 
