@@ -148,7 +148,7 @@ Want to contribute code or docs? Start with the [contributing guide](CONTRIBUTIN
 
 ## About winkJS
 
-[winkJS](https://winkjs.org) is the open-source home of high-performance JavaScript tools. winkNLP covers natural language processing; winkComposer covers streaming intelligence. Both follow the same discipline: small APIs, measured performance, and heavily tested code.
+[winkJS](https://winkjs.org) is the open-source home of high-performance JavaScript tools. winkNLP covers natural language processing; winkComposer covers streaming intelligence. Both follow the same discipline: developer-friendly APIs, measured performance, and well-tested code.
 
 
 ## License
