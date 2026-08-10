@@ -51,11 +51,17 @@ import { flow, csv, terminal } from '@winkjs/composer';
 
 const handle = await flow( 'hello-flow' )
 
+    // Replay the CSV like a live feed: one reading every 200 ms.
     .source( csv, { path: 'data/pump-temps.csv', delayMs: 200 } )
 
+    // Alerts print to the terminal here. A production flow points this
+    // at an MQTT broker instead, with QuestDB for storage.
     .emitter( terminal, { verbose: true, prefix: '[pump]' } )
 
-    .assetId( 'id' )  // one isolated pipeline per asset
+    // One isolated pipeline per pump, and alerts name the pump in
+    // their topic. This feed has a single pump; a fleet needs no
+    // code change.
+    .assetId( 'id' )
 
     // 1. clean — reject readings outside a sane range
     .sanitize( 'clean', 'motor_t',
@@ -81,6 +87,8 @@ const handle = await flow( 'hello-flow' )
     .run();
 ```
 
+The same flow ships as a runnable project in [`examples/hello-flow`](examples/hello-flow), data included. Run it with `npm install && npm start`.
+
 Prefer zero install? [Build this flow interactively](https://composer.winkjs.org/docs/playground/hello-flow) in the browser playground.
 
 The example above replays a CSV file. A live deployment reads from an MQTT broker instead — or runs [headless](docs/handbook/headless-flow.md), where your own code feeds the flow. Headless takes any source you already run: an OPC-UA client, a Kafka consumer.
@@ -103,7 +111,7 @@ Two configurations produced these numbers. The first two rows interleave 10 asse
 
 Write a flow once and run it anywhere Node.js does — an industrial-grade Raspberry Pi, a production server, a Kubernetes cluster. Each asset's state is isolated, so a fault in one stays in one. Messages [queue locally](docs/handbook/resilience.md) when the network drops and drain cleanly on reconnect. Shutdown is ordered and deterministic: sources close first, storage last. A misconfigured flow fails when you define it, not in production — unknown options, output collisions, and bad triggers are all caught at definition time.
 
-The test suite holds over 6,500 tests behind a 99.5% coverage gate. Integration tests run against real Mosquitto and QuestDB services, not mocks. Every npm release carries SLSA provenance — a public, verifiable link from the package back to the exact source commit and the build that produced it. Check it yourself with `npm audit signatures`.
+The test suite holds over 6,500 tests behind a 99.5% coverage gate. Integration tests run against real Mosquitto and QuestDB services, not mocks. Every npm release carries SLSA provenance — a public, verifiable link from the package back to the exact source commit and the build that produced it. `npm audit signatures` verifies it.
 
 The documentation also relates winkComposer's concepts to two industrial standards: [ISO 13374](https://composer.winkjs.org/docs/reference/iso-13374-mapping) for condition monitoring, the [NIST AI RMF](https://composer.winkjs.org/docs/reference/nist-ai-rmf-mapping) for AI risk management.
 

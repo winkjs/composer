@@ -8,7 +8,7 @@ as work and community feedback teach us more.
 
 |S. No.| Item | Complexity | Status |
 |---|---|---|---|
-|01.|**Runnable examples in-repo**:<br/>An `examples/` directory with self-contained, copy-out-able example flows. We're starting with two examples, with more to come: a pure-Node hello flow with no services, and a pump-monitoring flow that runs with a single `docker compose up`. The pump flow replays sensor readings at 100 ms per record into QuestDB, and a bundled Grafana dashboard fills live as you watch. Each example is pinned to a released version and runs in CI.|Simple|Yet to start|
+|01.|**Runnable examples in-repo**:<br/>An `examples/` directory of small, self-contained projects you can copy anywhere. [`hello-flow`](examples/hello-flow/) is already present: the README Quick Start flow — pure Node, no services. Next: a monitoring example that starts with one `docker compose up`, streams readings into QuestDB, and fills a bundled Grafana dashboard live as you watch. More follow. Every example pins an exact released version and runs in CI.|Simple|In progress|
 |02.|**Continuous integration + coverage badge**:<br/>Lint and the full test suite on every pull request, an integration job running Mosquitto and QuestDB as service containers, and a live coverage badge.|Medium|Yet to start|
 |03.|**Community files**:<br/>Issue templates, a pull-request template, and a published security policy (`SECURITY.md`) with a private vulnerability-reporting path.|Simple|Yet to start|
 |04.|**OpenSSF Best Practices badge**:<br/>Apply for the passing-level badge; the higher levels follow.|High|Yet to start|

@@ -33,6 +33,9 @@ coverage
 # Example and feasibility-study run outputs
 src/examples/**/out/
 
+# Example projects resolve fresh on install — no committed lockfiles
+examples/*/package-lock.json
+
 # Benchmark raw results (per-machine, not for version control)
 benchmark/*/results/
 
