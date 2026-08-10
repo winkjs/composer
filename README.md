@@ -1,62 +1,132 @@
 # winkComposer
 
+[![npm version](https://img.shields.io/npm/v/@winkjs/composer.svg)](https://www.npmjs.com/package/@winkjs/composer)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Composable Streaming Intelligence
 [<img align="right" src="https://decisively.github.io/wink-logos/logo-title.png" width="100px" >](https://winkjs.org/)
 
-A sensor spikes. An engine runs hot. A building's energy use surges. A server degrades. A cold chain breaks.
-
-winkComposer turns live data streams into clear, actionable insights by composing small, focused building blocks — signal conditioning, anomaly detection, and health assessment — into pipelines underpinned by neural-network intelligence.
-
-A high-performance JavaScript framework for IIoT and beyond. Runs on a Raspberry Pi or a production server or k8 cluster on cloud. Purpose-built for SMBs and MSMEs. Integrates with QuestDB, Grafana, and Mosquitto — open source, end to end.
-
-winkComposer calls its building blocks nodes — each with a single responsibility, wired through a declarative flow language. Small vocabulary, unbounded composition — the same nodes that detect bearing wear also catch server latency degradation and process yield drift.
-
-> [!NOTE]
-> The [documentation site](https://composer.winkjs.org) is live and growing — interactive demos run real winkComposer nodes in your browser, no installation or sign-up required. The full source now lives in this repository, MIT-licensed. MCP integration for AI-driven queries over pre-computed insights is in active development.
+winkComposer is a JavaScript framework for turning live data streams into insights and decisions — while the data is still moving. There is no batch job to wait for. On the plant floor, a delayed insight is a lost opportunity. It is open source, purpose-built for SMBs and MSMEs.
 
 
-## Explore Possibilities
+## See It in Action
 
-Real data. Real insight. Each demo runs the same winkComposer core that powers edge-to-cloud deployments — right here in your browser.
+The fastest way to understand winkComposer is to watch it work. The demos below run in your browser — real nodes, live data, no install, nothing to sign up for. Each one uses the same core that runs from edge to cloud.
 
 | [![Bearing Health](https://composer.winkjs.org/readme-bearing-health.png)](https://composer.winkjs.org/docs/use-cases/bearing-health) | [![Server Health](https://composer.winkjs.org/readme-server-health.png)](https://composer.winkjs.org/docs/use-cases/server-health) | [![Process Quality](https://composer.winkjs.org/readme-process-quality.png)](https://composer.winkjs.org/docs/use-cases/process-quality) |
 |:---:|:---:|:---:|
 | [**Detecting Bearing Failure**](https://composer.winkjs.org/docs/use-cases/bearing-health) | [**Detecting Server Latency Degradation**](https://composer.winkjs.org/docs/use-cases/server-health) | [**Catching Process Drift**](https://composer.winkjs.org/docs/use-cases/process-quality) |
 | Predictive Maintenance | AIOps | Process Control |
 
+Other end-to-end examples include [diagnosing Wi-Fi access-point health](https://composer.winkjs.org/docs/use-cases/wifi-ap-health), [classifying driving conditions](https://composer.winkjs.org/docs/use-cases/driving-modes) from OBD-II telematics, and [tracking wash-cycle quality](https://composer.winkjs.org/docs/use-cases/wash-cycle-quality).
+
+Prefer to start with a failure mode instead of an industry? [Recipes](https://composer.winkjs.org/docs/playground/recipes) are short, runnable patterns for recurring problems. They cover gradual drift, directional trends, sudden shifts, hidden parasitic drain, PID-loop hunting, frozen sensors, and subtle process shifts — plus adaptive compression for storage.
+
+
+## How It Works
+
+A flow is a [pipeline](docs/handbook/understanding-composer.md) of small, single-purpose [nodes](docs/handbook/nodes/index.md). Each node reads fields from the message, computes its result, and adds the result onto the same message for the nodes downstream. The message that leaves the pipeline carries its whole history. A message can also stop early — a failed check drops it, and nothing downstream fires.
+
+The intelligence emerges from composition. Together the nodes cover the whole path from raw signal to decision: clean signals, extract features, detect change, fuse evidence, and act. The repertoire runs from a simple threshold, through a [Kalman filter, to a two-layer spiking neural network](docs/handbook/nodes/intelligence.md). The filter estimates what sensors cannot directly measure. The network weighs many weak signals into one confident verdict.
+
+You define such a pipeline in code — a [linear flow](docs/handbook/flow-language.md) that reads top to bottom, not a drag-and-drop graph. Explicit control signals handle orchestration, so a flow stays readable as it grows. And when many machines share one flow, each gets its own [isolated state](docs/handbook/understanding-composer.md) — one flow, thousands of assets.
+
+Results leave through emitters and storage: alerts to an MQTT broker like Mosquitto or the terminal, insights to QuestDB. [Grafana dashboards](docs/handbook/visualization.md) read from there. The stack is open source end to end.
+
+The Quick Start below builds one such pipeline end to end.
+
+
+## Quick Start
+
+```bash
+npm install @winkjs/composer
+```
+
+Requires Node.js 22 or newer.
+
+A complete flow — replay a CSV feed, clean each reading, flag a hot pump motor, confirm it is not a blip, and print an alert:
+
+```javascript
+import { flow, csv, terminal } from '@winkjs/composer';
+
+const handle = await flow( 'hello-flow' )
+
+    .source( csv, { path: 'data/pump-temps.csv', delayMs: 200 } )
+
+    .emitter( terminal, { verbose: true, prefix: '[pump]' } )
+
+    .assetId( 'id' )  // one isolated pipeline per asset
+
+    // 1. clean — reject readings outside a sane range
+    .sanitize( 'clean', 'motor_t',
+        { failureReason: 'reject_reason' },
+        { ranges: { min: 0, max: 120 } } )
+
+    // 2. detect — flag when the motor runs hot
+    .threshold( 'tooHot', 'motor_t',
+        { active: 'is_hot' },
+        { mode: 'above', threshold: 80, hysteresis: 3 } )
+
+    // 3. confirm — hot across several readings, not one spike
+    .persistenceCheck( 'confirmHot',
+        ( msg ) => msg.is_hot,
+        { persistenceConfirmed: 'hot_confirmed' },
+        { minVotes: 3, outOfTotal: 5 } )
+
+    // 4. broadcast — print an alert once confirmed
+    .emitIf( 'alert',
+        ( msg ) => msg.hot_confirmed,
+        { target: 'terminal', insightType: 'overheat' } )
+
+    .run();
+```
+
+Prefer zero install? [Build this flow interactively](https://composer.winkjs.org/docs/playground/hello-flow) in the browser playground.
+
+The example above replays a CSV file. A live deployment reads from an MQTT broker instead — or runs [headless](docs/handbook/headless-flow.md), where your own code feeds the flow. Headless takes any source you already run: an OPC-UA client, a Kafka consumer.
+
+
+## Performance
+
+The numbers below come from a pure compute benchmark — every step a live message takes through an 8-node flow, from arrival to final output. **Storage and MQTT I/O are excluded** — these are compute ceilings, not full-deployment numbers.
+
+| Configuration        | Throughput              |
+|----------------------|-------------------------|
+| Raspberry Pi 5       | ~100K messages/second   |
+| Modern server        | ~1.2M messages/second   |
+| Tracking 10K assets  | ~500K messages/second   |
+
+Two configurations produced these numbers. The first two rows interleave 10 asset pipelines in random order — 4.5 million messages (10 pipelines × 900 data points × 500 iterations). The third row runs the same flow with 10,000 assets — 10,000 isolated states alive at once, 9 million messages, under 140 MB of heap. Pipelines are created dynamically as each asset first appears; timing uses `process.hrtime.bigint()`. The same pipeline [runs in your browser](https://composer.winkjs.org/docs/benchmark) — browser performance varies from native Node.js due to JIT differences.
+
+
+## Built for the Real World
+
+Write a flow once and run it anywhere Node.js does — an industrial-grade Raspberry Pi, a production server, a Kubernetes cluster. Each asset's state is isolated, so a fault in one stays in one. Messages [queue locally](docs/handbook/resilience.md) when the network drops and drain cleanly on reconnect. Shutdown is ordered and deterministic: sources close first, storage last. A misconfigured flow fails when you define it, not in production — unknown options, output collisions, and bad triggers are all caught at definition time.
+
+The test suite holds over 6,500 tests behind a 99.5% coverage gate. Integration tests run against real Mosquitto and QuestDB services, not mocks. Every npm release carries SLSA provenance — a public, verifiable link from the package back to the exact source commit and the build that produced it. Check it yourself with `npm audit signatures`.
+
+The documentation also relates winkComposer's concepts to two industrial standards: [ISO 13374](https://composer.winkjs.org/docs/reference/iso-13374-mapping) for condition monitoring, the [NIST AI RMF](https://composer.winkjs.org/docs/reference/nist-ai-rmf-mapping) for AI risk management.
+
+Flows can run headless inside your own application — no broker, no services. Your code feeds messages in from any source you already run. Already running a historian (the plant's time-series system of record)? winkComposer adds value beside it — it watches the live stream and acts, while the historian keeps the record.
+
 
 ## Documentation
+
+The documentation lives in two places: the [documentation site](https://composer.winkjs.org) for interactive learning, and the in-repo handbook for version-matched reference.
 
 | Resource | What it covers |
 |---|---|
 | [**Hello Flow!**](https://composer.winkjs.org/docs/playground/hello-flow) | Build a 4-node temperature monitor from scratch — smooth, detect, confirm, broadcast — with an interactive demo running real nodes in your browser. The natural starting point. |
-| [**Recipes**](https://composer.winkjs.org/docs/playground/recipes) | Focused, runnable patterns for common detection problems: gradual drift (fast/slow esMean crossover with Page-Hinkley), sudden shifts (Kalman filter), sensor freeze (collapsed standard deviation), and subtle process shifts (Western Electric run rules). Each runs in the browser. |
+| [**Recipes**](https://composer.winkjs.org/docs/playground/recipes) | Short, runnable patterns for recurring failure modes — each names the nodes it uses and runs in the browser. |
 | [**Explore Nodes**](https://composer.winkjs.org/docs/playground/explore-nodes) | Single-node sandboxes — drag a slider, watch the node respond in real time. Covers the Kalman 1D filter and the kernel convolution node, with more to come. |
 | [**Under the Hood**](https://composer.winkjs.org/docs/concepts/under-the-hood) | How messages flow and get enriched node by node, how bad data and throwing functions are handled without crashing the pipeline, how per-asset isolation works, and timestamp requirements. |
 | [**Flow Language**](https://composer.winkjs.org/docs/concepts/flow-language) | The complete DSL reference — flow anatomy, node call signatures, dynamic options (tunables), single vs. multi-field processing, naming policies, and node processing types. |
 | [**Composition Patterns**](https://composer.winkjs.org/docs/concepts/composition-patterns) | Proven node combinations for recurring problems: noise-tolerant alarms, drift detection, adaptive diagnostics, layered flows, and downsampling for storage. Includes clear guidance on when to use passIf, emitIf, or controller/disable. |
 | [**Semantics**](https://composer.winkjs.org/docs/concepts/semantics) | How to define what computed values mean — types, units, physical ranges, operational limits — as a single source of truth shared by storage, dashboards, and query engines. Covers the facts-vs-decisions design principle. |
 | [**Node Index**](https://composer.winkjs.org/docs/reference/node-index) | Every node grouped by category — Signal Conditioning, Detection, Feature Extraction, Intelligence, and more — with what each computes and what it adds to the message. |
-
-
-## Performance
-
-A pure compute benchmark — every step a live message takes, from arrival through all 8 nodes to final computed output, with no I/O. Asset pipelines are created dynamically as each new asset is first encountered; the benchmark runs 10 such pipelines concurrently, interleaved in random order to reflect real multi-asset deployment. Measured with `process.hrtime.bigint()` across 4.5 million messages (10 pipelines × 900 data points × 500 iterations). Storage and MQTT I/O are excluded.
-
-| Configuration        | Throughput              |
-|----------------------|-------------------------|
-| Raspberry Pi 5       | ~100K messages/second   |
-| Modern server        | ~1.2M messages/second   |
-| Tracking 200K assets | ~300K messages/second   |
-
-The same pipeline [runs in your browser](https://composer.winkjs.org/docs/benchmark) — browser results are typically 30–60% of native Node.js throughput due to JIT differences.
-
-
-## Built for the Real World
-
-Each asset runs in its own isolated state — a fault in one never affects another. Messages queue locally when the network drops and drain cleanly on reconnect. The same pipeline code runs unchanged from edge to cloud. Shutdown is ordered and deterministic: sources close first, storage last, with no data corruption.
+| [**Handbook**](docs/handbook/index.md) | The complete reference, right here in the repo and version-matched: the handbook at any release tag describes exactly that release's code. |
+| [**Changelog**](CHANGELOG.md) | Release notes for every published version — what changed, what broke, and what to do about it. |
+| [**Roadmap**](ROADMAP.md) | What is planned next, item by item, with complexity and status. |
 
 
 ## Get Involved
@@ -65,7 +135,16 @@ Each asset runs in its own isolated state — a fault in one never affects anoth
 |:---:|:---:|:---:|
 | Support open-source streaming intelligence. | Stay updated on releases and ecosystem developments. | Questions, ideas, or feedback — all welcome. |
 
+Want to contribute code or docs? Start with the [contributing guide](CONTRIBUTING.md). The project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
+
 
 ## About winkJS
 
-[winkJS](https://winkjs.org) is the open-source home of two high-performance, production-grade tools — built from first principles, tested to near-perfection, and trusted by thousands of projects worldwide.
+[winkJS](https://winkjs.org) is the open-source home of high-performance JavaScript tools. winkNLP covers natural language processing; winkComposer covers streaming intelligence. Both follow the same discipline: small APIs, measured performance, and heavily tested code.
+
+
+## License
+
+winkComposer is released under the [MIT License](LICENSE).
+
+Copyright (c) 2024-26 GRAYPE Systems Private Limited.
