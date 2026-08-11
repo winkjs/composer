@@ -6,7 +6,7 @@
 ## Composable Streaming Intelligence
 [<img align="right" src="https://decisively.github.io/wink-logos/logo-title.png" width="100px" >](https://winkjs.org/)
 
-winkComposer is a JavaScript framework for turning live data streams into insights and decisions — while the data is still moving. There is no batch job to wait for. On the plant floor, a delayed insight is a lost opportunity. It is open source, purpose-built for SMBs and MSMEs.
+winkComposer is a JavaScript framework that turns streaming data into real-time insights and decisions. The streams can come from anywhere: IoT and IIoT sensors, vehicle telematics, server metrics. There is no batch job to wait for. In real-time operations like a plant floor, a delayed insight is a lost opportunity. It is open source, purpose-built for SMBs and MSMEs.
 
 
 ## See It in Action
@@ -38,13 +38,20 @@ The Quick Start below builds one such pipeline end to end.
 
 ## Quick Start
 
-```bash
-npm install @winkjs/composer
-```
-
 Requires Node.js 22 or newer.
 
-A complete flow — replay a CSV feed, clean each reading, flag a hot pump motor, confirm it is not a blip, and print an alert:
+The Quick Start flow replays a CSV feed of pump motor temperatures. It cleans each reading, flags a hot motor, confirms the heat is not a blip, and prints an alert. Code and data ship together as a runnable project in [`examples/hello-flow`](examples/hello-flow). This is the fastest working run:
+
+```bash
+git clone https://github.com/winkjs/composer.git
+cd composer/examples/hello-flow
+npm install
+npm start
+```
+
+A run takes about eight seconds. Watch for the `overheat` alert. Prefer zero install? [Build this flow interactively](https://composer.winkjs.org/docs/playground/hello-flow) in the browser playground.
+
+Here is the whole program, [`hello-flow.js`](examples/hello-flow/hello-flow.js):
 
 ```javascript
 import { flow, csv, terminal } from '@winkjs/composer';
@@ -87,9 +94,13 @@ const handle = await flow( 'hello-flow' )
     .run();
 ```
 
-The same flow ships as a runnable project in [`examples/hello-flow`](examples/hello-flow), data included. Run it with `npm install && npm start`.
+To use winkComposer in your own project:
 
-Prefer zero install? [Build this flow interactively](https://composer.winkjs.org/docs/playground/hello-flow) in the browser playground.
+```bash
+npm install @winkjs/composer
+```
+
+Your project needs `"type": "module"` in its `package.json`. Then copy the flow above and point `path` at your own data. The replayed file has two columns: a pump id and a motor temperature (`id`, `motor_t`).
 
 The example above replays a CSV file. A live deployment reads from an MQTT broker instead — or runs [headless](docs/handbook/headless-flow.md), where your own code feeds the flow. Headless takes any source you already run: an OPC-UA client, a Kafka consumer.
 
