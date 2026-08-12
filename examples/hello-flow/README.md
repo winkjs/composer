@@ -23,12 +23,13 @@ persist.
 The example holds two files:
 
 - [`hello-flow.js`](hello-flow.js) — the whole program. The same flow
-  appears in the repository [Quick Start](../../README.md#quick-start).
+  appears in the repository [Quick Start](https://github.com/winkjs/composer/blob/0.4.1/README.md#quick-start).
 - [`data/pump-temps.csv`](data/pump-temps.csv) — the replayed feed:
   two columns, a pump id and a motor temperature.
 
-The [handbook](../../docs/handbook/index.md) explains every node the
-flow uses. The [browser playground](https://composer.winkjs.org/docs/playground/hello-flow)
+The [handbook](https://github.com/winkjs/composer/blob/0.4.1/docs/handbook/index.md)
+explains every node the flow uses. The
+[browser playground](https://composer.winkjs.org/docs/playground/hello-flow)
 builds the same flow interactively.
 
 ## Copy it out

@@ -1,0 +1,4 @@
+# Examples are copied byte for byte into the @winkjs/create-composer
+# templates at its pack time. Forcing LF here means a pack run on any
+# OS produces the same bytes the repository holds.
+examples/** text eol=lf

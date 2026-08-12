@@ -10,6 +10,9 @@ Each example follows the same convention:
 - `@winkjs/composer` is pinned to an exact released version.
 - Data lives in the example's own `data/` directory.
 - A README states what the example shows and what to expect.
+- README links into the repository are absolute and pinned to the
+  same version as the `@winkjs/composer` pin. A copied directory
+  then keeps working links.
 
 The examples so far:
 
