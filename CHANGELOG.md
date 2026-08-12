@@ -28,6 +28,27 @@
   always names its replacement.
 -->
 
+# [The Quick Start becomes one command](https://github.com/winkjs/composer/releases/tag/0.4.2)
+## Version 0.4.2 — August 12, 2026
+
+### ✨ Features
+
+- A new scaffolder package, `@winkjs/create-composer`, turns the
+  Quick Start into one command. `npm create @winkjs/composer`
+  scaffolds the hello-flow example as a runnable project.
+- The scaffolder is developed in this repository, under
+  `create-composer/`. It versions and releases independently, with
+  its own changelog.
+
+### ⚙️ Updates
+
+- The README Quick Start now leads with the scaffold command. The
+  cloneable project stays at `examples/hello-flow`.
+- Example projects now pin an exact composer version and link to
+  documentation at that version's tag. The convention is recorded
+  in `examples/README.md`.
+- The composer library code is unchanged from 0.4.1.
+
 # [Runnable example and sharper npm discovery](https://github.com/winkjs/composer/releases/tag/0.4.1)
 ## Version 0.4.1 — August 10, 2026
 
