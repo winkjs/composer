@@ -75,5 +75,9 @@
         "mqtt": "^5.15.1",
         "msgpackr": "^1.11.10",
         "pg": "^8.20.0"
+    },
+    "overrides": {
+        "serialize-javascript": "^7.1.0",
+        "diff": "^8.0.3"
     }
 }
