@@ -1,0 +1,165 @@
+# CI for @winkjs/create-composer (create-composer/) and for the
+# examples/ tree it bundles as templates at pack time.
+#
+# Three jobs:
+#   lint-and-test  — house lint, the spec suite, the 100% coverage
+#                    gate, and a clean audit of the dev lockfile.
+#   byte-identity  — pack the creator, then prove every bundled
+#                    template is byte-identical to its source example
+#                    at HEAD (via git archive, so untracked files can
+#                    never leak in). Runs on Ubuntu only: a Windows
+#                    checkout may hold CRLF endings while git archive
+#                    emits repository bytes, which would false-fail.
+#   scaffold-smoke — install the packed tarball in a scratch project,
+#                    scaffold, npm install (proves the composer pin
+#                    is live on the registry), run the flow, and
+#                    check the refusal paths. Runs on Linux, macOS,
+#                    and Windows; the bin is invoked directly with
+#                    node because CI has no TTY and `npm create`
+#                    would prompt to install an uncached package.
+#
+# No repository guard here: CI must run in the private repo too.
+# Only the publish workflow (release-create.yml) is guarded.
+
+name: ci-create
+
+on:
+  push:
+    branches:
+      - '**'
+    paths:
+      - 'create-composer/**'
+      - 'examples/**'
+      - '.github/workflows/ci-create.yml'
+  pull_request:
+    paths:
+      - 'create-composer/**'
+      - 'examples/**'
+      - '.github/workflows/ci-create.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The creator's ESLint config imports the repo root config,
+      # whose plugins resolve from the root node_modules — so both
+      # trees install.
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install creator dependencies
+        working-directory: create-composer
+        run: npm ci
+
+      - name: Lint
+        working-directory: create-composer
+        run: npm run lint
+
+      - name: Test with the 100% coverage gate
+        working-directory: create-composer
+        run: npm run test:coverage
+
+      - name: Audit the creator lockfile
+        working-directory: create-composer
+        run: npm audit --audit-level=low
+
+  byte-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Pack the creator (prepack builds templates/)
+        working-directory: create-composer
+        run: |
+          npm ci
+          npm pack
+
+      - name: Verify templates are byte-identical to examples at HEAD
+        run: |
+          set -euo pipefail
+          TARBALL="$( ls create-composer/winkjs-create-composer-*.tgz )"
+          EXTRACT="$RUNNER_TEMP/tarball"
+          SOURCE="$RUNNER_TEMP/source"
+          mkdir -p "$EXTRACT" "$SOURCE"
+          tar -xzf "$TARBALL" -C "$EXTRACT"
+          git archive HEAD examples/ | tar -x -C "$SOURCE"
+          ls "$EXTRACT/package/templates" | sort > "$RUNNER_TEMP/templates.list"
+          find "$SOURCE/examples" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort > "$RUNNER_TEMP/examples.list"
+          diff -u "$RUNNER_TEMP/examples.list" "$RUNNER_TEMP/templates.list"
+          while read -r NAME; do
+            diff -r "$SOURCE/examples/$NAME" "$EXTRACT/package/templates/$NAME"
+          done < "$RUNNER_TEMP/templates.list"
+          echo "byte-identity holds: every template matches its example at HEAD"
+
+  scaffold-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        node: [ 22 ]
+        include:
+          - os: ubuntu-latest
+            node: 24
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Pack the creator
+        working-directory: create-composer
+        run: |
+          npm ci
+          npm pack
+
+      - name: Scaffold from the packed tarball and run the flow
+        run: |
+          set -euo pipefail
+          TARBALL="$( ls "$GITHUB_WORKSPACE"/create-composer/winkjs-create-composer-*.tgz )"
+          WORK="$RUNNER_TEMP/smoke"
+          mkdir -p "$WORK"
+          cd "$WORK"
+          npm init -y > /dev/null
+          npm install "$TARBALL" > /dev/null
+          node node_modules/@winkjs/create-composer/bin/create-composer.js smoke-flow
+          cd smoke-flow
+          npm install > /dev/null
+          npm start | tee run.log
+          grep -q overheat run.log
+
+      - name: Refusal paths exit non-zero with their messages
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/smoke"
+          BIN="$WORK/node_modules/@winkjs/create-composer/bin/create-composer.js"
+          cd "$WORK"
+          if node "$BIN" smoke-flow 2> err-taken.log; then
+            echo "a non-empty target was accepted"; exit 1
+          fi
+          grep -q "not empty" err-taken.log
+          if node "$BIN" "Bad Flow" 2> err-name.log; then
+            echo "an invalid name was accepted"; exit 1
+          fi
+          grep -q "lowercase" err-name.log
+          if node "$BIN" x-flow --template nope 2> err-template.log; then
+            echo "an unknown template was accepted"; exit 1
+          fi
+          grep -q "No bundled template" err-template.log

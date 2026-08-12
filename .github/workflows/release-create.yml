@@ -1,0 +1,170 @@
+# Release pipeline: publish @winkjs/create-composer to npm with
+# provenance and build its GitHub Release page from
+# create-composer/CHANGELOG.md.
+#
+# Trigger: a creator release tag — create-composer-X.Y.Z. The prefix
+# keeps this workflow and release.yml (the framework's, tags 0.4.1
+# and the like) from ever firing on each other's tags. The version
+# part is validated as strict semver and must equal
+# create-composer/package.json's version. Publishing uses npm
+# trusted publishing (OIDC): no tokens live anywhere, and provenance
+# is generated automatically. A prerelease VERSION (the part after
+# the prefix contains "-"; the tag itself always contains hyphens)
+# publishes under the npm dist-tag "next" and gets a minimal page
+# marked Pre-release. A stable version takes "latest" and gets its
+# CHANGELOG entry as the release page body.
+#
+# The workflow FILENAME is load-bearing: npm's trusted-publisher
+# config for @winkjs/create-composer binds to "release-create.yml".
+# Renaming this file breaks publishing.
+#
+# Before publishing, the run re-proves the two release invariants:
+# every bundled template is byte-identical to its example at the
+# tagged commit, and a scaffolded project installs the composer pin
+# from the registry and runs — which also enforces the ordering rule
+# that the creator releases only after its pinned composer version
+# is live.
+#
+# The publish job runs only in winkjs/composer. In any other
+# repository — the private development repo, or a fork — the job
+# skips. A skipped run is silent; a failed one emails its owner.
+
+name: release-create
+
+on:
+  push:
+    tags:
+      - 'create-composer-*'
+
+permissions:
+  contents: write   # create the GitHub Release
+  id-token: write   # OIDC token for npm trusted publishing
+
+jobs:
+  publish:
+    # Repository guard. This file syncs to the private development
+    # repo, where the release tag is pushed first and the publish
+    # must not run. npm's trusted-publisher binding would refuse
+    # that repo anyway; the guard turns the refusal into a quiet
+    # skip, here and in any fork.
+    if: github.repository == 'winkjs/composer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or later; the runner's
+      # bundled npm may be older.
+      - name: Update npm
+        run: npm install -g npm@latest && npm --version
+
+      # The tag ruleset allows the create-composer-* shape; this
+      # check tightens the version part to strict semver and pins it
+      # to the version the creator's tree actually declares. The
+      # VERSION env var carries the stripped version to every later
+      # step — prerelease detection must never test the tag itself,
+      # which always contains hyphens.
+      - name: Validate the tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#create-composer-}"
+          if [ "$VERSION" = "$TAG" ]; then
+            echo "tag '$TAG' does not carry the create-composer- prefix"
+            exit 1
+          fi
+          SEMVER='^(0\.[1-9][0-9]*\.(0|[1-9][0-9]*)|[1-9][0-9]*\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))(-[0-9A-Za-z.-]+)?$'
+          if ! [[ "$VERSION" =~ $SEMVER ]]; then
+            echo "version '$VERSION' is not release-shaped strict semver"
+            exit 1
+          fi
+          PKG="$( node -p "JSON.parse(require('fs').readFileSync('create-composer/package.json')).version" )"
+          if [ "$VERSION" != "$PKG" ]; then
+            echo "tag version '$VERSION' does not equal create-composer/package.json version '$PKG'"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Pack the creator and verify byte identity
+        run: |
+          set -euo pipefail
+          cd create-composer
+          npm ci
+          npm pack
+          cd ..
+          TARBALL="$( ls create-composer/winkjs-create-composer-*.tgz )"
+          EXTRACT="$RUNNER_TEMP/tarball"
+          SOURCE="$RUNNER_TEMP/source"
+          mkdir -p "$EXTRACT" "$SOURCE"
+          tar -xzf "$TARBALL" -C "$EXTRACT"
+          git archive HEAD examples/ | tar -x -C "$SOURCE"
+          ls "$EXTRACT/package/templates" | sort > "$RUNNER_TEMP/templates.list"
+          find "$SOURCE/examples" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort > "$RUNNER_TEMP/examples.list"
+          diff -u "$RUNNER_TEMP/examples.list" "$RUNNER_TEMP/templates.list"
+          while read -r NAME; do
+            diff -r "$SOURCE/examples/$NAME" "$EXTRACT/package/templates/$NAME"
+          done < "$RUNNER_TEMP/templates.list"
+          echo "byte-identity holds at the tagged commit"
+
+      # Scaffold from the exact tarball, then npm install inside the
+      # result. The install pulls the composer pin from the registry,
+      # so an unpublished pin fails here — before anything publishes.
+      - name: Scaffold smoke against the exact tarball
+        run: |
+          set -euo pipefail
+          TARBALL="$( ls "$GITHUB_WORKSPACE"/create-composer/winkjs-create-composer-*.tgz )"
+          WORK="$RUNNER_TEMP/smoke"
+          mkdir -p "$WORK"
+          cd "$WORK"
+          npm init -y > /dev/null
+          npm install "$TARBALL" > /dev/null
+          node node_modules/@winkjs/create-composer/bin/create-composer.js smoke-flow
+          cd smoke-flow
+          npm install > /dev/null
+          npm start | tee run.log
+          grep -q overheat run.log
+
+      - name: Publish to npm
+        working-directory: create-composer
+        run: |
+          if [[ "$VERSION" == *-* ]]; then
+            npm publish --tag next
+          else
+            npm publish
+          fi
+
+      # Stable releases get their CHANGELOG entry as the page body.
+      # The entry runs from its "## Version" heading to the next
+      # "# [" title line; the title is the line above the heading.
+      # An empty extraction means the release contract in
+      # create-composer/CHANGELOG.md was broken — fail loudly, never
+      # publish a bare page.
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$VERSION" == *-* ]]; then
+            gh release create "$TAG" --prerelease \
+              --title "create-composer prerelease $VERSION" \
+              --notes "Prerelease published under the npm dist-tag \"next\". See the next stable entry in create-composer/CHANGELOG.md."
+            exit 0
+          fi
+          TITLE="$( awk -v ver="$VERSION" '
+              $0 ~ ("^## Version " ver " ") { print prev; exit }
+              { prev = $0 }
+          ' create-composer/CHANGELOG.md | sed -E 's/^# \[(.*)\]\(.*\)$/\1/' )"
+          TITLE="${TITLE:-create-composer $VERSION}"
+          awk -v ver="$VERSION" '
+              inentry && /^# \[/ { exit }
+              inentry { print }
+              $0 ~ ("^## Version " ver " ") { inentry = 1 }
+          ' create-composer/CHANGELOG.md > /tmp/notes.md
+          if ! [ -s /tmp/notes.md ]; then
+            echo "release contract broken: no CHANGELOG entry for $VERSION"
+            exit 1
+          fi
+          gh release create "$TAG" --title "$TITLE" --notes-file /tmp/notes.md
