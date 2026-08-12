@@ -1,0 +1,17 @@
+{
+    "all": true,
+    "include": [ "src/**/*.js", "bin/**/*.js", "scripts/**/*.js" ],
+    "exclude": [ "src/**/*.specs.js", "src/test/**" ],
+    "watermarks": {
+        "branches": [ 90, 100 ],
+        "lines": [ 90, 100 ],
+        "functions": [ 90, 100 ],
+        "statements": [ 90, 100 ]
+    },
+    "branches": 100,
+    "lines": 100,
+    "functions": 100,
+    "statements": 100,
+    "check-coverage": true,
+    "reporter": [ "text-summary", "lcov" ]
+}

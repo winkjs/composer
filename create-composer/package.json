@@ -1,0 +1,64 @@
+{
+    "name": "@winkjs/create-composer",
+    "version": "0.1.0",
+    "description": "Scaffold a runnable winkComposer streaming-intelligence project with one command: npm create @winkjs/composer",
+    "keywords": [
+        "create",
+        "scaffolder",
+        "starter",
+        "template",
+        "winkjs",
+        "wink",
+        "composer",
+        "streaming",
+        "iiot",
+        "industrial-iot",
+        "edge-computing"
+    ],
+    "type": "module",
+    "bin": {
+        "create-composer": "bin/create-composer.js"
+    },
+    "files": [
+        "bin/",
+        "src/",
+        "templates/",
+        "CHANGELOG.md",
+        "!src/**/*.specs.js",
+        "!src/test/"
+    ],
+    "scripts": {
+        "pretest": "npm run lint",
+        "test": "mocha --recursive --timeout 20000 'src/**/*.specs.js'",
+        "test:coverage": "c8 mocha --recursive --timeout 20000 'src/**/*.specs.js'",
+        "lint": "eslint 'bin/**/*.js' 'src/**/*.js' 'scripts/**/*.js'",
+        "prepack": "node scripts/build-templates.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/winkjs/composer.git",
+        "directory": "create-composer"
+    },
+    "author": "Sanjaya Kumar Saxena",
+    "license": "MIT",
+    "engines": {
+        "node": ">=22"
+    },
+    "bugs": {
+        "url": "https://github.com/winkjs/composer/issues"
+    },
+    "homepage": "https://composer.winkjs.org/",
+    "publishConfig": {
+        "access": "public"
+    },
+    "devDependencies": {
+        "c8": "^10.1.3",
+        "chai": "^5.2.0",
+        "eslint": "^9.21.0",
+        "mocha": "^11.1.0"
+    },
+    "overrides": {
+        "serialize-javascript": "^7.1.0",
+        "diff": "^8.0.3"
+    }
+}

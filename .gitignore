@@ -36,6 +36,10 @@ src/examples/**/out/
 # Example projects resolve fresh on install — no committed lockfiles
 examples/*/package-lock.json
 
+# Creator templates are generated at pack time from examples/ — the
+# published tarball is the only place the copy exists
+create-composer/templates/
+
 # Benchmark raw results (per-machine, not for version control)
 benchmark/*/results/
 
