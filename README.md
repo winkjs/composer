@@ -40,16 +40,13 @@ The Quick Start below builds one such pipeline end to end.
 
 Requires Node.js 22 or newer.
 
-The Quick Start flow replays a CSV feed of pump motor temperatures. It cleans each reading, flags a hot motor, confirms the heat is not a blip, and prints an alert. Code and data ship together as a runnable project in [`examples/hello-flow`](examples/hello-flow). This is the fastest working run:
+The Quick Start flow replays a CSV feed of pump motor temperatures. It cleans each reading, flags a hot motor, confirms the heat is not a blip, and prints an alert. One command scaffolds it as a runnable project:
 
 ```bash
-git clone https://github.com/winkjs/composer.git
-cd composer/examples/hello-flow
-npm install
-npm start
+npm create @winkjs/composer
 ```
 
-A run takes about eight seconds. Watch for the `overheat` alert. Prefer zero install? [Build this flow interactively](https://composer.winkjs.org/docs/playground/hello-flow) in the browser playground.
+Accept the directory prompt, then run the three printed steps. A run takes about eight seconds. Watch for the `overheat` alert. Prefer zero install? [Build this flow interactively](https://composer.winkjs.org/docs/playground/hello-flow) in the browser playground. The same project also lives in the repository, in [`examples/hello-flow`](examples/hello-flow).
 
 Here is the whole program, [`hello-flow.js`](examples/hello-flow/hello-flow.js):
 
