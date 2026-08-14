@@ -284,7 +284,7 @@ flow('replay')
 | `path` | string | required | Path to CSV file |
 | `delayMs` | number | `0` | Delay between messages in ms (simulation pacing) |
 | `dynamicTyping` | boolean | `true` | Auto-cast `"123"` → number, `"true"` → boolean, `""` → null |
-| `transform` | function | `null` | Per-row transform: `( row ) => transformedRow`; return `null`/`undefined` to drop the row (only those two values mean drop). A throw skips that one row (`CALLBACK_FAILED`) and the stream continues |
+| `transform` | function | `null` | Per-row transform: `( row ) => transformedRow`; return `null`/`undefined` to drop the row (only those two values mean drop). A throw skips that one row (`CALLBACK_FAILED`) and the stream continues. Ready-made transforms: [Stream Preparation](../stream-preparation.md) |
 | `idField` | string | `null` | Field for range filtering (row index if omitted) |
 | `startMsgId` | number\|string | `null` | Start at this id/row (inclusive) |
 | `endMsgId` | number\|string | `null` | Stop after this id/row (inclusive) |
@@ -341,7 +341,7 @@ flow('aggregator')
 | `dedupMaxEntries` | number | `65536` | Dedup memory cap (~8 MB worst case); at high rates the effective window is this count divided by the message rate |
 | `clientId` | string | auto-generated | MQTT client identifier. Set a fixed name in production — the broker files the persistent session's saved backlog under it, and an auto-generated name changes on every restart. See [Resilience](../resilience.md) |
 | `cleanStart` | boolean | `false` | `false` = resume persistent session; `true` = fresh start |
-| `transform` | function | `null` | Per-message transform: `( msg ) => transformedMsg`; return `null`/`undefined` to drop the message (only those two values mean drop). A throw skips that one message (`CALLBACK_FAILED`) and the stream continues |
+| `transform` | function | `null` | Per-message transform: `( msg ) => transformedMsg`; return `null`/`undefined` to drop the message (only those two values mean drop). A throw skips that one message (`CALLBACK_FAILED`) and the stream continues. Ready-made transforms: [Stream Preparation](../stream-preparation.md) |
 | `onStatus` | function | `null` | Structured status callback — see [Watching a source](./observability.md#watching-a-source-status-and-metrics) |
 | `onMetrics` | function | `null` | Counter-snapshot callback, about once per second — see [the metrics channel](./observability.md#the-metrics-channel-onmetrics) |
 | `expectedQuietPeriodMs` | number | off | Opt-in: report yellow when no packet arrives for longer than this. Set it only if your stream should never be quiet |

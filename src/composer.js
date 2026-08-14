@@ -73,3 +73,12 @@ export {
 export { sigmoid, train, predict, classify } from './tools/training/logistic.js';
 export { confusionMatrix, classificationMetrics, sweepThresholds } from './tools/training/metrics.js';
 
+// Stream-preparation utilities — ready-made functions for a source's
+// `transform` option (see docs/handbook/stream-preparation.md)
+export { coerceNumeric, coerceCell } from './tools/stream-prep/coerce-numeric.js';
+export { normalizeTimestamp } from './tools/stream-prep/normalize-timestamp.js';
+export { filterRows } from './tools/stream-prep/filter-rows.js';
+export { labelShift, shiftLabelFor } from './tools/stream-prep/label-shift.js';
+export { trackActivity } from './tools/stream-prep/track-activity.js';
+export { stampPeriod } from './tools/stream-prep/stamp-period.js';
+

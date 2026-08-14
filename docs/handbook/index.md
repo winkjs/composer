@@ -23,3 +23,5 @@ A practical guide to building streaming intelligence pipelines with winkComposer
 9. **[Resilience](./resilience.md)** — Keeping a deployment running through restarts and outages: input durability with a fixed `clientId`, the recommended broker configuration walked line by line, what the broker guarantees in each outage type, and measuring durations from message time.
 
 10. **[Environment Variables](./environment-variables.md)** — The runtime settings composer reads from the environment: MQTT and QuestDB connection details, flush tuning, and lifecycle timeouts. Defaults are built in; set these only to change a host, port, or limit.
+
+11. **[Stream Preparation](./stream-preparation.md)** — Ready-made functions for a source's `transform` option: coerce numbers, normalize timestamps, keep a replay window, label shifts, track activity, stamp period keys.
