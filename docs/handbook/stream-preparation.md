@@ -192,6 +192,11 @@ against the previous one, so the watched fields must be shared across
 the stream (line pulses, a plant meter). Per-asset activity needs
 per-asset state, which belongs to partitions.
 
+Build a fresh instance for each flow run. An instance remembers the
+previous rows it saw, and there is no reset. Reusing one instance
+across two flows, or across two replays, carries state from one into
+the other.
+
 ## stampPeriod
 
 `stampPeriod( options )` stamps a monotonic integer key naming the
