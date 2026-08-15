@@ -90,12 +90,16 @@ const writeExampleFixture = async function ( parentDir, spec ) {
         version: '0.1.0',
         private: spec.privateFlag ?? true,
         description: spec.description ?? `The ${spec.name} fixture flow.`,
+        composer: spec.composer ?? { category: 'getting-started', featured: spec.featured ?? false },
         type: 'module',
         scripts: { start: 'node flow.js' },
         dependencies: { '@winkjs/composer': spec.pin ?? '1.2.3' }
     };
     if ( spec.omitDescription === true ) {
         delete packageObject.description;
+    }
+    if ( spec.omitComposer === true ) {
+        delete packageObject.composer;
     }
     if ( spec.omitDependencies === true ) {
         delete packageObject.dependencies;
@@ -122,6 +126,15 @@ const writeExampleFixture = async function ( parentDir, spec ) {
     } ) );
     return dir;
 }; // writeExampleFixture()
+
+// Writes an examples-root README carrying the category allowlist in
+// the exact shape the template-build guard parses: backticked slug
+// bullets under a "## Categories" heading.
+const writeCategoriesReadme = async function ( rootDir, slugs = [ 'getting-started' ] ) {
+    const bullets = slugs.map( ( slug ) => `- \`${slug}\` — fixture category.` ).join( '\n' );
+    const text = `# Fixture examples\n\n## Categories\n\n${bullets}\n`;
+    await fs.writeFile( path.join( rootDir, 'README.md' ), text );
+}; // writeCategoriesReadme()
 
 // Builds a scratch templates root holding the given fixtures, for
 // driving listTemplates()/run() without the real bundle.
@@ -188,6 +201,7 @@ export {
     createCaptureStream,
     createScriptedInput,
     writeExampleFixture,
+    writeCategoriesReadme,
     writeTemplateFixtureRoot,
     runBin,
     runBuildScript,

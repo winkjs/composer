@@ -12,6 +12,23 @@ to the cloud. The command above asks for a directory name, copies a
 working example project into it, and prints the steps that run it.
 The first run succeeds before any editing.
 
+A run looks like this:
+
+```text
+$ npm create @winkjs/composer my-flow
+
+Scaffolded the hello-flow template into my-flow/.
+
+Next steps:
+
+    cd my-flow
+    npm install
+    npm start
+
+npm install fetches @winkjs/composer 0.5.0 — the exact version this template is tested against.
+The project README says what to expect.
+```
+
 ## Usage
 
 The command takes an optional directory name and a few flags:

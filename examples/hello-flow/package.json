@@ -3,6 +3,10 @@
     "version": "0.1.0",
     "private": true,
     "description": "winkComposer hello flow — replay a CSV feed, flag a hot pump motor, print an alert.",
+    "composer": {
+        "category": "getting-started",
+        "featured": true
+    },
     "type": "module",
     "license": "MIT",
     "engines": {

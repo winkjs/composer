@@ -97,7 +97,28 @@ jobs:
           tar -xzf "$TARBALL" -C "$EXTRACT"
           git archive HEAD examples/ | tar -x -C "$SOURCE"
           ls "$EXTRACT/package/templates" | sort > "$RUNNER_TEMP/templates.list"
-          find "$SOURCE/examples" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort > "$RUNNER_TEMP/examples.list"
+          # Bundling is opt-in: the expected set is the examples that
+          # declare the composer block in their package.json — the
+          # same rule build-templates.js bundles by. Divergence
+          # between the two rules fails the list diff below.
+          node -e '
+              const fs = require( "node:fs" );
+              const root = process.argv[ 1 ];
+              const names = fs.readdirSync( root, { withFileTypes: true } )
+                  .filter( ( entry ) => entry.isDirectory() )
+                  .map( ( entry ) => entry.name )
+                  .filter( ( name ) => {
+                      let manifest = null;
+                      try {
+                          manifest = JSON.parse( fs.readFileSync( `${root}/${name}/package.json`, "utf8" ) );
+                      } catch {
+                          return false;
+                      }
+                      return manifest.composer !== undefined;
+                  } )
+                  .sort();
+              console.log( names.join( "\n" ) );
+          ' "$SOURCE/examples" > "$RUNNER_TEMP/examples.list"
           diff -u "$RUNNER_TEMP/examples.list" "$RUNNER_TEMP/templates.list"
           while read -r NAME; do
             diff -r "$SOURCE/examples/$NAME" "$EXTRACT/package/templates/$NAME"
