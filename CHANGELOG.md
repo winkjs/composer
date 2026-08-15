@@ -28,6 +28,41 @@
   always names its replacement.
 -->
 
+# [Stream preparation arrives](https://github.com/winkjs/composer/releases/tag/0.5.0)
+## Version 0.5.0 — August 15, 2026
+
+### ✨ Features
+
+- Stream-preparation utilities: six ready-made functions for a
+  source's `transform` option — `coerceNumeric`, `normalizeTimestamp`,
+  `filterRows`, `labelShift`, `trackActivity`, and `stampPeriod`.
+  They get a raw feed ready for analytics. They fix numeric types,
+  normalize timestamps (including zone-less historian text), keep a
+  replay window, label shifts, track activity, and stamp period keys.
+  All are allocation-free per row and fail fast on bad config. See
+  the handbook's Stream Preparation page.
+
+### 🐛 Fixes
+
+- The change-point benchmarks now run from a repo clone. Their
+  900-point dataset ships at `benchmark/data/cpd-data.js`. It
+  previously sat outside the repository, so every benchmark script
+  failed on a missing import.
+
+### ⚙️ Updates
+
+- `benchmark/compare.js` now runs three rounds and reports the
+  medians. A single round swings by several percent, enough to flip
+  its overhead verdict.
+- The README benchmark table now lists the exact commands that
+  reproduce it. The server row reads ~1.1M messages/second — the
+  median under the three-round protocol.
+- The benchmark folder now holds only the performance benchmarks.
+  The development-era experiment harnesses left the repository
+  (idle-node NaN overhead, switch fan-out scaling, an MQTT source
+  baseline rig, a heap sampler). The `performance-tests/` folder of
+  early design studies left with them.
+
 # [The Quick Start becomes one command](https://github.com/winkjs/composer/releases/tag/0.4.2)
 ## Version 0.4.2 — August 12, 2026
 

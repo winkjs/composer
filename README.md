@@ -109,10 +109,14 @@ The numbers below come from a pure compute benchmark — every step a live messa
 | Configuration        | Throughput              |
 |----------------------|-------------------------|
 | Raspberry Pi 5       | ~100K messages/second   |
-| Modern server        | ~1.2M messages/second   |
+| MacBook Pro (M4 Max) | ~1.1M messages/second   |
 | Tracking 10K assets  | ~500K messages/second   |
 
+Both non-Pi rows were measured on a MacBook Pro (M4 Max) under Node.js 22. Every figure is single-core.
+
 Two configurations produced these numbers. The first two rows interleave 10 asset pipelines in random order — 4.5 million messages (10 pipelines × 900 data points × 500 iterations). The third row runs the same flow with 10,000 assets — 10,000 isolated states alive at once, 9 million messages, under 140 MB of heap. Pipelines are created dynamically as each asset first appears; timing uses `process.hrtime.bigint()`. The same pipeline [runs in your browser](https://composer.winkjs.org/docs/benchmark) — browser performance varies from native Node.js due to JIT differences.
+
+Reproduce them from a repo clone. `node benchmark/compare.js 10 500` reports the median of three rounds. `node benchmark/run-benchmark.js static 10000 1` gives the 10K-asset row.
 
 
 ## Built for the Real World

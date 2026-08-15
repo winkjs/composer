@@ -26,7 +26,7 @@
 import { createPipeline as createStaticPipeline } from './cpd-static-flow.js';
 import { createPipeline as createTunablePipeline } from './cpd-tunable-flow.js';
 import { createPipeline as createSwitchPipeline } from './cpd-switch-flow.js';
-import { data as rawData } from '../../data/cpd-data.js';
+import { data as rawData } from './data/cpd-data.js';
 
 // ============================================================================
 // CONFIGURATION

@@ -4,20 +4,26 @@
  * Runs both static and tunable flows, compares results.
  * Uses random interleaving to simulate realistic data arrival patterns.
  *
+ * Each flow runs several rounds (default 3) and the reported figures
+ * are the medians. A single run swings by several percent from GC and
+ * scheduler noise, which is enough to flip the overhead verdict; the
+ * median keeps the verdict stable.
+ *
  * Usage:
- *   node benchmark/compare.js [partitions] [iterations]
+ *   node benchmark/compare.js [partitions] [iterations] [rounds]
  *   node benchmark/compare.js 10 500
  */
 
 import { createPipeline as createStaticPipeline } from './cpd-static-flow.js';
 import { createPipeline as createTunablePipeline } from './cpd-tunable-flow.js';
-import { data as rawData } from '../../data/cpd-data.js';
+import { data as rawData } from './data/cpd-data.js';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 const PARTITIONS = parseInt( process.argv[ 2 ], 10 ) || 10;
 const ITERATIONS = parseInt( process.argv[ 3 ], 10 ) || 500;
+const ROUNDS = parseInt( process.argv[ 4 ], 10 ) || 3;
 const PARTITION_OFFSET = 2;
 const WARMUP_ITERATIONS = 5;
 
@@ -132,6 +138,37 @@ const runSingleBenchmark = async function ( name, createPipeline ) {
 };
 
 // ============================================================================
+// MEDIAN ACROSS ROUNDS
+// ============================================================================
+
+/**
+ * Median of a numeric array (mean of the middle pair for even lengths).
+ * @param {number[]} values - Numbers to take the median of
+ * @returns {number} The median
+ */
+const median = function ( values ) {
+    const sorted = values.slice().sort( ( a, b ) => ( a - b ) );
+    const mid = Math.floor( sorted.length / 2 );
+    return ( sorted.length % 2 === 1 ) ? sorted[ mid ] : ( ( sorted[ mid - 1 ] + sorted[ mid ] ) / 2 );
+};
+
+/**
+ * Collapse one flow's rounds into a single result via per-metric medians.
+ * @param {string} name - Flow name
+ * @param {Object[]} runs - Per-round results from runSingleBenchmark
+ * @returns {Object} Result shaped like a single run, holding the medians
+ */
+const medianResult = function ( name, runs ) {
+    return {
+        name,
+        durationMs: median( runs.map( ( r ) => r.durationMs ) ),
+        totalMessages: runs[ 0 ].totalMessages,
+        msgsPerSec: Math.round( median( runs.map( ( r ) => r.msgsPerSec ) ) ),
+        nsPerMsg: median( runs.map( ( r ) => r.nsPerMsg ) )
+    };
+};
+
+// ============================================================================
 // COMPARISON
 // ============================================================================
 const runComparison = async function () {
@@ -142,22 +179,27 @@ const runComparison = async function () {
     console.log( 'Configuration:' );
     console.log( `  Partitions:    ${PARTITIONS}` );
     console.log( `  Iterations:    ${ITERATIONS}` );
+    console.log( `  Rounds:        ${ROUNDS} (reported figures are medians)` );
     console.log( `  Data points:   ${rawData.length}` );
-    console.log( `  Total msgs:    ${( PARTITIONS * rawData.length * ITERATIONS ).toLocaleString()}` );
+    console.log( `  Total msgs:    ${( PARTITIONS * rawData.length * ITERATIONS ).toLocaleString()} per flow per round` );
     console.log( '' );
 
-    // Run static benchmark
-    process.stdout.write( 'Running static benchmark... ' );
-    const staticResult = await runSingleBenchmark( 'static', createStaticPipeline );
-    console.log( 'done.' );
+    // Alternate the two flows within each round, so slow machine drift
+    // (thermal, background load) hits both flows evenly.
+    const staticRuns = [];
+    const tunableRuns = [];
+    for ( let round = 1; round <= ROUNDS; round += 1 ) {
+        process.stdout.write( `Round ${round}/${ROUNDS}: static... ` );
+        staticRuns.push( await runSingleBenchmark( 'static', createStaticPipeline ) ); // eslint-disable-line no-await-in-loop
+        if ( global.gc ) global.gc();
+        process.stdout.write( 'tunable... ' );
+        tunableRuns.push( await runSingleBenchmark( 'tunable', createTunablePipeline ) ); // eslint-disable-line no-await-in-loop
+        if ( global.gc ) global.gc();
+        console.log( 'done.' );
+    }
 
-    // Force GC between runs
-    if ( global.gc ) global.gc();
-
-    // Run tunable benchmark
-    process.stdout.write( 'Running tunable benchmark... ' );
-    const tunableResult = await runSingleBenchmark( 'tunable', createTunablePipeline );
-    console.log( 'done.' );
+    const staticResult = medianResult( 'static', staticRuns );
+    const tunableResult = medianResult( 'tunable', tunableRuns );
 
     // Calculate overhead
     const throughputDiff = staticResult.msgsPerSec - tunableResult.msgsPerSec;
@@ -166,8 +208,13 @@ const runComparison = async function () {
 
     // Results
     console.log( '\n========================================' );
-    console.log( '  RESULTS' );
+    console.log( `  RESULTS (median of ${ROUNDS} rounds)` );
     console.log( '========================================\n' );
+
+    console.log( 'Per-round throughput (msg/s):' );
+    console.log( `  Static:  ${staticRuns.map( ( r ) => r.msgsPerSec.toLocaleString() ).join( ' / ' )}` );
+    console.log( `  Tunable: ${tunableRuns.map( ( r ) => r.msgsPerSec.toLocaleString() ).join( ' / ' )}` );
+    console.log( '' );
 
     console.log( '┌─────────────────┬───────────────────┬───────────────────┬────────────────┐' );
     console.log( '│ Metric          │ Static            │ Tunable           │ Overhead       │' );
@@ -188,7 +235,12 @@ const runComparison = async function () {
 
     console.log( '\n========================================\n' );
 
-    return { static: staticResult, tunable: tunableResult, overhead: { throughputPct, latencyDiff } };
+    return {
+        static: staticResult,
+        tunable: tunableResult,
+        overhead: { throughputPct, latencyDiff },
+        rounds: { static: staticRuns, tunable: tunableRuns }
+    };
 };
 
 // ============================================================================
