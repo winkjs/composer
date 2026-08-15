@@ -1,6 +1,6 @@
 {
     "name": "@winkjs/create-composer",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "Scaffold a runnable winkComposer streaming-intelligence project with one command: npm create @winkjs/composer",
     "keywords": [
         "create",

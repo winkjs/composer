@@ -32,6 +32,25 @@
   option always names its replacement.
 -->
 
+# [New projects start on composer 0.5.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.0)
+## Version 0.2.0 — August 15, 2026
+
+Bundled templates pin `@winkjs/composer` 0.5.0.
+
+### ⚙️ Updates
+
+- Scaffolded projects now install composer 0.5.0. That release adds
+  the six stream-preparation utilities for a source's `transform`
+  option.
+- Template bundling is opt-in. An example is packed only when its
+  `package.json` declares the `composer` block with a category from
+  the examples allowlist.
+- Size budgets guard the download: 150 KB per template, 2 MB for the
+  whole bundle. The pack fails loudly past either budget, and past
+  nine featured templates.
+- The README opens with a captured terminal run, so the npm page
+  shows what the command does before you run it.
+
 # [One command to a running flow](https://github.com/winkjs/composer/releases/tag/create-composer-0.1.0)
 ## Version 0.1.0 — August 12, 2026
 
