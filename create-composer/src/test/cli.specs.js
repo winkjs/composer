@@ -26,6 +26,7 @@ import {
     REAL_TEMPLATES_DIR,
     makeScratchDir,
     removeScratchDir,
+    readRealComposerPin,
     runBin,
     listFilesRelative
 } from './test-helpers.js';
@@ -50,7 +51,7 @@ describe( 'create-composer bin', function () {
         const result = await runBin( [ 'cli-flow' ], { cwd } );
         expect( result.code ).to.equal( 0 );
         expect( result.stdout ).to.include( 'Scaffolded the hello-flow template into cli-flow/' );
-        expect( result.stdout ).to.include( '@winkjs/composer 0.4.1' );
+        expect( result.stdout ).to.include( `@winkjs/composer ${await readRealComposerPin()}` );
 
         const templateDir = path.join( REAL_TEMPLATES_DIR, 'hello-flow' );
         const targetDir = path.join( cwd, 'cli-flow' );

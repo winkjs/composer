@@ -31,6 +31,7 @@ import {
     REAL_TEMPLATES_DIR,
     makeScratchDir,
     removeScratchDir,
+    readRealComposerPin,
     createCaptureStream,
     createScriptedInput,
     writeTemplateFixtureRoot
@@ -282,7 +283,9 @@ describe( 'run', function () {
         const io = createIo( { cwd } );
         expect( await run( [ 'real-flow' ], io ) ).to.equal( 0 );
         const written = JSON.parse( await fs.readFile( path.join( cwd, 'real-flow', 'package.json' ), 'utf8' ) );
-        expect( written.dependencies[ '@winkjs/composer' ] ).to.equal( '0.4.1' );
+        const expectedPin = await readRealComposerPin();
+        expect( expectedPin ).to.match( /^\d+\.\d+\.\d+$/ );
+        expect( written.dependencies[ '@winkjs/composer' ] ).to.equal( expectedPin );
     } );
 
 } );

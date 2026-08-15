@@ -35,6 +35,16 @@ const removeScratchDir = function ( dir ) {
     return fs.rm( dir, { recursive: true, force: true } );
 }; // removeScratchDir()
 
+// The composer pin the real hello-flow example carries. Specs that
+// scaffold from the real templates read the expected pin from here,
+// so a release bump of the example can never strand a stale literal
+// in an assertion.
+const readRealComposerPin = async function () {
+    const packagePath = path.join( REAL_EXAMPLES_DIR, 'hello-flow', 'package.json' );
+    const manifest = JSON.parse( await fs.readFile( packagePath, 'utf8' ) );
+    return manifest.dependencies[ '@winkjs/composer' ];
+}; // readRealComposerPin()
+
 // A writable that records everything written to it. `isTTY` and
 // `colors` shape how the code under test sees the "terminal".
 const createCaptureStream = function ( { isTTY = false, colors = false } = {} ) {
@@ -174,6 +184,7 @@ export {
     JSON_INDENT,
     makeScratchDir,
     removeScratchDir,
+    readRealComposerPin,
     createCaptureStream,
     createScriptedInput,
     writeExampleFixture,
