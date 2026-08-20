@@ -25,12 +25,12 @@
     "exports": {
         ".": "./src/composer.js"
     },
-    "scripts": {
+     "scripts": {
         "pretest": "npm run lint",
-        "test": "mocha --recursive 'src/**/*.specs.js' --ignore 'src/**/slow-*.specs.js'",
-        "test:hardening": "node --expose-gc node_modules/.bin/mocha --recursive 'src/**/slow-*.specs.js' --timeout 300000 --exit",
-        "test:coverage": "c8 --reporter=html mocha --recursive 'src/**/*.specs.js' --ignore 'src/**/slow-*.specs.js'",
-        "lint": "eslint 'src/**/*.js'",
+        "test": "mocha --recursive src --ignore \"src/**/slow-*.specs.js\"",
+        "test:hardening": "node --expose-gc node_modules/.bin/mocha --recursive \"src/**/slow-*.specs.js\" --timeout 300000 --exit",
+        "test:coverage": "c8 --reporter=html mocha --recursive src --ignore \"src/**/slow-*.specs.js\"",
+        "lint": "eslint src",
         "docs-serve": "docsify serve ./docs"
     },
     "repository": {
