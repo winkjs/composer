@@ -1,3 +1,9 @@
+# Normalize every text file to LF in the repository. Added 2026-08-22
+# after PR #5 arrived with package.json converted to CRLF end to end;
+# without this attribute, that merge would have flipped the file's
+# endings in the repo.
+* text=auto
+
 # Examples are copied byte for byte into the @winkjs/create-composer
 # templates at its pack time. Forcing LF here means a pack run on any
 # OS produces the same bytes the repository holds.
