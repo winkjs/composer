@@ -28,6 +28,29 @@
   always names its replacement.
 -->
 
+# [Lighter install](https://github.com/winkjs/composer/releases/tag/0.5.1)
+## Version 0.5.1 — August 22, 2026
+
+### 🐛 Fixes
+
+- The repository's npm scripts now run on Windows. cmd.exe does not
+  treat single quotes as quoting characters, so `npm test` and
+  `npm run lint` failed there. The glob patterns now use double
+  quotes, and the hardening script calls mocha's JS entry directly.
+  Thanks @neerajvelocis for finding and fixing this.
+
+### ⚙️ Updates
+
+- Installing `@winkjs/composer` no longer downloads the LevelDB
+  store. `classic-level` moved to development dependencies, and the
+  dormant `mqtt-store.js` module left the npm package. The module
+  was unreachable from the package and served no runtime feature.
+  Its native binaries and helper packages no longer land in your
+  `node_modules`.
+- The unused `docs-serve` script left the package scripts. The
+  documentation lives at composer.winkjs.org and in the in-repo
+  handbook.
+
 # [Stream preparation arrives](https://github.com/winkjs/composer/releases/tag/0.5.0)
 ## Version 0.5.0 — August 15, 2026
 

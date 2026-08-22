@@ -16,6 +16,6 @@
         "start": "node hello-flow.js"
     },
     "dependencies": {
-        "@winkjs/composer": "0.5.0"
+        "@winkjs/composer": "0.5.1"
     }
 }
