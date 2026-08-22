@@ -12,6 +12,12 @@
  * the composer-owned WAL successor that restores crash durability
  * truthfully — outside mqtt.js, where the connack race cannot reach it.
  *
+ * Packaging note (2026-08-22): this file is excluded from the npm
+ * package, and classic-level is a devDependency. Consumers cannot
+ * reach this module — the package exports only its root — and should
+ * not download native binaries for dormant code. The WAL successor
+ * promotes whatever store dependency it adopts back to dependencies.
+ *
  * DESIGN DECISIONS:
  *
  * 1. DUAL KEY STORAGE

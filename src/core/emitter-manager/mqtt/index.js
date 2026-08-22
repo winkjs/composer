@@ -41,7 +41,8 @@
  * ├── index.js                 # Module surface: id, schema, factory
  * ├── emitter.js               # The emitter implementation
  * ├── mqtt-store.js            # DORMANT LevelDB store (ADR-021; kept
- * │                            #   for the WAL successor, not wired)
+ * │                            #   for the WAL successor, not wired,
+ * │                            #   not shipped in the npm package)
  * ├── constants.js             # Shared configuration
  * └── test/                    # Spec files
  *
