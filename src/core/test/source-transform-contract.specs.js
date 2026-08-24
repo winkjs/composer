@@ -9,9 +9,13 @@
  * the same meaning:
  *
  * 1. `transform( msg )` runs as the last step before `onMessage`;
- *    whatever it returns is what the pipeline receives.
- * 2. Returning `null` or `undefined` drops the message. ONLY those two
- *    values mean drop — any other return, however falsy, is delivered.
+ *    a returned record object is what the pipeline receives.
+ * 2. Returning `null` or `undefined` drops the message — the
+ *    documented intentional drop, counted but never reported. Any
+ *    other non-record return (a scalar or an array, even a falsy
+ *    one like `0`) is an unusable record: that one message is
+ *    skipped with a classified `CALLBACK_FAILED` report. Nothing is
+ *    ever discarded silently except the two drop values.
  * 3. A throwing transform skips that one message, reports it as a
  *    classified `CALLBACK_FAILED` (yellow, one report per message,
  *    console.error fallback when no `onStatus` is supplied), and the
@@ -223,13 +227,17 @@ describe( 'source transform contract (cross-source)', function () {
                 expect( delivered.map( ( m ) => m.v ) ).to.deep.equal( [ 1, 3 ] );
             } );
 
-            it( 'delivers a falsy non-nullish return — only null/undefined mean drop', async function () {
-                const { delivered } = await source.run( zeroForSecond );
+            it( 'never drops a falsy scalar return silently — it is skipped with one CALLBACK_FAILED', async function () {
+                const { delivered, statuses } = await source.run( zeroForSecond );
 
-                expect( delivered.length ).to.equal( 3 );
-                expect( delivered[ 0 ].v ).to.equal( 1 );
-                expect( delivered[ 1 ] ).to.equal( 0 );
-                expect( delivered[ 2 ].v ).to.equal( 3 );
+                // Not delivered: `0` cannot carry pipeline fields.
+                expect( delivered.map( ( m ) => m.v ) ).to.deep.equal( [ 1, 3 ] );
+
+                // Not silent either: one classified report names the shape.
+                const reports = statuses.filter( ( s ) => s.error && s.error.code === 'CALLBACK_FAILED' );
+                expect( reports.length ).to.equal( 1 );
+                expect( reports[ 0 ].status ).to.equal( 'yellow' );
+                expect( reports[ 0 ].error.message ).to.include( 'transform returned a number' );
             } );
 
             it( 'skips a throwing transform, classifies CALLBACK_FAILED, and continues', async function () {

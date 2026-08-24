@@ -15,7 +15,8 @@
  * Message flow:
  *   MQTT broker → subscribe → extract userProperties → check dedup cache
  *       → if duplicate: skip, count (dedupHits — not a status event)
- *       → if new: decode payload → transform (optional) → onMessage(msg)
+ *       → if new: decode payload → shape guard + metadata attach
+ *         → transform (optional) → onMessage(msg)
  *
  * Status shape — the ADR-018 core, plus this adapter's additions:
  *   `{status: 'green' | 'yellow' | 'red', connected, phase,
@@ -34,14 +35,22 @@
  *   field. Thrown synchronously from the factory (ADR-018 fail-fast
  *   setup), never emitted.
  * - `DECODE_ERROR`           — runtime, yellow. Two faces: a per-record
- *   report for every payload that cannot be decoded (skip, classify,
- *   continue — ADR-018), and a health flip when the decode-error ratio over
- *   the last 1,000 messages exceeds 1 %.
+ *   report for every payload that does not yield a usable record, and
+ *   a health flip when the decode-error ratio over the last 1,000
+ *   messages exceeds 1 %. The per-record face covers more than parse
+ *   failures (a widening of ADR-018 §9's original wording): a payload
+ *   that decodes to a scalar, null, or a bare array is rejected too,
+ *   and so is a record the metadata attach cannot write to (a frozen
+ *   record from a custom codec). Skip, classify, continue — the
+ *   report names what arrived. A bare scalar landing here usually
+ *   means a too-wide topic subscription; narrow the topic filter.
  * - `CALLBACK_FAILED`        — runtime, yellow. The user's `transform`
- *   threw; that one message is skipped (counted in `skipped`) and the
- *   stream continues. Fix the transform function — the report names
- *   the topic and the thrown message. Uniform with the CSV source
- *   (transform contract, 2026-07-11).
+ *   threw, or returned a scalar or array where a record object was
+ *   needed; that one message is skipped (counted in `skipped`) and
+ *   the stream continues. Fix the transform function — the report
+ *   names the topic and the fault. A null/undefined return is NOT
+ *   this case: it is the documented intentional drop. Uniform with
+ *   the CSV source (transform contract, 2026-07-11).
  * - `SUBSCRIBE_FAILED`       — runtime, red. The broker refused the
  *   subscription (typically ACL). Red immediately: nothing retries a
  *   subscribe until the next reconnect, so a deaf-but-connected source
@@ -119,6 +128,7 @@ import {
 } from './constants.js';
 import { createDedupCache } from './dedup.js';
 import { createStatusReporter } from './status.js';
+import { isUsableRecord, describeShape } from '../record-shape.js';
 
 // ============================================================================
 // CLIENT FACTORY
@@ -133,7 +143,10 @@ import { createStatusReporter } from './status.js';
  * @param {string|string[]} config.topics - Topic(s) to subscribe to (supports wildcards)
  * @param {function} config.onMessage - Message handler: (message) => void
  * @param {Object} [config.codec] - Codec for payload decoding (default: JSON.parse)
- * @param {function} [config.transform] - Optional message transform: (msg) => transformedMsg
+ * @param {function} [config.transform] - Optional message transform:
+ *   (msg) => transformedMsg; return null/undefined to drop (counted in
+ *   skipped); a throw or a scalar/array return skips the message
+ *   (CALLBACK_FAILED) and the stream continues
  * @param {number} [config.dedupWindowMs=120000] - Dedup time bound (ADR-022)
  * @param {number} [config.dedupMaxEntries=65536] - Dedup count cap (ADR-022)
  * @param {string} [config.clientId] - MQTT client ID (auto-generated if omitted)
@@ -281,9 +294,16 @@ const createMQTTSourceClient = function ( config ) {
             reporter.idAccepted();
         }
 
-        // Decode payload. A payload that cannot be decoded is skipped,
+        // Decode payload, check its shape, and attach metadata — one
+        // guarded region. A failure anywhere in it is skipped,
         // classified, and reported per record (ADR-018) — the stream
-        // continues.
+        // continues. The shape guard is needed because a valid JSON
+        // document can be a scalar or a bare array; the attach is
+        // inside the guard because a codec can return a frozen record
+        // (or one with a non-writable _topic), and the assignment then
+        // throws in strict mode. decodeOk() runs only when the whole
+        // record survived, so the ring gets exactly one entry per
+        // message.
         let message;
         try {
             if ( codec && typeof codec.unpack === 'function' ) {
@@ -291,35 +311,54 @@ const createMQTTSourceClient = function ( config ) {
             } else {
                 message = JSON.parse( payload.toString() );
             }
+
+            if ( !isUsableRecord( message ) ) {
+                reporter.decodeFailed( `topic '${topic}': payload decoded to ${describeShape( message )} — a record object is required — message skipped` );
+                return;
+            }
+
+            // Attach metadata for downstream use
+            message._topic = topic;  // eslint-disable-line no-underscore-dangle
+            message._dedupId = dedupId;  // eslint-disable-line no-underscore-dangle
+
             reporter.decodeOk();
         } catch ( err ) {
             reporter.decodeFailed( `topic '${topic}': ${err.message} — message skipped` );
             return;
         }
 
-        // Attach metadata for downstream use
-        message._topic = topic;  // eslint-disable-line no-underscore-dangle
-        message._dedupId = dedupId;  // eslint-disable-line no-underscore-dangle
-
         // Apply optional transform. Guarded: a throw skips this one
         // message with a per-record CALLBACK_FAILED report and the
         // stream continues — user code must never propagate into
         // mqtt.js's event processing (transform contract, 2026-07-11).
+        // The return is held to the same record shape as the payload:
+        // null/undefined stays the intentional silent drop; a scalar
+        // or array return is one per-record CALLBACK_FAILED. The
+        // shape check runs only when a transform is configured, so
+        // the plain path pays nothing for it.
         let finalMessage;
-        try {
-            finalMessage = transform ? transform( message ) : message;
-        } catch ( err ) {
-            reporter.transformFailed( `topic '${topic}': transform threw: ${err.message} — message skipped` );
-            return;
+        if ( transform ) {
+            try {
+                finalMessage = transform( message );
+            } catch ( err ) {
+                reporter.transformFailed( `topic '${topic}': transform threw: ${err.message} — message skipped` );
+                return;
+            }
+            if ( finalMessage === null || finalMessage === undefined ) {
+                reporter.transformDropped();
+                return;
+            }
+            if ( !isUsableRecord( finalMessage ) ) {
+                reporter.transformFailed( `topic '${topic}': transform returned ${describeShape( finalMessage )} — a record object (or null/undefined to drop) is required — message skipped` );
+                return;
+            }
+        } else {
+            finalMessage = message;
         }
 
         // Deliver to handler
-        if ( finalMessage !== null && finalMessage !== undefined ) {
-            onMessage( finalMessage );
-            reporter.delivered();
-        } else {
-            reporter.transformDropped();
-        }
+        onMessage( finalMessage );
+        reporter.delivered();
     } );
 
     client.on( 'offline', function () {

@@ -40,18 +40,22 @@
  *   stream continues — per-record skip-classify-continue (ADR-018).
  *   A bad field VALUE in a parseable row is NOT a decode error;
  *   it passes through for the pipeline (`sanitize`) to judge.
- * - `CALLBACK_FAILED`    — the user's `transform` threw on one row. The
- *   row is skipped (counted in `skipped`), the throw is reported per
+ * - `CALLBACK_FAILED`    — the user's `transform` threw on one row, or
+ *   returned a scalar or array where a record object was needed. The
+ *   row is skipped (counted in `skipped`), the fault is reported per
  *   record with `status: 'yellow'`, and the stream continues — user
- *   code is never reported as a stream failure. Fix the transform
- *   function; the report names the data row. Uniform with the MQTT
- *   source (transform contract, 2026-07-11).
+ *   code is never reported as a stream failure. A null/undefined
+ *   return is NOT this case: it is the documented intentional drop.
+ *   Fix the transform function; the report names the data row.
+ *   Uniform with the MQTT source (transform contract, 2026-07-11).
  * - `READ_ERROR`         — stream read failed mid-stream (encoding error,
  *   truncation, decoder failure, etc.). Catch-all for non-open failures.
  */
 
 import fs from 'node:fs';
 import readline from 'node:readline';
+
+import { isUsableRecord, describeShape } from '../record-shape.js';
 
 /**
  * Detects delimiter from header line.
@@ -187,7 +191,8 @@ const checkRange = function ( rangeKey, wasInRange, startMsgId, endMsgId ) {
  * @param {boolean} [config.dynamicTyping=true] - Auto-cast values
  * @param {Function} [config.transform] - Optional row transform:
  *   ( row ) => row; return null/undefined to drop (counted in skipped);
- *   a throw skips the row (CALLBACK_FAILED) and the stream continues
+ *   a throw or a scalar/array return skips the row (CALLBACK_FAILED)
+ *   and the stream continues
  * @param {Function} [config.onStatus] - Status callback; completion arrives
  *   here as `{phase: 'complete', count, skipped}` (per ADR-018 there is
  *   no onComplete callback)
@@ -238,13 +243,14 @@ export const start = function ( config ) {
         }
     };
 
-    // A throwing transform is user code, never a stream failure: the
+    // A faulty transform is user code, never a stream failure: the
     // row is skipped with a per-record CALLBACK_FAILED report and the
     // stream continues (transform contract, uniform with the MQTT
     // source, 2026-07-11). Same two-party reporting rule as decode
-    // errors above.
-    const reportCallbackError = function ( dataRowIndex, err ) {
-        const message = `data row ${dataRowIndex}: transform threw: ${err.message} — row skipped`;
+    // errors above. `detail` names the fault (a throw, or an
+    // unusable return shape).
+    const reportCallbackError = function ( dataRowIndex, detail ) {
+        const message = `data row ${dataRowIndex}: ${detail} — row skipped`;
         if ( onStatus ) {
             onStatus( {
                 status: 'yellow',
@@ -258,18 +264,30 @@ export const start = function ( config ) {
     };
 
     // Run the user's transform under guard. Returns the transformed
-    // row; null when the transform threw (reported above) — the caller
-    // counts every null/undefined result as skipped.
+    // row; null when the row must be skipped — the caller counts
+    // every null/undefined result as skipped. Three skip faces: a
+    // throw (reported), a scalar or array return (reported — an
+    // unusable record), and a null/undefined return (the documented
+    // intentional drop, counted but never reported).
     const applyTransform = function ( row, dataRowIndex ) {
         if ( !transform ) {
             return row;
         }
+        let out;
         try {
-            return transform( row );
+            out = transform( row );
         } catch ( err ) {
-            reportCallbackError( dataRowIndex, err );
+            reportCallbackError( dataRowIndex, `transform threw: ${err.message}` );
             return null;
         }
+        if ( out === null || out === undefined ) {
+            return null;
+        }
+        if ( !isUsableRecord( out ) ) {
+            reportCallbackError( dataRowIndex, `transform returned ${describeShape( out )} — a record object (or null/undefined to drop) is required` );
+            return null;
+        }
+        return out;
     };
 
     // Holds the file stream so the stop function can close it if the
@@ -340,9 +358,10 @@ export const start = function ( config ) {
                 if ( inRange ) {
                     const msg = applyTransform( row, rowIndex );
 
-                    // Only null/undefined mean drop — any other return,
-                    // however falsy, is delivered (transform contract,
-                    // uniform with the MQTT source, 2026-07-11).
+                    // applyTransform maps every skip face (throw, bad
+                    // shape, intentional drop) to null/undefined; the
+                    // caller only counts (transform contract, uniform
+                    // with the MQTT source, 2026-07-11).
                     if ( msg !== null && msg !== undefined ) {
                         await onMessage( msg );
                         rowCount += 1;
