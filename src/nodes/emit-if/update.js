@@ -14,7 +14,7 @@
  * the two output gates share one failure model).
  */
 
-import { assertAnnotateReturn, emitStatusSignal, recordEmissionFailure, MALFORMED_RESULT_ERROR } from './helpers.js';
+import { assertAnnotateReturn, emitStatusSignal, deliverToEmitter } from './helpers.js';
 
 const update = function ( state, msg ) {
     // Always increment pass count for observability
@@ -44,19 +44,15 @@ const update = function ( state, msg ) {
             // Per the ADR-018 sink return contract, the emitter answers
             // { ok: true } on success or
             // { ok: false, error: { code, message } } on failure.
-            const result = state.emitter.publishNow( state.topic, data );
-
-            if ( result && result.ok ) {
+            // deliverToEmitter guards the call itself too: a THROWING
+            // emitter is the other face of a broken contract, recorded
+            // in the same adapter episode — a non-conforming adapter
+            // can neither fail silently nor throw out of the hot path.
+            if ( deliverToEmitter( state, data ) ) {
                 state.emissionCount += 1;
                 state.lastEmissionTime = Date.now();
                 // Recovery: a successful publish closes the failure episode.
                 if ( state.emitErrorLogged ) state.emitErrorLogged = false;
-            } else {
-                // A malformed result (no object at all, or ok:false with no
-                // error) counts as a failure with the static fallback error,
-                // so a non-conforming adapter can neither fail silently
-                // nor throw out of the hot path.
-                recordEmissionFailure( state, ( result && result.error ) || MALFORMED_RESULT_ERROR );
             }
         }
 

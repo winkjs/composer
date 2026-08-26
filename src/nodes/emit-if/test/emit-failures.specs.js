@@ -366,4 +366,81 @@ describe( 'Emit-If Node — publish failures', function () {
 
     } );
 
+    describe( 'update() - throwing emitter (contract violation)', function () {
+
+        // A conforming emitter never throws from publishNow — it answers
+        // { ok } (ADR-018). A throwing emitter is a broken adapter. The
+        // gate contains it in its own failure episode with the
+        // framework-substituted MALFORMED_RESULT code, so the fault is
+        // blamed on the adapter — never on the user's predicate, and
+        // never escaped into the pipeline where it would cost the whole
+        // message.
+
+        it( 'contains a throwing publishNow in the adapter episode — never a predicate error', function () {
+            const emitter = { publishNow: sinon.stub().throws( new Error( 'emitter exploded' ) ) };
+            const state = makeState( emitter );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            const run = function () {
+                update( state, { value: 1 } );
+            };
+            expect( run ).to.not.throw();
+            errorSpy.restore();
+
+            expect( state.emissionCount ).to.equal( 0 );
+            expect( state.emissionErrors ).to.equal( 1 );
+            expect( state.lastEmissionErrorCode ).to.equal( 'MALFORMED_RESULT' );
+            expect( state.lastEmissionError ).to.contain( 'threw' );
+            expect( state.lastEmissionError ).to.contain( 'emitter exploded' );
+            // Adapter fault, not user fault: the predicate episode is untouched.
+            expect( state.inErrorState ).to.equal( false );
+            expect( state.predicateErrorLogged ).to.equal( false );
+            expect( errorSpy.callCount ).to.equal( 1 );
+        } );
+
+        it( 'closes the throw-opened episode on the next successful publish', function () {
+            const emitter = { publishNow: sinon.stub() };
+            emitter.publishNow.onFirstCall().throws( new Error( 'emitter exploded' ) );
+            emitter.publishNow.returns( { ok: true } );
+            const state = makeState( emitter );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            update( state, { value: 1 } );
+            update( state, { value: 2 } );
+            errorSpy.restore();
+
+            expect( state.emissionErrors ).to.equal( 1 );
+            expect( state.emissionCount ).to.equal( 1 );
+            expect( state.emitErrorLogged ).to.equal( false );
+        } );
+
+        it( 'contains the combined path: predicate throw plus throwing emitter in the status signal', function () {
+            // Today's live double-throw: the predicate catch publishes a
+            // status signal, and a throwing emitter there escapes
+            // update() entirely. Both faults must be contained: the
+            // predicate opens its episode, the adapter fault lands in
+            // the emission episode.
+            const emitter = { publishNow: sinon.stub().throws( new Error( 'emitter exploded' ) ) };
+            const state = makeState( emitter, ( _msg ) => {
+                throw new Error( 'predicate boom' );
+            } );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            const run = function () {
+                update( state, { value: 1 } );
+            };
+            expect( run ).to.not.throw();
+            errorSpy.restore();
+
+            expect( state.inErrorState ).to.equal( true );
+            // The first* fields keep the episode-opening cause (the
+            // adapter fault from the signal publish); the last* fields
+            // then carry the predicate fault that triggered it.
+            expect( state.firstEmissionError ).to.contain( 'emitter exploded' );
+            expect( state.firstEmissionErrorCode ).to.equal( 'MALFORMED_RESULT' );
+            expect( state.lastEmissionError ).to.equal( 'predicate boom' );
+        } );
+
+    } );
+
 } );

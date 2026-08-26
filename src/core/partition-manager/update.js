@@ -105,6 +105,102 @@ const resolveTriggers = function ( stateStore, triggers, scopedFlow ) {
 }; // resolveTriggers()
 
 /**
+ * Builds one specialization's graph: node states, per-partition
+ * injections, and resolved triggers. Extracted from update() so the
+ * creation attempt is one guardable unit — a throw from any node's
+ * init, a missing module, or trigger resolution leaves no partial
+ * graph published (the caller publishes only on success).
+ *
+ * @param {Object} flow - Flow specification with nodeModules
+ * @param {Array} specs - This specialization's node specs
+ * @param {*} partitionId - Partition key, for topic/storage injection
+ * @param {*} specializationType - Specialization key, for topic injection
+ * @returns {Array} Initialized node state array with resolved triggers
+ */
+const buildGraph = function ( flow, specs, partitionId, specializationType ) {
+    const graph = new Array( specs.length );
+
+    for ( let k = 0; k < specs.length; k += 1 ) {
+        const spec = specs[ k ];
+
+        // Look up node module using nodeTypeToModule
+        const moduleName = nodeTypeToModule( spec.nodeType );
+        const node = flow.nodeModules[ moduleName ];
+
+        if ( !node ) {
+            throw new Error( `Node module '${moduleName}' not found for nodeType '${spec.nodeType}' at index ${k}` );
+        }
+
+        // Initialize node state
+        graph[ k ] = node.init( spec );
+
+        // ====================================================================
+        // MQTT TOPIC INJECTION IN EMIT IF NODE
+        // ====================================================================
+        // Precompute partition-specific MQTT topic at initialization to avoid
+        // reconstruction on every emission (performance optimization).
+        //
+        // Topic structure: edgeDeviceId/partitionId/specialization/insightType
+        // Example: "edge-001/sensor-42/temperature/changeDetected"
+        //
+        // The edgeDeviceId can encode ISA-95 hierarchy for Unified Namespace:
+        // - Simple: "edge-001"
+        // - UNS: "northwind/riverton/plant2/line3" (enterprise/site/area/cell)
+        //
+        // Enables powerful MQTT subscription patterns:
+        // - All from edge: "edge-001/#" or "northwind/riverton/#"
+        // - Specific sensor: "+/sensor-42/#"
+        if ( spec.nodeType === 'Emit If' && ( graph[ k ].target === 'mqtt' || graph[ k ].target === 'terminal' ) ) {
+            graph[ k ].topic = `${ENV_VARS.edgeDeviceId}/${partitionId}/${specializationType}/${graph[ k ].insightType}`;
+        }
+
+        // ====================================================================
+        // STORAGE AND PARTITION INJECTION IN PERSIST IF NODE
+        // ====================================================================
+        // Inject the storage singleton and partition ID at initialization.
+        // Storage reference is set during wiring (spec.storage), but partition
+        // ID is partition-specific and must be injected here.
+        //
+        // Zero hot-path overhead: All references are pre-resolved.
+        if ( spec.nodeType === 'Persist If' && spec.storage ) {
+            graph[ k ].storage = spec.storage;
+            graph[ k ].partitionId = partitionId;
+        }
+
+        // Resolve triggers with specialization-scoped data
+        graph[ k ].resolvedTriggers = resolveTriggers( graph, spec.triggers, {
+            specs: specs,
+            nodeModules: flow.nodeModules
+        });
+    } // for ( let k = 0; k < specs.length; k += 1 )
+
+    // Special handling for Controller nodes with nested triggers
+    // Only controller node allows FORWARD node control.
+    // That is why it has to be performed only after all nodes have
+    // been initialized.
+    for ( let k = 0; k < specs.length; k += 1 ) {
+        const spec = specs[ k ];
+        if ( spec.nodeType === 'Controller' && graph[ k ].logic ) {
+            // Resolve triggers for each condition in the logic array
+            for ( let j = 0; j < graph[ k ].logic.length; j += 1 ) {
+                graph[ k ].logic[ j ].resolvedTriggers = resolveTriggers(
+                    graph,
+                    graph[ k ].logic[ j ].triggers,
+                    {
+                        specs: specs,
+                        nodeModules: flow.nodeModules
+                    }
+                );
+            }
+            // No top-level resolvedTriggers for controller
+            graph[ k ].resolvedTriggers = null;
+        }
+    } // for ( let k = 0; k < specs.length; k += 1 )
+
+    return graph;
+};
+
+/**
  * Partition state manager's update with integrated trigger resolution and specialization support.
  * Resolved triggers are co-located with each node's state for zero hot-path overhead.
  *
@@ -163,85 +259,43 @@ const update = function ( composerState, msg ) {
             partitionSpecializations.set( partitionId, specializedGraphs );
         }
 
-        // Create state array sized for this specialization
-        graph = new Array( specs.length );
+        // Quarantine check. A partition with no failure history (a
+        // fresh entry, or a healthy one adding a new specialization)
+        // has no ledger and passes through. A quarantined partition's
+        // messages drop here, before any node init runs — creation is
+        // blocked, not re-attempted. One WeakMap read on this cold
+        // path; the healthy hot path (graph exists) never reaches it.
+        const priorLedger = composerState.creationFailures.get( specializedGraphs );
+        if ( priorLedger && priorLedger.quarantined ) {
+            return null;
+        }
 
-        for ( let k = 0; k < specs.length; k += 1 ) {
-            const spec = specs[ k ];
-
-            // Look up node module using nodeTypeToModule
-            const moduleName = nodeTypeToModule( spec.nodeType );
-            const node = flow.nodeModules[ moduleName ];
-
-            if ( !node ) {
-                throw new Error( `Node module '${moduleName}' not found for nodeType '${spec.nodeType}' at index ${k}` );
+        // Build the graph under the quarantine ledger. A throw anywhere
+        // in the build (a node init, trigger resolution, a missing
+        // module) counts one consecutive creation failure for this
+        // partition and RETHROWS — the dispatch guard owns reporting.
+        // At the shared threshold the partition is quarantined with one
+        // classified report. A successful build clears the ledger.
+        try {
+            graph = buildGraph( flow, specs, partitionId, specializationType );
+        } catch ( creationError ) {
+            let ledger = composerState.creationFailures.get( specializedGraphs );
+            if ( !ledger ) {
+                ledger = { failures: 0, quarantined: false };
+                composerState.creationFailures.set( specializedGraphs, ledger );
             }
-
-            // Initialize node state
-            graph[ k ] = node.init( spec );
-
-            // ====================================================================
-            // MQTT TOPIC INJECTION IN EMIT IF NODE
-            // ====================================================================
-            // Precompute partition-specific MQTT topic at initialization to avoid
-            // reconstruction on every emission (performance optimization).
-            //
-            // Topic structure: edgeDeviceId/partitionId/specialization/insightType
-            // Example: "edge-001/sensor-42/temperature/changeDetected"
-            //
-            // The edgeDeviceId can encode ISA-95 hierarchy for Unified Namespace:
-            // - Simple: "edge-001"
-            // - UNS: "northwind/riverton/plant2/line3" (enterprise/site/area/cell)
-            //
-            // Enables powerful MQTT subscription patterns:
-            // - All from edge: "edge-001/#" or "northwind/riverton/#"
-            // - Specific sensor: "+/sensor-42/#"
-            if ( spec.nodeType === 'Emit If' && ( graph[ k ].target === 'mqtt' || graph[ k ].target === 'terminal' ) ) {
-                graph[ k ].topic = `${ENV_VARS.edgeDeviceId}/${partitionId}/${specializationType}/${graph[ k ].insightType}`;
+            ledger.failures += 1;
+            if ( ledger.failures >= ENV_VARS.messageFailureThreshold ) {
+                ledger.quarantined = true;
+                console.error(
+                    `[PartitionManager] Partition '${partitionId}' quarantined after ` +
+                    `${ledger.failures} consecutive creation failures ` +
+                    `(last: ${creationError.message}). Later messages for it are dropped.`
+                );
             }
-
-            // ====================================================================
-            // STORAGE AND PARTITION INJECTION IN PERSIST IF NODE
-            // ====================================================================
-            // Inject the storage singleton and partition ID at initialization.
-            // Storage reference is set during wiring (spec.storage), but partition
-            // ID is partition-specific and must be injected here.
-            //
-            // Zero hot-path overhead: All references are pre-resolved.
-            if ( spec.nodeType === 'Persist If' && spec.storage ) {
-                graph[ k ].storage = spec.storage;
-                graph[ k ].partitionId = partitionId;
-            }
-
-            // Resolve triggers with specialization-scoped data
-            graph[ k ].resolvedTriggers = resolveTriggers( graph, spec.triggers, {
-                specs: specs,
-                nodeModules: flow.nodeModules
-            });
-        } // for ( let k = 0; k < specs.length; k += 1 )
-
-        // Special handling for Controller nodes with nested triggers
-        // Only controller node allows FORWARD node control.
-        // That is why it has to be performed only after all nodes have
-        // been initialized.
-        for ( let k = 0; k < specs.length; k += 1 ) {
-            const spec = specs[ k ];
-            if ( spec.nodeType === 'Controller' && graph[ k ].logic ) {
-                // Resolve triggers for each condition in the logic array
-                for ( let j = 0; j < graph[ k ].logic.length; j += 1 ) {
-                    graph[ k ].logic[ j ].resolvedTriggers = resolveTriggers(
-                        graph,
-                        graph[ k ].logic[ j ].triggers,
-                        {
-                            specs: specs,
-                            nodeModules: flow.nodeModules
-                        }
-                    );
-                }
-                // No top-level resolvedTriggers for controller
-                graph[ k ].resolvedTriggers = null;
-            }
-        } // for ( let k = 0; k < specs.length; k += 1 )
+            throw creationError;
+        }
+        composerState.creationFailures.delete( specializedGraphs );
 
         specializedGraphs[ specializationType ] = graph;
     }

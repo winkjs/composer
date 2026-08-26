@@ -18,6 +18,15 @@ const init = function ( flow ) {
     // rejection count. See ADR-016.
     composerState.totalPartitionsCreated = 0;
 
+    // Per-partition creation-failure ledgers (ADR-018 fault
+    // containment): keyed by each partition's specializedGraphs
+    // object, holding { failures, quarantined }. A WeakMap on object
+    // identity — specialization names are user-controlled strings, so
+    // no in-object key is collision-safe, and the ledger dies with its
+    // partition entry automatically. Entries allocate only when a
+    // creation fails; the healthy hot path never touches this.
+    composerState.creationFailures = new WeakMap();
+
     // Yield state (ADR-024): update() sets `yieldPending` when the time
     // threshold is crossed; the flow runtime clears it and takes the
     // event-loop breath after running the message's pipeline.

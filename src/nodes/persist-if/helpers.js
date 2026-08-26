@@ -108,4 +108,58 @@ const recordPersistFailure = function ( state, error ) {
     }
 }; // recordPersistFailure()
 
-export { assertAnnotateReturn, sweepAnnotateKeys, recordPersistFailure, MALFORMED_RESULT_ERROR };
+/**
+ * Substituted error for a storage adapter that THREW from write() —
+ * the other face of a broken return contract (ADR-018: the hot path
+ * never throws; a sink answers { ok }). Same code as the
+ * malformed-result face: the remediation is identical (fix the
+ * non-conforming adapter), and the message names the difference.
+ * Allocates on the failure path only. Mirrors emit-if.
+ *
+ * @param {Error} error - The thrown value
+ * @returns {Object} `{ code, message }` for the failure episode
+ */
+const thrownSinkError = function ( error ) {
+    return {
+        code: 'MALFORMED_RESULT',
+        message: `storage write threw instead of returning { ok, error? }: ${error.message}`
+    };
+}; // thrownSinkError()
+
+/**
+ * Writes one record to the wired storage with the sink call fully
+ * guarded. A conforming adapter never throws; a throwing one is a
+ * broken adapter, recorded in the persist episode — never escaped
+ * into the pipeline where it would also cost the message's other
+ * outputs. Returns true only on `{ ok: true }`. Mirrors emit-if's
+ * deliverToEmitter.
+ *
+ * @param {Object} state - Node state containing storage, insightType,
+ *   and partitionId
+ * @param {Object} record - Record to persist
+ * @returns {boolean} True when the storage accepted the record
+ */
+const writeToStorage = function ( state, record ) {
+    try {
+        const result = state.storage.write(
+            state.insightType,
+            record,
+            state.partitionId
+        );
+        if ( result && result.ok ) {
+            return true;
+        }
+        recordPersistFailure( state, ( result && result.error ) || MALFORMED_RESULT_ERROR );
+    } catch ( sinkError ) {
+        recordPersistFailure( state, thrownSinkError( sinkError ) );
+    }
+    return false;
+}; // writeToStorage()
+
+export {
+    assertAnnotateReturn,
+    sweepAnnotateKeys,
+    recordPersistFailure,
+    writeToStorage,
+    MALFORMED_RESULT_ERROR
+};

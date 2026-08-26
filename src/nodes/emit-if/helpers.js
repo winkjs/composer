@@ -59,6 +59,48 @@ const recordEmissionFailure = function ( state, error ) {
 }; // recordEmissionFailure()
 
 /**
+ * Substituted error for an emitter that THREW from publishNow — the
+ * other face of a broken return contract (ADR-018: the hot path never
+ * throws; a sink answers { ok }). Same code as the malformed-result
+ * face: the remediation is identical (fix the non-conforming adapter),
+ * and the message names the difference. Allocates on the failure path
+ * only.
+ *
+ * @param {Error} error - The thrown value
+ * @returns {Object} `{ code, message }` for the failure episode
+ */
+const thrownSinkError = function ( error ) {
+    return {
+        code: 'MALFORMED_RESULT',
+        message: `emitter publishNow threw instead of returning { ok, error? }: ${error.message}`
+    };
+}; // thrownSinkError()
+
+/**
+ * Delivers one payload to the wired emitter with the sink call fully
+ * guarded. A conforming emitter never throws; a throwing one is a
+ * broken adapter, recorded in the emission episode — never blamed on
+ * the user's predicate, and never escaped into the pipeline where it
+ * would cost the whole message. Returns true only on `{ ok: true }`.
+ *
+ * @param {Object} state - Node state containing emitter and topic
+ * @param {Object} data - Payload to publish
+ * @returns {boolean} True when the emitter accepted the payload
+ */
+const deliverToEmitter = function ( state, data ) {
+    try {
+        const result = state.emitter.publishNow( state.topic, data );
+        if ( result && result.ok ) {
+            return true;
+        }
+        recordEmissionFailure( state, ( result && result.error ) || MALFORMED_RESULT_ERROR );
+    } catch ( sinkError ) {
+        recordEmissionFailure( state, thrownSinkError( sinkError ) );
+    }
+    return false;
+}; // deliverToEmitter()
+
+/**
  * Emits disable/enable status signal to the wired emitter. Published
  * unconditionally (no connectivity pre-check per ADR-018 — during a
  * disconnect the signal is still accepted into the emitter's in-process
@@ -80,15 +122,17 @@ const emitStatusSignal = function ( state, disable, reason ) {
         $timestamp: Date.now()
     };
 
-    // Guarded read: this path runs inside update()'s catch block, so a
-    // TypeError here would escape update() and kill the pipeline. A
-    // malformed result counts as a failure with the static fallback
-    // error instead.
-    const result = state.emitter.publishNow( state.topic, signal );
-    if ( result && result.ok ) {
-        return;
-    }
-    recordEmissionFailure( state, ( result && result.error ) || MALFORMED_RESULT_ERROR );
+    // Fully guarded delivery: this path can run inside update()'s
+    // catch block, so a throwing emitter here would otherwise escape
+    // update() and kill the pipeline. deliverToEmitter contains both
+    // faces of a broken adapter — a throw and a malformed result.
+    deliverToEmitter( state, signal );
 }; // emitStatusSignal()
 
-export { assertAnnotateReturn, emitStatusSignal, recordEmissionFailure, MALFORMED_RESULT_ERROR };
+export {
+    assertAnnotateReturn,
+    emitStatusSignal,
+    recordEmissionFailure,
+    deliverToEmitter,
+    MALFORMED_RESULT_ERROR
+};

@@ -25,6 +25,10 @@
  *   dedupHits, dedupMisses, dedupBypassed, dedupCacheSize}`, emitted
  *   on every tick() (the client's 1 Hz cadence) and on every health
  *   transition. Consumers diff snapshots; nothing is ever reset.
+ *   `delivered` means handed to the flow: a message the pipeline
+ *   later failed on still counts here. Failure visibility belongs
+ *   to the flow's MESSAGE_HANDLER_FAILED reports (ADR-018), not to
+ *   this counter.
  *
  * Health rules (evaluated on events and on tick):
  * - RED    — a subscribe failure (connected but deaf — no retry

@@ -90,6 +90,7 @@ describe( 'env-vars', function () {
             expect( ENV_VARS ).to.have.property( 'questdbUser' );
             expect( ENV_VARS ).to.have.property( 'questdbPassword' );
             expect( ENV_VARS ).to.have.property( 'maxPartitionsAllowed' );
+            expect( ENV_VARS ).to.have.property( 'messageFailureThreshold' );
         } );
 
         it( 'nodeEnv defaults to test in test environment', async function () {
@@ -243,6 +244,54 @@ describe( 'env-vars', function () {
             const result = await runWithEnv( {
                 NODE_ENV: 'test',
                 COMPOSER_MAX_PARTITIONS_ALLOWED: 'abc'
+            } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'Must be positive integer' );
+        } );
+
+    } );
+
+    // ========================================================================
+    // COMPOSER_MESSAGE_FAILURE_THRESHOLD VALIDATION (ADR-018)
+    // ========================================================================
+
+    describe( 'messageFailureThreshold validator', function () {
+
+        it( 'defaults to 5 when COMPOSER_MESSAGE_FAILURE_THRESHOLD is unset', async function () {
+            const { ENV_VARS } = await import( '../env-vars.js' );
+            expect( ENV_VARS.messageFailureThreshold ).to.equal( 5 );
+        } );
+
+        it( 'accepts valid COMPOSER_MESSAGE_FAILURE_THRESHOLD', async function () {
+            const result = await runWithEnv( {
+                NODE_ENV: 'test',
+                COMPOSER_MESSAGE_FAILURE_THRESHOLD: '20'
+            } );
+            expect( result.code ).to.equal( 0 );
+        } );
+
+        it( 'rejects zero COMPOSER_MESSAGE_FAILURE_THRESHOLD', async function () {
+            const result = await runWithEnv( {
+                NODE_ENV: 'test',
+                COMPOSER_MESSAGE_FAILURE_THRESHOLD: '0'
+            } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'Must be positive integer' );
+        } );
+
+        it( 'rejects negative COMPOSER_MESSAGE_FAILURE_THRESHOLD', async function () {
+            const result = await runWithEnv( {
+                NODE_ENV: 'test',
+                COMPOSER_MESSAGE_FAILURE_THRESHOLD: '-1'
+            } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'Must be positive integer' );
+        } );
+
+        it( 'rejects non-numeric COMPOSER_MESSAGE_FAILURE_THRESHOLD', async function () {
+            const result = await runWithEnv( {
+                NODE_ENV: 'test',
+                COMPOSER_MESSAGE_FAILURE_THRESHOLD: 'abc'
             } );
             expect( result.code ).to.equal( 1 );
             expect( result.stderr ).to.include( 'Must be positive integer' );

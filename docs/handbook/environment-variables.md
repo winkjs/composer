@@ -16,6 +16,7 @@ Most of these have an equivalent option you can pass directly in a flow — the 
 | `EDGE_DEVICE_ID` | machine hostname | Device identity; used in MQTT topics, so it must be topic-safe (letters, digits, `_ - / .`) |
 | `NODE_ENV` | `development` | Run mode: `development`, `production`, or `test` |
 | `COMPOSER_MAX_PARTITIONS_ALLOWED` | `10000` | Cap on isolated per-asset pipelines |
+| `COMPOSER_MESSAGE_FAILURE_THRESHOLD` | `5` | Consecutive message failures before a flow stops — and before a repeatedly failing partition is quarantined. See [Resilience → When a node throws](./resilience.md#when-a-node-throws) |
 | `SHUTDOWN_FORCE_TIMEOUT_MS` | `30000` | Deadline for graceful shutdown before a forced exit; matches Kubernetes' 30-second default |
 | `YIELD_TIME_THRESHOLD_MS` | `500` | Longest stretch the pipeline runs before offering the event loop a breath; `Infinity` disables yielding. Per-flow override: [`.yield()`](./nodes/configuration.md#yield) |
 

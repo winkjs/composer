@@ -283,4 +283,65 @@ describe( 'Persist-If Node — write failures', function () {
 
     } );
 
+    describe( 'update() - throwing storage (contract violation)', function () {
+
+        // A conforming storage adapter never throws from write() — it
+        // answers { ok } (ADR-018). A throwing adapter is a broken one.
+        // The gate contains it in its own failure episode with the
+        // framework-substituted MALFORMED_RESULT code, so the fault is
+        // blamed on the adapter — never escaped into the pipeline where
+        // it would also cost the message's other outputs.
+
+        const makeThrowingState = function ( writeStub ) {
+            const state = init( {
+                nodeType: 'Persist If',
+                name: 'throwGuard',
+                predicate: ( _msg ) => true,
+                insightType: 'temperature',
+                storageName: 'testStorage'
+            } );
+            state.storage = { write: writeStub };
+            return state;
+        };
+
+        it( 'contains a throwing write in the adapter episode — never a pipeline throw', function () {
+            const writeStub = sinon.stub().throws( new Error( 'storage exploded' ) );
+            const state = makeThrowingState( writeStub );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            const run = function () {
+                update( state, { value: 1 } );
+            };
+            expect( run ).to.not.throw();
+            errorSpy.restore();
+
+            expect( state.persistCount ).to.equal( 0 );
+            expect( state.persistErrors ).to.equal( 1 );
+            expect( state.lastPersistErrorCode ).to.equal( 'MALFORMED_RESULT' );
+            expect( state.lastPersistError ).to.contain( 'threw' );
+            expect( state.lastPersistError ).to.contain( 'storage exploded' );
+            // Adapter fault, not user fault: the predicate episode is untouched.
+            expect( state.inErrorState ).to.equal( false );
+            expect( state.predicateErrorLogged ).to.equal( false );
+            expect( errorSpy.callCount ).to.equal( 1 );
+        } );
+
+        it( 'closes the throw-opened episode on the next successful write', function () {
+            const writeStub = sinon.stub();
+            writeStub.onFirstCall().throws( new Error( 'storage exploded' ) );
+            writeStub.returns( { ok: true } );
+            const state = makeThrowingState( writeStub );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            update( state, { value: 1 } );
+            update( state, { value: 2 } );
+            errorSpy.restore();
+
+            expect( state.persistErrors ).to.equal( 1 );
+            expect( state.persistCount ).to.equal( 1 );
+            expect( state.writeErrorLogged ).to.equal( false );
+        } );
+
+    } );
+
 } );

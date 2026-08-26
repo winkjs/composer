@@ -24,6 +24,14 @@ const ENV_VARS = {
     // Partition Management (see ADR-016)
     maxPartitionsAllowed: parseInt( process.env.COMPOSER_MAX_PARTITIONS_ALLOWED ?? '10000', 10 ),
 
+    // Fault containment (ADR-018 — the flow runtime owns per-message
+    // dispatch failure). This many CONSECUTIVE message failures stop
+    // the flow in the terminal 'errored' phase; one success resets
+    // the count. The same value caps a partition's consecutive
+    // creation failures before it is quarantined. A run of failures
+    // means something systemic; one bad message costs only itself.
+    messageFailureThreshold: parseInt( process.env.COMPOSER_MESSAGE_FAILURE_THRESHOLD ?? '5', 10 ),
+
     // STORAGE_DIR retired 2026-07-09 — the emitter's LevelDB store
     // (removed by ADR-021) was the only thing that ever wrote there.
     // A future WAL adapter defines its own disk-path configuration.
@@ -186,6 +194,7 @@ const validationConfig = [
     { field: 'edgeDeviceId', validator: validators.edgeDeviceId },
     { field: 'nodeEnv', validator: validators.nodeEnv },
     { field: 'maxPartitionsAllowed', validator: validators.positiveInt, originalEnv: 'COMPOSER_MAX_PARTITIONS_ALLOWED' },
+    { field: 'messageFailureThreshold', validator: validators.positiveInt, originalEnv: 'COMPOSER_MESSAGE_FAILURE_THRESHOLD' },
     { field: 'yieldTimeThresholdMs', validator: validators.nonNegativeNumberOrInfinity, originalEnv: 'YIELD_TIME_THRESHOLD_MS' },
     { field: 'mqttBrokerUrl', validator: validators.mqttUrl, label: 'MQTT_BROKER_URL' },
     { field: 'mqttMsgExpiry', validator: validators.mqttMsgExpiry, originalEnv: 'MQTT_MSG_EXPIRY' },

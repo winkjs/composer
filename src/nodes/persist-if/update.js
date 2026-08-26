@@ -10,7 +10,7 @@
  * it to the storage buffer if the predicate passed.
  */
 
-import { assertAnnotateReturn, sweepAnnotateKeys, recordPersistFailure, MALFORMED_RESULT_ERROR } from './helpers.js';
+import { assertAnnotateReturn, sweepAnnotateKeys, writeToStorage } from './helpers.js';
 
 /**
  * Process incoming message.
@@ -78,31 +78,22 @@ const update = function ( state, msg ) {
 
     // Write to storage if predicate returned true
     if ( shouldPersist ) {
-        // Build record for storage (zero-alloc: storage.write handles it).
         // storage.write() is synchronous per ADR-013; the actual I/O happens
         // asynchronously via the storage adapter's background flush.
         // Per the ADR-018 sink return contract, the storage answers
         // { ok: true } on success or
         // { ok: false, error: { code, message } } on failure.
-        const result = state.storage.write(
-            state.insightType,
-            record,
-            state.partitionId
-        );
-
-        if ( result && result.ok ) {
+        // writeToStorage guards the call itself too: a THROWING adapter
+        // is the other face of a broken contract, recorded in the same
+        // adapter episode — a non-conforming adapter can neither fail
+        // silently nor throw out of the hot path.
+        if ( writeToStorage( state, record ) ) {
             state.persistCount += 1;
             // Wall-clock marker of the last successful write (post-mortem
             // reads only, like the first* error fields).
             state.lastPersistTime = Date.now();
             // Recovery: a successful write closes the failure episode.
             if ( state.writeErrorLogged ) state.writeErrorLogged = false;
-        } else {
-            // A malformed result (no object at all, or ok:false with no
-            // error) counts as a failure with the static fallback error,
-            // so a non-conforming adapter can neither fail silently
-            // nor throw out of the hot path.
-            recordPersistFailure( state, ( result && result.error ) || MALFORMED_RESULT_ERROR );
         }
     }
 

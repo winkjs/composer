@@ -156,10 +156,16 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
     // caller that ignores the Promise (a push source such as the MQTT
     // subscriber) can never see messages update a partition out of order.
     //
-    // The caller contract (ADR-013) is unchanged: `undefined` on the hot
-    // path, a Promise on the yield tick; `await` works with both, and the
-    // Promise never rejects — a pipeline fault throws synchronously here,
-    // the same as on every other message.
+    // The caller contract (ADR-013) is unchanged in shape: `undefined` on
+    // the hot path, a Promise on the yield tick; `await` works with both,
+    // and the Promise never rejects. Fault delivery depends on the flow
+    // kind (ADR-018 — the runtime owns per-message dispatch failure). With
+    // a source present, a pipeline fault is contained here: the message is
+    // skipped, one red MESSAGE_HANDLER_FAILED travels the status channel,
+    // and a run of consecutive failures stops the flow in the terminal
+    // 'errored' phase. A headless flow (no source) has no status channel,
+    // so the fault throws synchronously to the caller — the headless
+    // driver's catch and `failed` counter are that path's containment.
     //
     // The default threshold comes from YIELD_TIME_THRESHOLD_MS (500 ms);
     // `.yield( { threshold } )` overrides it per flow, and Infinity turns
@@ -187,26 +193,10 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
 
     const partitionState = composerState.partitionState;
 
-    const processMessage = function ( msg ) {
-        const graph = partitionManager.update( composerState, msg );
-
-        // Process first — pmUpdate always returns the graph synchronously
-        // (or null for a dropped message, which never sets the flag).
-        if ( graph ) {
-            runPipeline( graph, msg );
-        }
-
-        // Breathe after (yield tick, rare): hand the awaiting caller a
-        // Promise that resolves once the event loop has had a full turn.
-        if ( partitionState.yieldPending ) {
-            partitionState.yieldPending = false;
-            return new Promise( ( resolve ) => {
-                setImmediate( resolve );
-            } );
-        }
-
-        return undefined;
-    };
+    // The dispatch function itself is defined AFTER the shutdown
+    // closure below — its escalation path drains the flow, so it
+    // needs `shutdown` in scope. No message can arrive before then:
+    // the source only receives processMessage at start, further down.
 
     // 6. Setup the flow's shutdown closure.
     //
@@ -311,6 +301,93 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         return shutdownPromise;
     };
 
+    // Run the drain with its rejection observed. Both fire-and-forget
+    // call sites use this: the natural-completion trigger and the
+    // consecutive-failure escalation. drainAll rethrows the first
+    // stage error; with no awaiting caller that rejection would end
+    // the process as unhandled. The classified log keeps the loss
+    // loud without the crash, and a caller that later awaits
+    // `handle.shutdown()` still receives the memoized rejection.
+    const observedShutdown = function () {
+        shutdown().catch( function ( err ) {
+            console.error(
+                `WinkComposer/flow '${flowName}': shutdown failed ` +
+                `[${( err && err.code ) || 'UNKNOWN'}]: ${( err && err.message ) || String( err )}`
+            );
+        } );
+    };
+
+    // ── Message dispatch with fault containment (ADR-018: the flow
+    // runtime owns per-message dispatch failure at this chokepoint) ──
+    // All containment state is flow-scoped policy, kept in this
+    // closure beside the shutdown state — never on the handle-exposed
+    // composerState. `reportDispatchFailure` stays null for a headless
+    // flow (no source); the source block below assigns it before the
+    // source ever receives processMessage.
+    let consecutiveFailures = 0;
+    let errored = false;
+    let erroredDropReported = false;
+    let reportDispatchFailure = null;
+
+    const processMessage = function ( msg ) {
+        // Terminal 'errored': drop everything. The first drop is
+        // reported once, classified; a flood of per-drop reports
+        // would bury the one terminal red that matters.
+        if ( errored ) {
+            if ( !erroredDropReported ) {
+                erroredDropReported = true;
+                console.error(
+                    `WinkComposer/flow '${flowName}': flow is in the terminal 'errored' ` +
+                    'phase [MESSAGE_HANDLER_FAILED] — dropping this and all further messages'
+                );
+            }
+            return undefined;
+        }
+
+        // Process first — pmUpdate always returns the graph synchronously
+        // (or null for a dropped message, which never sets the flag).
+        // The guard covers pmUpdate too: a first message for a new asset
+        // runs every node's init lazily, so an init throw surfaces here.
+        try {
+            const graph = partitionManager.update( composerState, msg );
+            if ( graph ) {
+                runPipeline( graph, msg );
+                // Reset on success only — a dropped message is neither
+                // a success nor a failure. Branch-guarded so the
+                // healthy steady state never writes.
+                if ( consecutiveFailures !== 0 ) {
+                    consecutiveFailures = 0;
+                }
+            }
+        } catch ( err ) {
+            if ( reportDispatchFailure === null ) {
+                // Headless: the caller is the reporting channel — the
+                // driver's catch and `failed` counter own the fault.
+                throw err;
+            }
+            consecutiveFailures += 1;
+            const isTerminal = consecutiveFailures >= ENV_VARS.messageFailureThreshold;
+            reportDispatchFailure( err, isTerminal );
+            if ( isTerminal ) {
+                errored = true;
+                observedShutdown();
+            }
+        }
+
+        // Breathe after (yield tick, rare): hand the awaiting caller a
+        // Promise that resolves once the event loop has had a full turn.
+        // Runs on the catch path too — pmUpdate may have set the flag
+        // before the pipeline threw, and the breath must not be lost.
+        if ( partitionState.yieldPending ) {
+            partitionState.yieldPending = false;
+            return new Promise( ( resolve ) => {
+                setImmediate( resolve );
+            } );
+        }
+
+        return undefined;
+    };
+
     // 7. Start source (singleton).
     if ( runtime.source ) {
         const { adapter, config } = runtime.source;
@@ -326,8 +403,9 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         // When the source signals `phase: 'complete'`:
         //   1. Resolve the whenComplete Promise so callers can stop
         //      waiting for natural completion.
-        //   2. Trigger the drain (`shutdown()` is fire-and-forget —
-        //      it's concurrent-safe and stages have their own timeouts).
+        //   2. Trigger the drain via observedShutdown — fire-and-forget
+        //      with its rejection logged; shutdown is concurrent-safe
+        //      and stages have their own timeouts.
         const userOnStatus = config.onStatus;
         const wrappedOnStatus = function ( s ) {
             if ( userOnStatus ) {
@@ -345,7 +423,36 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
             }
             if ( s && s.phase === 'complete' ) {
                 resolveWhenComplete();
-                shutdown();
+                observedShutdown();
+            }
+        };
+
+        // The dispatch guard's reporting channel. Routing through
+        // wrappedOnStatus keeps the two-party rule: a flow without a
+        // user handler still gets the classified console fallback for
+        // red statuses. The wrapper call is itself guarded — the
+        // user's onStatus is user code, and a throw from it must not
+        // escape back into the dispatch catch that called us.
+        reportDispatchFailure = function ( err, isTerminal ) {
+            const payload = {
+                status: 'red',
+                connected: true,
+                phase: isTerminal ? 'errored' : 'running',
+                error: {
+                    code: 'MESSAGE_HANDLER_FAILED',
+                    message: isTerminal ?
+                        `${ENV_VARS.messageFailureThreshold} consecutive message failures — ` +
+                        `flow stopped. Last: ${err.message}` :
+                        `${err.message} — message skipped`
+                }
+            };
+            try {
+                wrappedOnStatus( payload );
+            } catch ( statusErr ) {
+                console.error(
+                    `WinkComposer/flow '${flowName}': onStatus threw while reporting ` +
+                    `MESSAGE_HANDLER_FAILED: ${statusErr.message}`
+                );
             }
         };
         stopSource = adapter.start( {
@@ -362,10 +469,12 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
             onShutdown: shutdown
         } );
     } else {
-
-        /* c8 ignore next 3 -- defensive: the flow API rejects empty flows before run() is called, so a flow without a source cannot reach this branch via the public API. Kept as a safety net for direct runFlow() callers. */
-        // No source means "nothing to wait for" — resolve immediately
-        // so any `await handle.whenComplete()` is a no-op.
+        // The headless branch: a flow with no source is a documented
+        // DSL path (the headless driver feeds it). No source means
+        // "nothing to wait for" — resolve immediately so any
+        // `await handle.whenComplete()` is a no-op. And with no
+        // status channel, `reportDispatchFailure` stays null, so the
+        // dispatch guard rethrows pipeline faults to the caller.
         resolveWhenComplete();
     }
 

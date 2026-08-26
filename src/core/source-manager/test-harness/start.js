@@ -37,7 +37,14 @@
  *                        class. Thrown synchronously from start().
  * - `GENERATOR_ERROR`  — runtime; a downstream `onMessage` call
  *                        threw inside the loop. Routed through
- *                        onStatus, not re-thrown.
+ *                        onStatus, not re-thrown. Narrowed by the
+ *                        flow's dispatch guard (ADR-018): in a
+ *                        flow, a pipeline fault is contained at the
+ *                        flow's own chokepoint and reported as
+ *                        MESSAGE_HANDLER_FAILED, so it never
+ *                        reaches this loop. The code remains live
+ *                        for direct callers of start() whose own
+ *                        onMessage throws.
  *
  * Design decisions date from 2026-04-29. The `messageTemplate` shape
  * is enforced at startup by `validate.js`; the per-field spec shape

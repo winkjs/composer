@@ -25,6 +25,11 @@
  *                           malformed, transform-dropped, or
  *                           transform-failed. For in-range rows,
  *                           count + skipped covers every data row read.
+ *                           `count` means handed to the flow: a row the
+ *                           pipeline later failed on still counts here.
+ *                           Failure visibility belongs to the flow's
+ *                           MESSAGE_HANDLER_FAILED reports (ADR-018),
+ *                           not to this counter.
  *     `phase: 'errored'`  — terminal red: the run loop failed and the
  *                           stream is dead (the ADR-018 two-tier rule).
  *     `phase: 'stopped'`  — forced stop exceeded its time budget
@@ -50,6 +55,12 @@
  *   Uniform with the MQTT source (transform contract, 2026-07-11).
  * - `READ_ERROR`         — stream read failed mid-stream (encoding error,
  *   truncation, decoder failure, etc.). Catch-all for non-open failures.
+ *   Narrowed by the flow's dispatch guard (ADR-018): in a flow, a
+ *   pipeline fault is contained at the flow's own chokepoint and
+ *   reported as MESSAGE_HANDLER_FAILED, so it never surfaces here and
+ *   never ends the replay. The code remains live for genuine stream
+ *   failures, and for direct callers of start() whose own onMessage
+ *   throws.
  */
 
 import fs from 'node:fs';

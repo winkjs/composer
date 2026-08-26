@@ -197,3 +197,103 @@ One clock is deliberately left on the device: `emitIf`'s alert
 throttle ("do not re-send this alert within N seconds") runs on
 the device clock, because a rate limit is about real elapsed time.
 That is the correct clock for that job.
+
+## When a node throws
+
+The protections above cover the transport: the broker, the
+session, the clock. This section covers a fault inside the
+pipeline itself — the moment a node chokes on a reading.
+
+Here is how that happens. Imagine a flow watching fifty pumps.
+One day the gateway on `pump07` gets a firmware update. It starts
+sending the flow-rate as a 64-bit integer instead of a plain
+number.
+
+The payload still decodes into a normal-looking message.
+But when a node places that value into its numeric buffer,
+JavaScript refuses. The node throws an error.
+
+Without protection, that one throw would take down the whole
+process — and with it the other forty-nine pumps.
+
+**What actually happens: one bad message costs exactly one
+message.** The flow catches the throw at the one point every
+message passes through. It skips the bad message and moves on to
+the next. Your `onStatus` handler receives one red report:
+
+```javascript
+{
+    status: 'red',
+    phase: 'running',
+    error: {
+        code: 'MESSAGE_HANDLER_FAILED',
+        message: 'Node execution failed at index 2: ...'
+    }
+}
+```
+
+The report tells you which node failed and why. If the flow has
+no `onStatus` handler, the same report goes to the console
+instead. Either way, nothing fails silently. And the other
+forty-nine pumps never notice.
+
+### When every message fails
+
+One bad message is noise. Every message failing is a different
+situation. It usually means something upstream broke for good —
+say the firmware change hit the shared gateway, so every pump now
+sends the bad format. Skipping and reporting forever would hide a
+dead deployment behind a process that looks alive.
+
+So the flow keeps a count of failures in a row. Each failure adds
+one. Any successful message puts the count back to zero. When the
+count reaches the threshold — five in a row, by default — the
+flow concludes the stream itself is broken, and stops.
+
+You get
+one final red report with `phase: 'errored'`. Then the flow shuts
+down cleanly: emitters and storage drain their buffers, so
+nothing already computed is lost. Messages arriving after the
+stop are dropped, and one console line records that.
+
+The threshold is the environment variable
+`COMPOSER_MESSAGE_FAILURE_THRESHOLD`. The default of 5 suits most
+deployments.
+
+### One sick partition cannot poison the rest
+
+The same counting idea protects partitions. Each pump gets its
+own copy of the pipeline, built when its first message arrives.
+Suppose only `pump07` sends the bad format, and the fault strikes
+while its copy is being built. Composer retries the build on each
+of its messages. After five failed builds in a row, composer
+stops trying: `pump07` is quarantined.
+
+Its messages are dropped,
+one console line reports it, and the other pumps run untouched.
+A quarantined pump's drops do not count against the flow-level
+threshold above — one sick pump cannot stop the plant.
+
+### Faults inside your own functions
+
+You give composer functions of your own: an `emitIf` predicate,
+an annotate function, a tunable. These can throw too — a typo, a
+missing field. Two layers handle them. Where a node tracks its
+own errors, the node records the fault and the stream continues.
+`emitIf` and `persistIf` do this for predicate and annotate
+errors. Everywhere else, the dispatch guard above is the
+backstop: the throw costs that one message and is reported as
+`MESSAGE_HANDLER_FAILED`.
+
+Output adapters get the same treatment at the two gates. An
+adapter is supposed to answer `{ ok }` — never throw. If a broken
+one throws anyway, the gate records it in its failure counters as
+`MALFORMED_RESULT`, and the message continues.
+
+### Flows without a source
+
+One flow kind opts out: a headless flow, fed directly by your own
+code instead of a source. It has no status channel to report on.
+So a pipeline fault throws straight back to the code that fed the
+message, and that code owns the decision. The headless flow page
+explains that contract.
