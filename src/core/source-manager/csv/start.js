@@ -45,14 +45,19 @@
  *   stream continues — per-record skip-classify-continue (ADR-018).
  *   A bad field VALUE in a parseable row is NOT a decode error;
  *   it passes through for the pipeline (`sanitize`) to judge.
- * - `CALLBACK_FAILED`    — the user's `transform` threw on one row, or
+ * - `CALLBACK_FAILED`    — a piece of user code failed. It covers two
+ *   cases. Case one: the user's `transform` threw on one row, or
  *   returned a scalar or array where a record object was needed. The
  *   row is skipped (counted in `skipped`), the fault is reported per
- *   record with `status: 'yellow'`, and the stream continues — user
+ *   record with `status: 'yellow'`, and the stream continues. User
  *   code is never reported as a stream failure. A null/undefined
  *   return is NOT this case: it is the documented intentional drop.
  *   Fix the transform function; the report names the data row.
  *   Uniform with the MQTT source (transform contract, 2026-07-11).
+ *   Case two: the user's `onStatus` itself threw or rejected. The
+ *   shared callback guard contains that fault (ADR-018). The replay
+ *   continues, and each fault becomes one classified console line
+ *   that carries the detail.
  * - `READ_ERROR`         — stream read failed mid-stream (encoding error,
  *   truncation, decoder failure, etc.). Catch-all for non-open failures.
  *   Narrowed by the flow's dispatch guard (ADR-018): in a flow, a
@@ -67,6 +72,16 @@ import fs from 'node:fs';
 import readline from 'node:readline';
 
 import { isUsableRecord, describeShape } from '../record-shape.js';
+import { wrapCallback, wrapTransform, TRANSFORM_THREW } from '../../utils/callback-guard/index.js';
+
+/**
+ * Console channel for the callback guard: one classified line in this
+ * source's family. Receives an already-safe detail string, never the
+ * raw thrown value.
+ */
+const reportCallbackFault = function ( severity, name, detail ) {
+    console.error( `CSV source error [CALLBACK_FAILED]: user callback ${name} failed: ${detail}` );
+}; // reportCallbackFault()
 
 /**
  * Detects delimiter from header line.
@@ -235,6 +250,15 @@ export const start = function ( config ) {
     let skippedCount = 0;
     let inRange = ( startMsgId === null );  // Start immediately if no startMsgId
 
+    // The user's onStatus is armed once by the shared callback guard
+    // (ADR-018): a throw or rejection inside it becomes one classified
+    // CALLBACK_FAILED console line and the replay continues. Absent
+    // stays null, so every no-handler console fallback below keeps
+    // its exact meaning.
+    const safeOnStatus = wrapCallback( onStatus, {
+        name: 'onStatus', severity: 'red', report: reportCallbackFault
+    } );
+
     // Per-record skip-classify-continue (ADR-018): a structurally
     // malformed row is skipped and signalled — never a silent drop. When
     // the caller owns reporting (onStatus supplied) the framework stays
@@ -242,8 +266,8 @@ export const start = function ( config ) {
     // visible (ADR-018's two-party rule).
     const reportDecodeError = function ( dataRowIndex, fault ) {
         const message = `data row ${dataRowIndex}: ${fault} — row skipped`;
-        if ( onStatus ) {
-            onStatus( {
+        if ( safeOnStatus ) {
+            safeOnStatus( {
                 status: 'yellow',
                 connected: true,
                 phase: 'running',
@@ -262,8 +286,8 @@ export const start = function ( config ) {
     // unusable return shape).
     const reportCallbackError = function ( dataRowIndex, detail ) {
         const message = `data row ${dataRowIndex}: ${detail} — row skipped`;
-        if ( onStatus ) {
-            onStatus( {
+        if ( safeOnStatus ) {
+            safeOnStatus( {
                 status: 'yellow',
                 connected: true,
                 phase: 'running',
@@ -274,6 +298,16 @@ export const start = function ( config ) {
         }
     };
 
+    // The user's transform is pre-armed by the shared callback guard,
+    // once here — never per row. A throw inside it becomes the
+    // sentinel plus one per-record CALLBACK_FAILED report; the row
+    // index travels as the guard's per-call context, so the success
+    // path allocates nothing (ADR-018).
+    const reportTransformFault = function ( detail, dataRowIndex ) {
+        reportCallbackError( dataRowIndex, `transform threw: ${detail}` );
+    };
+    const guardedTransform = transform ? wrapTransform( transform, reportTransformFault ) : null;
+
     // Run the user's transform under guard. Returns the transformed
     // row; null when the row must be skipped — the caller counts
     // every null/undefined result as skipped. Three skip faces: a
@@ -281,14 +315,14 @@ export const start = function ( config ) {
     // unusable record), and a null/undefined return (the documented
     // intentional drop, counted but never reported).
     const applyTransform = function ( row, dataRowIndex ) {
-        if ( !transform ) {
+        if ( !guardedTransform ) {
             return row;
         }
-        let out;
-        try {
-            out = transform( row );
-        } catch ( err ) {
-            reportCallbackError( dataRowIndex, `transform threw: ${err.message}` );
+        const out = guardedTransform( row, dataRowIndex );
+        // The sentinel check runs FIRST: the sentinel is a plain
+        // object, so a later isUsableRecord check would wave it
+        // through as a row.
+        if ( out === TRANSFORM_THREW ) {
             return null;
         }
         if ( out === null || out === undefined ) {
@@ -321,7 +355,7 @@ export const start = function ( config ) {
         let headers = null;
         let delimiter = ',';
 
-        if ( onStatus ) onStatus( {
+        if ( safeOnStatus ) safeOnStatus( {
             status: 'green',
             connected: true,
             phase: 'starting',
@@ -337,7 +371,7 @@ export const start = function ( config ) {
                 if ( !headers ) {
                     delimiter = detectDelimiter( line );
                     headers = parseLine( line, delimiter ).values;
-                    if ( onStatus ) onStatus( {
+                    if ( safeOnStatus ) safeOnStatus( {
                         status: 'green',
                         connected: true,
                         phase: 'headers',
@@ -395,7 +429,7 @@ export const start = function ( config ) {
 
         // Completion travels onStatus with the uniform `count` field
         // (per ADR-018 there is no onComplete callback).
-        if ( onStatus ) onStatus( {
+        if ( safeOnStatus ) safeOnStatus( {
             status: 'green',
             connected: false,
             phase: 'complete',
@@ -421,10 +455,10 @@ export const start = function ( config ) {
             'SOURCE_UNREACHABLE' :
             'READ_ERROR';
         const message = ( err && err.message ) ? err.message : String( err );
-        if ( onStatus ) {
+        if ( safeOnStatus ) {
             // Terminal red: the stream is dead. Uniform payload with
             // phase 'errored' per the ADR-018 two-tier rule.
-            onStatus( {
+            safeOnStatus( {
                 status: 'red',
                 connected: false,
                 phase: 'errored',
@@ -468,8 +502,8 @@ export const start = function ( config ) {
             };
             forceTimer = setTimeout( () => {
                 if ( activeStream ) activeStream.destroy();
-                if ( onStatus ) {
-                    onStatus( {
+                if ( safeOnStatus ) {
+                    safeOnStatus( {
                         status: 'yellow',
                         connected: false,
                         phase: 'stopped',

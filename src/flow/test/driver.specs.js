@@ -10,7 +10,7 @@
  */
 
 import { expect } from 'chai';
-import { describe, it, afterEach } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 import { flow, headlessDriver } from '../../composer.js';
 
@@ -246,6 +246,108 @@ describe( 'headlessDriver — integration with a real flow', function () {
         // EWMA seeds at the first value: a constant-10 stream stays 10.
         expect( msgs[ 0 ].avg ).to.equal( 10 );
         expect( Number.isFinite( msgs[ 2 ].avg ) ).to.equal( true );
+    } );
+
+} );
+
+describe( 'headlessDriver — a broken onError is contained (ADR-018: the fault reporter must not become the fault)', function () {
+
+    // The driver promises: a fault never interrupts the feed. Before
+    // the callback guard, the promise held for NODE faults but not
+    // for a fault inside the user's own onError — a throwing handler
+    // aborted feedAll mid-stream, and a rejecting one became an
+    // unhandled rejection.
+
+    const settle = function () {
+        return new Promise( ( resolve ) => setImmediate( resolve ) );
+    };
+
+    const unhandled = [];
+    const trap = function ( reason ) {
+        unhandled.push( reason );
+    };
+
+    beforeEach( function () {
+        unhandled.length = 0;
+        process.on( 'unhandledRejection', trap );
+    } );
+
+    afterEach( function () {
+        process.removeListener( 'unhandledRejection', trap );
+        sinon.restore();
+    } );
+
+    const throwingOnError = function () {
+        throw new Error( 'handler down' );
+    };
+
+    const guardLines = function ( spy ) {
+        return spy.getCalls()
+            .map( ( c ) => String( c.args[ 0 ] ) )
+            .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) && l.includes( 'onError' ) );
+    };
+
+    it( 'feedOne sync-fault path: still returns undefined, one classified line', function () {
+        const driver = headlessDriver( scriptedHandle(), { onError: throwingOnError } );
+        const spy = sinon.spy( console, 'error' );
+        const out = driver.feedOne( { kind: 'syncFault', id: 1 } );
+        spy.restore();
+        expect( out ).to.equal( undefined );
+        expect( guardLines( spy ).length ).to.equal( 1 );
+        expect( guardLines( spy )[ 0 ] ).to.include( 'handler down' );
+    } );
+
+    it( 'feedOne yield-fault path: the returned Promise still never rejects', async function () {
+        const driver = headlessDriver( scriptedHandle(), { onError: throwingOnError } );
+        const spy = sinon.spy( console, 'error' );
+        await driver.feedOne( { kind: 'yieldFault', id: 2 } );
+        spy.restore();
+        expect( guardLines( spy ).length ).to.equal( 1 );
+        expect( unhandled.length ).to.equal( 0 );
+    } );
+
+    it( 'feedAll over a sync source: the loop reaches the end with truthful counters', async function () {
+        const driver = headlessDriver( scriptedHandle(), { onError: throwingOnError } );
+        const spy = sinon.spy( console, 'error' );
+        const result = await driver.feedAll( [
+            { kind: 'ok', id: 1 },
+            { kind: 'syncFault', id: 2 },
+            { kind: 'ok', id: 3 }
+        ] );
+        spy.restore();
+        expect( result ).to.deep.equal( { processed: 2, failed: 1 } );
+        expect( guardLines( spy ).length ).to.equal( 1 );
+    } );
+
+    it( 'feedAll over an async source: same containment', async function () {
+        const driver = headlessDriver( scriptedHandle(), { onError: throwingOnError } );
+        const source = ( async function *() {
+            yield { kind: 'ok', id: 1 };
+            yield { kind: 'syncFault', id: 2 };
+            yield { kind: 'ok', id: 3 };
+        }() );
+        const spy = sinon.spy( console, 'error' );
+        const result = await driver.feedAll( source );
+        spy.restore();
+        expect( result ).to.deep.equal( { processed: 2, failed: 1 } );
+        expect( guardLines( spy ).length ).to.equal( 1 );
+    } );
+
+    it( 'an async onError that rejects never becomes an unhandled rejection', async function () {
+        const driver = headlessDriver( scriptedHandle(), {
+            onError: () => Promise.reject( new Error( 'late handler down' ) )
+        } );
+        const spy = sinon.spy( console, 'error' );
+        const result = await driver.feedAll( [
+            { kind: 'syncFault', id: 1 },
+            { kind: 'ok', id: 2 }
+        ] );
+        await settle();
+        await settle();
+        spy.restore();
+        expect( result ).to.deep.equal( { processed: 1, failed: 1 } );
+        expect( guardLines( spy ).length ).to.equal( 1 );
+        expect( unhandled.length ).to.equal( 0 );
     } );
 
 } );

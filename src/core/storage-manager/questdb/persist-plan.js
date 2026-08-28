@@ -83,6 +83,18 @@
 import { SenderBufferV1 } from '@questdb/nodejs-client';
 
 import { QUEST_WRITERS, writeAsString, createFloat64Writer } from './writers.js';
+import { wrapCallback } from '../../utils/callback-guard/index.js';
+
+/**
+ * Console channel for the callback guard: one classified line in this
+ * adapter's family. Receives an already-safe detail string, never the
+ * raw thrown value.
+ */
+const reportCallbackFault = function ( severity, name, detail ) {
+    console.error(
+        `WinkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+    );
+}; // reportCallbackFault()
 
 // ============================================================================
 // DEFAULT WARNING HANDLER
@@ -275,7 +287,17 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
     }
 
     const onWarning = providedOnWarning || defaultOnWarning;
-    const onDeliveryFailure = providedOnDeliveryFailure || null;
+    // onWarning stays raw on purpose: a strict-mode onWarning throws,
+    // and that throw is the control flow that rejects the row (ADR-027
+    // keeps value-consumed callbacks out of the guard's scope).
+    // onDeliveryFailure only notifies, so the shared guard arms it —
+    // validated raw above, wrapped once here (ADR-018: a broken
+    // handler costs its own output, never the flush chain). Absent
+    // stays null, so the no-handler DELIVERY_FAILED escape hatch
+    // below keeps its exact meaning.
+    const onDeliveryFailure = wrapCallback( providedOnDeliveryFailure || null, {
+        name: 'onDeliveryFailure', severity: 'red', report: reportCallbackFault
+    } );
     const plansByInsightType = Object.create( null );
     const insightTypes = assetClass.insightTypes || Object.create( null );
     const columns = assetClass.columns;

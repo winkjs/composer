@@ -24,8 +24,16 @@
  * `processMessage`, exactly as a success does — so `feedAll` counts it as
  * processed. See `docs/handbook/headless-flow.md`.
  *
+ * `err.code` vocabulary (console classification; listed per ADR-018):
+ * - `CALLBACK_FAILED` — the user's `onError` itself threw or rejected.
+ *   The shared callback guard contains the fault (ADR-018): the feed
+ *   loop continues, counters stay truthful, and each fault becomes one
+ *   classified console line carrying the detail.
+ *
  * @see docs/handbook/headless-flow.md
  */
+
+import { wrapCallback } from '../core/utils/callback-guard/index.js';
 
 /**
  * Default fault handler. Surfaces every fault so none is silent. Allocates only
@@ -61,12 +69,28 @@ const headlessDriver = function ( handle, opts = {} ) {
         );
     }
 
-    const onError = opts.onError === undefined ? logFault : opts.onError;
-    if ( typeof onError !== 'function' ) {
+    const userOnError = opts.onError === undefined ? logFault : opts.onError;
+    if ( typeof userOnError !== 'function' ) {
         throw new TypeError(
             'composer/headlessDriver: onError must be a function'
         );
     }
+
+    // Armed once at construction (validate raw first, then wrap). The
+    // fault reporter is user code too, so it gets the same containment
+    // as the messages it reports on (ADR-018: a misbehaving user
+    // callback never interrupts the operation that invoked it). A
+    // throwing or rejecting onError costs one classified console line;
+    // the feed continues and the counters stay truthful.
+    const onError = wrapCallback( userOnError, {
+        name: 'onError',
+        severity: 'red',
+        report: function ( severity, name, detail ) {
+            console.error(
+                `composer/headlessDriver: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+            );
+        }
+    } );
 
     /**
      * Feed one message. Use this for push sources, where an event hands you a

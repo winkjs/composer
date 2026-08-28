@@ -62,6 +62,8 @@ Two things are easy to get wrong when you feed a flow by hand. The driver gets t
 
 **Catching faults.** A message can make a node throw. An example is a reading whose field cannot be parsed. The driver catches the fault, so one bad message never stops the feed. It hands the fault to your `onError` function and counts it in `failed`. If you give no `onError`, the driver logs each fault.
 
+Your `onError` is guarded too. If it throws or rejects, the feed continues and the counters stay truthful. The driver reports each such fault as one classified `CALLBACK_FAILED` console line. A bug in your fault reporter costs you its output, never the feed.
+
 The catch is needed because of how a flow without a source reports. A sourced flow contains a node fault itself and reports it red through the source's status channel. A headless flow has no such channel — your feeding code is the only listener. So the flow throws the fault straight back to the code that fed the message, and the driver is the catch that code needs.
 
 User functions you supply, such as predicates, are a separate case. The node catches those for you before they ever reach the driver. See [Built-in Error Handling](./composition-patterns.md#built-in-error-handling).

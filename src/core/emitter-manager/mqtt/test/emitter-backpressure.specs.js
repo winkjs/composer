@@ -316,5 +316,162 @@ describe( 'mqtt emitter — backpressure', function () {
 
     } );
 
+    describe( 'broken user callbacks are contained (ADR-018)', function () {
+
+        // The three notification callbacks run inside mqtt.js's publish
+        // ack chain. Before the shared callback guard, a throw there
+        // escaped into mqtt.js — and a throwing onCritical also skipped
+        // onBackpressure, coupling one user bug to a second signal loss.
+
+        const settle = function () {
+            return new Promise( ( resolve ) => setImmediate( resolve ) );
+        };
+
+        const unhandled = [];
+        const trap = function ( reason ) {
+            unhandled.push( reason );
+        };
+
+        beforeEach( function () {
+            unhandled.length = 0;
+            process.on( 'unhandledRejection', trap );
+        } );
+
+        afterEach( function () {
+            process.removeListener( 'unhandledRejection', trap );
+        } );
+
+        const guardLines = function ( spy, name ) {
+            return spy.getCalls()
+                .map( ( c ) => String( c.args[ 0 ] ) )
+                .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) && l.includes( name ) );
+        };
+
+        it( 'contains a throwing onCritical — and onBackpressure still fires', function () {
+            const pressures = [];
+            const manual = makeMockClient( { manualAcks: true } );
+            emitter = createEmitter( {
+                brokerUrl: 'mqtt://localhost',
+                connectGraceMs: 0,
+                codec: testCodec,
+                maxQueueSize: 20,
+                onCritical: function () {
+                    throw new Error( 'critical handler down' );
+                },
+                onBackpressure: ( p ) => pressures.push( p ),
+                mqttConnectFn: () => manual.client
+            } );
+            for ( let i = 0; i < 18; i += 1 ) {
+                emitter.publishNow( 'test/topic', { value: i } );
+            }
+
+            const errorSpy = sinon.spy( console, 'error' );
+            let escaped = false;
+            try {
+                manual.publishCalls[ 0 ].cb();
+            } catch {
+                escaped = true;
+            }
+            errorSpy.restore();
+            // Drain before asserting so a red case still shuts down clean.
+            for ( let i = 1; i < 18; i += 1 ) {
+                manual.publishCalls[ i ].cb();
+            }
+
+            expect( escaped, 'the throw must not escape into the ack chain' ).to.equal( false );
+            const lines = guardLines( errorSpy, 'onCritical' );
+            expect( lines ).to.have.length( 1 );
+            expect( lines[ 0 ] ).to.contain( 'critical handler down' );
+            // The decoupling pin: the second signal survives the first
+            // handler's bug — on the poisoned ack and on every drain
+            // ack after it.
+            expect( pressures[ 0 ] ).to.equal( 0.85 );
+            expect( pressures ).to.have.length( 18 );
+        } );
+
+        it( 'contains a throwing onBackpressure; the ack accounting stays truthful', function () {
+            const manual = makeMockClient( { manualAcks: true } );
+            emitter = createEmitter( {
+                brokerUrl: 'mqtt://localhost',
+                connectGraceMs: 0,
+                codec: testCodec,
+                onBackpressure: function () {
+                    throw new Error( 'pressure handler down' );
+                },
+                mqttConnectFn: () => manual.client
+            } );
+            emitter.publishNow( 'test/topic', { value: 1 } );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            let escaped = false;
+            try {
+                manual.publishCalls[ 0 ].cb();
+            } catch {
+                escaped = true;
+            }
+            errorSpy.restore();
+
+            expect( escaped, 'the throw must not escape into the ack chain' ).to.equal( false );
+            expect( guardLines( errorSpy, 'onBackpressure' ) ).to.have.length( 1 );
+            expect( emitter.getHealth().stats.published ).to.equal( 1 );
+            expect( emitter.getPressure() ).to.equal( 0 );
+        } );
+
+        it( 'contains a throwing onDeliveryFailure — and checkBackpressure still runs', function () {
+            const pressures = [];
+            const manual = makeMockClient( { manualAcks: true } );
+            emitter = createEmitter( {
+                brokerUrl: 'mqtt://localhost',
+                connectGraceMs: 0,
+                codec: testCodec,
+                onDeliveryFailure: function () {
+                    throw new Error( 'failure handler down' );
+                },
+                onBackpressure: ( p ) => pressures.push( p ),
+                mqttConnectFn: () => manual.client
+            } );
+            emitter.publishNow( 'test/topic', { value: 1 } );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            let escaped = false;
+            try {
+                manual.publishCalls[ 0 ].cb( new Error( 'publish refused' ) );
+            } catch {
+                escaped = true;
+            }
+            errorSpy.restore();
+
+            expect( escaped, 'the throw must not escape into the ack chain' ).to.equal( false );
+            const lines = guardLines( errorSpy, 'onDeliveryFailure' );
+            expect( lines ).to.have.length( 1 );
+            expect( lines[ 0 ] ).to.contain( 'failure handler down' );
+            expect( emitter.getHealth().stats.publishErrors ).to.equal( 1 );
+            // The ack callback ran to its end: backpressure was checked.
+            expect( pressures ).to.have.length( 1 );
+        } );
+
+        it( 'an async onDeliveryFailure that rejects never becomes an unhandled rejection', async function () {
+            const manual = makeMockClient( { manualAcks: true } );
+            emitter = createEmitter( {
+                brokerUrl: 'mqtt://localhost',
+                connectGraceMs: 0,
+                codec: testCodec,
+                onDeliveryFailure: () => Promise.reject( new Error( 'late handler down' ) ),
+                mqttConnectFn: () => manual.client
+            } );
+            emitter.publishNow( 'test/topic', { value: 1 } );
+
+            const errorSpy = sinon.spy( console, 'error' );
+            manual.publishCalls[ 0 ].cb( new Error( 'publish refused' ) );
+            await settle();
+            await settle();
+            errorSpy.restore();
+
+            expect( guardLines( errorSpy, 'onDeliveryFailure' ) ).to.have.length( 1 );
+            expect( unhandled.length ).to.equal( 0 );
+        } );
+
+    } );
+
 
 } );

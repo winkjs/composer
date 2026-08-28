@@ -109,6 +109,8 @@ flow('pipeline')
 | `onCritical` | function | `null` | Callback when buffer pressure > 80% |
 | `onBackpressure` | function | `null` | Pressure callback, fired when an accepted publish completes (refused attempts never fire it) |
 | `onDeliveryFailure` | function | `null` | Callback when an accepted message fails to deliver. Without one, the failure surfaces as an unhandled rejection — loud by design |
+
+These three callbacks are guarded. If one throws or rejects, the emitter keeps publishing and the fault is reported once as a `CALLBACK_FAILED` console line. A bug in your callback costs its own output, never the emitter.
 | `mqttConnectFn` | function | `mqtt.connect` | Advanced: inject a custom MQTT connect function (tests, benchmarks) |
 
 Config is checked when the flow is defined, before anything runs. A misspelled
@@ -473,7 +475,7 @@ flow('pipeline')
 | `retryTimeout` | number | client default | How long the client retries a failed send |
 | `partitionBy` | string | — | Partitioning when the adapter creates a table: `NONE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR` |
 | `onWarning` | function | `null` | Called with non-fatal storage warnings |
-| `onDeliveryFailure` | function | `null` | Called when a write ultimately fails |
+| `onDeliveryFailure` | function | `null` | Called when a write ultimately fails. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported once as a `CALLBACK_FAILED` console line |
 
 The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_PG_URL` environment variables when omitted. See [Environment Variables](../environment-variables.md).
 
@@ -511,7 +513,7 @@ Worked example: `temp` is a `float64` column and a message arrives with `temp: "
 column 'temp' is wrong-typed (expected float64, received string) in insightType 'monitoring' (asset: pump-3) — column skipped
 ```
 
-**Strict mode.** An `onWarning` that throws turns every warning into a refusal: the row is rejected before the writer touches it, and the sender stays clean. Use this when a partial row is worse than no row.
+**Strict mode.** An `onWarning` that throws turns every warning into a refusal: the row is rejected before the writer touches it, and the sender stays clean. Use this when a partial row is worse than no row. For this reason `onWarning` is deliberately not guarded: your throw is the instruction, so composer never contains it.
 
 **Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain — the final flush failed, or a hung flush outlived the shutdown budget — shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Inside a flow, the framework catches this rejection and logs it — one classified line naming the storage, the code, and the count — so the flow's own shutdown still completes for the other sinks.
 

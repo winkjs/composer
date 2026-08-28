@@ -51,7 +51,7 @@ must never do.
 | Code | Severity | What it means | What to do |
 |------|----------|---------------|------------|
 | `DECODE_ERROR` | yellow | A payload could not be decoded and was skipped (one report per message). Also raised as a health flip when more than 1 % of the last 1,000 messages failed to decode | Check what the publisher is sending — the topic name is in the message |
-| `CALLBACK_FAILED` | yellow | Your `transform` function threw; that one message was skipped (one report per message) and the stream continues | Fix the transform — the report carries the topic and the thrown error |
+| `CALLBACK_FAILED` | yellow | A function you supplied failed. Either your `transform` threw (that one message was skipped, one report per message), or your `onStatus` / `onMetrics` callback itself threw or rejected (the fault is contained and reported; the stream continues either way) | Fix the named function — the report carries the fault detail |
 | `SUBSCRIBE_FAILED` | red | The broker refused the subscription. The source is connected but deaf | Check topic permissions (ACLs) on the broker |
 | `CONNECT_FAILED` | yellow | A connection attempt failed; the library keeps retrying | Nothing yet — watch whether it heals |
 | `CONNECTION_LOST` | red | Disconnected for more than 30 seconds and still trying | Check the broker, the network, the credentials |

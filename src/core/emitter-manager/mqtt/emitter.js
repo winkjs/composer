@@ -107,6 +107,11 @@
  *   so a disconnected shutdown with pending messages is a real loss and
  *   is reported as one (this differs from the wal-backed design, which
  *   held them for the next session).
+ * - `CALLBACK_FAILED`  — a user callback (`onDeliveryFailure`,
+ *   `onCritical`, `onBackpressure`) itself threw or rejected. The
+ *   shared callback guard contains the fault (ADR-018): the emitter
+ *   keeps publishing and each fault becomes one classified console
+ *   line. Fix the callback; the line names it and carries the detail.
  *
  * @module mqtt-emitter
  */
@@ -123,6 +128,7 @@ import {
     DEFAULT_MAX_QUEUE_SIZE,
     MQTT_INFLIGHT_ID_LIMIT
 } from './constants.js';
+import { wrapCallback } from '../../utils/callback-guard/index.js';
 
 /**
  * Pre-flight reject threshold on store pressure.
@@ -306,6 +312,29 @@ export const createEmitter = function ( config ) {
     assertOptionalCallback( config.onCritical, 'onCritical' );
     assertOptionalCallback( config.onBackpressure, 'onBackpressure' );
 
+    // The three notification callbacks are armed by the shared
+    // callback guard — validated raw above, wrapped once here (ADR-018:
+    // a misbehaving user callback never reaches transport code; these
+    // three run inside mqtt.js's publish ack chain, where a throw
+    // would land in the client library). Each wrap is null when the
+    // callback is absent, so every no-handler path below — including
+    // the deliberate unhandled-rejection escape hatch for an
+    // unhandled delivery failure — keeps its exact meaning.
+    const reportCallbackFault = function ( severity, name, detail ) {
+        console.error(
+            `WinkComposer/mqtt-emitter: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+        );
+    };
+    const onDeliveryFailure = wrapCallback( config.onDeliveryFailure, {
+        name: 'onDeliveryFailure', severity: 'red', report: reportCallbackFault
+    } );
+    const onCritical = wrapCallback( config.onCritical, {
+        name: 'onCritical', severity: 'red', report: reportCallbackFault
+    } );
+    const onBackpressure = wrapCallback( config.onBackpressure, {
+        name: 'onBackpressure', severity: 'yellow', report: reportCallbackFault
+    } );
+
     // First-connack grace: explicit config → MQTT_CONNECT_GRACE_MS env
     // fallback → 500 ms default (ADR-018 precedence; the fallback lives
     // here in the factory body, never as a schema sigil). `??` keeps an
@@ -413,12 +442,12 @@ export const createEmitter = function ( config ) {
     const checkBackpressure = function () {
         const pressure = getPressure();
 
-        if ( ( pressure > QUEUE_CRITICAL_THRESHOLD ) && config.onCritical ) {
-            config.onCritical( 'QUEUE_CRITICAL', pressure );
+        if ( ( pressure > QUEUE_CRITICAL_THRESHOLD ) && onCritical ) {
+            onCritical( 'QUEUE_CRITICAL', pressure );
         }
 
-        if ( config.onBackpressure ) {
-            config.onBackpressure( pressure );
+        if ( onBackpressure ) {
+            onBackpressure( pressure );
         }
     };
 
@@ -526,8 +555,8 @@ export const createEmitter = function ( config ) {
                         );
                         deliveryErr.code = 'DELIVERY_FAILED';
                         deliveryErr.cause = err;
-                        if ( config.onDeliveryFailure ) {
-                            config.onDeliveryFailure( deliveryErr, { topic } );
+                        if ( onDeliveryFailure ) {
+                            onDeliveryFailure( deliveryErr, { topic } );
                         } else {
                             // No handler — surface as unhandledRejection so the
                             // process logs loudly and (Node 15+) exits. Mirrors

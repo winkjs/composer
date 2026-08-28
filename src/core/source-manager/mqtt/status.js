@@ -88,6 +88,7 @@ import {
     DISCONNECT_RED_MS,
     DECODE_RING_SIZE
 } from './constants.js';
+import { wrapCallback } from '../../utils/callback-guard/index.js';
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -224,14 +225,21 @@ const createStatusReporter = function ( options = {} ) {
         };
     };
 
-    /**
-     * Emit a metrics snapshot when the caller asked for one.
-     */
-    const emitMetrics = function () {
-        if ( onMetrics ) {
-            onMetrics( snapshot() );
+    // Both user callbacks are armed by the shared callback guard —
+    // validated raw above, wrapped here, once (ADR-018: a misbehaving
+    // user callback never reaches transport code and never fails
+    // silently). A broken onStatus reports to the console in this
+    // adapter's classified line family; it cannot report through
+    // itself. A broken onMetrics reports as a yellow payload through
+    // emitStatus below — the channel every per-record fault already
+    // uses — so a flow or dashboard sees it where it watches.
+    const safeOnStatus = wrapCallback( onStatus, {
+        name: 'onStatus',
+        severity: 'red',
+        report: function ( severity, name, detail ) {
+            console.error( `MQTT source error [CALLBACK_FAILED]: user callback ${name} failed: ${detail}` );
         }
-    };
+    } );
 
     /**
      * Route a status payload: to the caller's handler when supplied;
@@ -242,10 +250,38 @@ const createStatusReporter = function ( options = {} ) {
      * @param {Object} payload - The structured status payload
      */
     const emitStatus = function ( payload ) {
-        if ( onStatus ) {
-            onStatus( payload );
+        if ( safeOnStatus ) {
+            safeOnStatus( payload );
         } else if ( payload.error ) {
             console.error( `MQTT source error [${payload.error.code}]: ${payload.error.message}` );
+        }
+    };
+
+    // The metrics fault payload allocates on the failure path only;
+    // `connected` and `phase` read the reporter's live state at fault
+    // time, so the report tells the truth about the moment it fired.
+    const safeOnMetrics = wrapCallback( onMetrics, {
+        name: 'onMetrics',
+        severity: 'yellow',
+        report: function ( severity, name, detail ) {
+            emitStatus( {
+                status: 'yellow',
+                connected,
+                phase,
+                error: {
+                    code: 'CALLBACK_FAILED',
+                    message: `user callback ${name} failed: ${detail}`
+                }
+            } );
+        }
+    } );
+
+    /**
+     * Emit a metrics snapshot when the caller asked for one.
+     */
+    const emitMetrics = function () {
+        if ( safeOnMetrics ) {
+            safeOnMetrics( snapshot() );
         }
     };
 

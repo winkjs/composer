@@ -45,6 +45,12 @@
  *                        reaches this loop. The code remains live
  *                        for direct callers of start() whose own
  *                        onMessage throws.
+ * - `CALLBACK_FAILED`  — runtime; the user's `onStatus` itself threw
+ *                        or rejected. The shared callback guard
+ *                        contains the fault (ADR-018): generation
+ *                        continues and each fault becomes one
+ *                        classified console line. Fix the onStatus
+ *                        handler; the line carries the fault detail.
  *
  * Design decisions date from 2026-04-29. The `messageTemplate` shape
  * is enforced at startup by `validate.js`; the per-field spec shape
@@ -55,6 +61,16 @@ import { createPrng } from './prng.js';
 import { generateField } from './field-generator.js';
 import { applyFuzz, FUZZ_PATTERN_NAMES } from './fuzz.js';
 import { validateMessageTemplate, validateAssetClass } from './validate.js';
+import { wrapCallback } from '../../utils/callback-guard/index.js';
+
+/**
+ * Console channel for the callback guard: one classified line in this
+ * source's family. Receives an already-safe detail string, never the
+ * raw thrown value.
+ */
+const reportCallbackFault = function ( severity, name, detail ) {
+    console.error( `testHarness error [CALLBACK_FAILED]: user callback ${name} failed: ${detail}` );
+}; // reportCallbackFault()
 
 const DEFAULT_MESSAGE_COUNT = 1000;
 const DEFAULT_INTERVAL_MS   = 0;
@@ -115,7 +131,16 @@ export const start = function ( config ) {
         resolveFinished = resolve;
     } );
 
-    if ( onStatus ) onStatus( {
+    // The user's onStatus is armed once by the shared callback guard
+    // (ADR-018): a throw or rejection inside it becomes one classified
+    // CALLBACK_FAILED console line and generation continues. Absent
+    // stays null, so the no-handler console fallback below keeps its
+    // exact meaning.
+    const safeOnStatus = wrapCallback( onStatus, {
+        name: 'onStatus', severity: 'red', report: reportCallbackFault
+    } );
+
+    if ( safeOnStatus ) safeOnStatus( {
         status: 'green',
         connected: true,
         phase: 'starting',
@@ -124,7 +149,7 @@ export const start = function ( config ) {
     } );
 
     const run = async function () {
-        if ( onStatus ) onStatus( {
+        if ( safeOnStatus ) safeOnStatus( {
             status: 'green',
             connected: true,
             phase: 'generating'
@@ -159,7 +184,7 @@ export const start = function ( config ) {
 
         // Completion travels onStatus with the uniform `count` field
         // (per ADR-018 there is no onComplete callback).
-        if ( onStatus ) onStatus( {
+        if ( safeOnStatus ) safeOnStatus( {
             status: 'green',
             connected: false,
             phase: 'complete',
@@ -178,10 +203,10 @@ export const start = function ( config ) {
     // wait on it.
     run().catch( ( err ) => {
         const message = ( err && err.message ) ? err.message : String( err );
-        if ( onStatus ) {
+        if ( safeOnStatus ) {
             // Terminal red: generation stopped. Uniform payload with
             // phase 'errored' per the ADR-018 two-tier rule.
-            onStatus( {
+            safeOnStatus( {
                 status: 'red',
                 connected: false,
                 phase: 'errored',
@@ -222,8 +247,8 @@ export const start = function ( config ) {
                 resolve();
             };
             forceTimer = setTimeout( () => {
-                if ( onStatus ) {
-                    onStatus( {
+                if ( safeOnStatus ) {
+                    safeOnStatus( {
                         status: 'yellow',
                         connected: false,
                         phase: 'stopped',

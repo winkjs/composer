@@ -290,6 +290,20 @@ adapter is supposed to answer `{ ok }` — never throw. If a broken
 one throws anyway, the gate records it in its failure counters as
 `MALFORMED_RESULT`, and the message continues.
 
+The callbacks you hand to adapters are a third layer. An
+`onStatus`, an `onMetrics`, an `onDeliveryFailure` — these are
+your code too, and they can throw or reject like any other. A
+shared guard arms every one of them. A fault inside a callback
+costs only that callback's output. The adapter keeps running, and
+the fault is reported once as `CALLBACK_FAILED` with the detail.
+Without the guard, one throwing status handler could kill a whole
+replay, and one rejecting delivery handler could end the process.
+
+One callback stays outside the guard on purpose: QuestDB's
+strict-mode `onWarning`. There, your throw IS the instruction.
+It tells the adapter to reject the bad row. Containing it would
+erase strict mode.
+
 ### Flows without a source
 
 One flow kind opts out: a headless flow, fed directly by your own

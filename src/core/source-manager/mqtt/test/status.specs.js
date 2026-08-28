@@ -14,7 +14,7 @@
  */
 
 import { expect } from 'chai';
-import { describe, it, afterEach } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createStatusReporter } from '../status.js';
@@ -403,6 +403,137 @@ describe( 'MQTT Source Status Reporter — no-handler console fallback', functio
         reporter.stopped();
 
         expect( errorSpy.called ).to.equal( false );
+    } );
+
+} );
+
+describe( 'MQTT Source Status Reporter — broken user callbacks are contained (ADR-018)', function () {
+
+    // The reporter runs the user's handlers from transitions and from
+    // a 1 Hz timer tick. Before the shared callback guard, a throwing
+    // onStatus escaped into whichever adapter path emitted the status,
+    // and a throwing onMetrics was an uncaught exception from the
+    // timer — a process death on an unattended box.
+
+    const settle = function () {
+        return new Promise( ( resolve ) => setImmediate( resolve ) );
+    };
+
+    const unhandled = [];
+    const trap = function ( reason ) {
+        unhandled.push( reason );
+    };
+
+    beforeEach( function () {
+        unhandled.length = 0;
+        process.on( 'unhandledRejection', trap );
+    } );
+
+    afterEach( function () {
+        process.removeListener( 'unhandledRejection', trap );
+        sinon.restore();
+    } );
+
+    const guardLines = function ( spy, name ) {
+        return spy.getCalls()
+            .map( ( c ) => String( c.args[ 0 ] ) )
+            .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) && l.includes( name ) );
+    };
+
+    it( 'contains a throwing onStatus and keeps reporting', function () {
+        const reporter = createStatusReporter( {
+            nowFn: makeClock().nowFn,
+            onStatus: function () {
+                throw new Error( 'handler down' );
+            }
+        } );
+        const errorSpy = sinon.spy( console, 'error' );
+        expect( function () {
+            reporter.starting();
+        } ).to.not.throw();
+        expect( function () {
+            reporter.stopped();
+        } ).to.not.throw();
+        errorSpy.restore();
+        // Two transitions (starting, stopped), one emission each, one
+        // contained fault each — the reporter kept reporting.
+        const lines = guardLines( errorSpy, 'onStatus' );
+        expect( lines ).to.have.length( 2 );
+        expect( lines[ 0 ] ).to.contain( 'handler down' );
+    } );
+
+    it( 'a throwing onStatus does not change emission counts (transition suppression intact)', function () {
+        const reporter = createStatusReporter( {
+            nowFn: makeClock().nowFn,
+            onStatus: function () {
+                throw new Error( 'handler down' );
+            }
+        } );
+        reporter.starting();
+        const errorSpy = sinon.spy( console, 'error' );
+        reporter.offline();
+        reporter.offline();
+        reporter.offline();
+        errorSpy.restore();
+        // Three offline() events, one transition: exactly one emission,
+        // so exactly one contained fault.
+        expect( guardLines( errorSpy, 'onStatus' ) ).to.have.length( 1 );
+    } );
+
+    it( 'a throwing onMetrics becomes one yellow CALLBACK_FAILED per tick and the tick survives', function () {
+        const statuses = [];
+        const reporter = createStatusReporter( {
+            nowFn: makeClock().nowFn,
+            onStatus: ( s ) => statuses.push( s ),
+            onMetrics: function () {
+                throw new Error( 'metrics sink down' );
+            }
+        } );
+        // Consume the initial health transition first — a transition
+        // emits its own metrics snapshot, which would add one fault.
+        reporter.starting();
+        statuses.length = 0;
+        expect( function () {
+            reporter.tick();
+            reporter.tick();
+        } ).to.not.throw();
+        const faults = statuses.filter(
+            ( s ) => s.error && ( s.error.code === 'CALLBACK_FAILED' )
+        );
+        expect( faults ).to.have.length( 2 );
+        expect( faults[ 0 ].status ).to.equal( 'yellow' );
+        expect( faults[ 0 ].error.message ).to.contain( 'onMetrics' );
+        expect( faults[ 0 ].error.message ).to.contain( 'metrics sink down' );
+    } );
+
+    it( 'a broken onMetrics with no onStatus falls back to the classified console line', function () {
+        const reporter = createStatusReporter( {
+            nowFn: makeClock().nowFn,
+            onMetrics: function () {
+                throw new Error( 'metrics sink down' );
+            }
+        } );
+        // Consume the initial transition's own metrics emission before
+        // counting, as above.
+        reporter.starting();
+        const errorSpy = sinon.spy( console, 'error' );
+        reporter.tick();
+        errorSpy.restore();
+        expect( guardLines( errorSpy, 'onMetrics' ) ).to.have.length( 1 );
+    } );
+
+    it( 'an async onStatus that rejects never becomes an unhandled rejection', async function () {
+        const reporter = createStatusReporter( {
+            nowFn: makeClock().nowFn,
+            onStatus: () => Promise.reject( new Error( 'late handler down' ) )
+        } );
+        const errorSpy = sinon.spy( console, 'error' );
+        reporter.starting();
+        await settle();
+        await settle();
+        errorSpy.restore();
+        expect( guardLines( errorSpy, 'onStatus' ) ).to.have.length( 1 );
+        expect( unhandled.length ).to.equal( 0 );
     } );
 
 } );

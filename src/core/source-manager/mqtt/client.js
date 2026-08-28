@@ -44,13 +44,18 @@
  *   record from a custom codec). Skip, classify, continue — the
  *   report names what arrived. A bare scalar landing here usually
  *   means a too-wide topic subscription; narrow the topic filter.
- * - `CALLBACK_FAILED`        — runtime, yellow. The user's `transform`
+ * - `CALLBACK_FAILED`        — runtime, yellow. A piece of user code
+ *   failed. It covers two cases. Case one: the user's `transform`
  *   threw, or returned a scalar or array where a record object was
- *   needed; that one message is skipped (counted in `skipped`) and
+ *   needed. That one message is skipped (counted in `skipped`) and
  *   the stream continues. Fix the transform function — the report
  *   names the topic and the fault. A null/undefined return is NOT
  *   this case: it is the documented intentional drop. Uniform with
- *   the CSV source (transform contract, 2026-07-11).
+ *   the CSV source (transform contract, 2026-07-11). Case two: the
+ *   user's `onStatus` or `onMetrics` itself threw or rejected. The
+ *   shared callback guard contains that fault (ADR-018, wired in
+ *   status.js). The stream continues, and each fault is reported
+ *   once with the detail.
  * - `SUBSCRIBE_FAILED`       — runtime, red. The broker refused the
  *   subscription (typically ACL). Red immediately: nothing retries a
  *   subscribe until the next reconnect, so a deaf-but-connected source
@@ -129,6 +134,7 @@ import {
 import { createDedupCache } from './dedup.js';
 import { createStatusReporter } from './status.js';
 import { isUsableRecord, describeShape } from '../record-shape.js';
+import { wrapTransform, TRANSFORM_THREW } from '../../utils/callback-guard/index.js';
 
 // ============================================================================
 // CLIENT FACTORY
@@ -213,6 +219,17 @@ const createMQTTSourceClient = function ( config ) {
     } );
 
     reporter.starting();
+
+    // The user's transform runs under the shared callback guard, armed
+    // once here — never per message. A throw inside it becomes the
+    // sentinel plus one per-record CALLBACK_FAILED report through the
+    // reporter; the message handler turns the sentinel into a skip.
+    // The topic travels as the guard's per-call context, so the
+    // success path allocates nothing (ADR-018).
+    const reportTransformFault = function ( detail, topic ) {
+        reporter.transformFailed( `topic '${topic}': transform threw: ${detail} — message skipped` );
+    };
+    const guardedTransform = transform ? wrapTransform( transform, reportTransformFault ) : null;
 
     // Generate client ID if not provided
     const generatedClientId = clientId || `wink-source-${Date.now()}`;
@@ -327,21 +344,22 @@ const createMQTTSourceClient = function ( config ) {
             return;
         }
 
-        // Apply optional transform. Guarded: a throw skips this one
-        // message with a per-record CALLBACK_FAILED report and the
-        // stream continues — user code must never propagate into
-        // mqtt.js's event processing (transform contract, 2026-07-11).
-        // The return is held to the same record shape as the payload:
-        // null/undefined stays the intentional silent drop; a scalar
-        // or array return is one per-record CALLBACK_FAILED. The
-        // shape check runs only when a transform is configured, so
-        // the plain path pays nothing for it.
+        // Apply optional transform, pre-armed by the shared guard at
+        // startup: a throw skips this one message with a per-record
+        // CALLBACK_FAILED report and the stream continues — user code
+        // must never propagate into mqtt.js's event processing
+        // (transform contract, 2026-07-11). The return is held to the
+        // same record shape as the payload: null/undefined stays the
+        // intentional silent drop; a scalar or array return is one
+        // per-record CALLBACK_FAILED. The shape check runs only when a
+        // transform is configured, so the plain path pays nothing.
         let finalMessage;
-        if ( transform ) {
-            try {
-                finalMessage = transform( message );
-            } catch ( err ) {
-                reporter.transformFailed( `topic '${topic}': transform threw: ${err.message} — message skipped` );
+        if ( guardedTransform ) {
+            finalMessage = guardedTransform( message, topic );
+            // The sentinel check runs FIRST: the sentinel is a plain
+            // object, so a later isUsableRecord check would wave it
+            // through into onMessage as a message.
+            if ( finalMessage === TRANSFORM_THREW ) {
                 return;
             }
             if ( finalMessage === null || finalMessage === undefined ) {

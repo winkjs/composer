@@ -229,14 +229,18 @@ Use when you want to **turn nodes on or off**, reset their state, or flush accum
 
 ## Built-in Error Handling
 
-All user-supplied functions — predicates and tunables — are guarded. A throwing function never crashes the pipeline or takes down monitoring for other assets.
+All user-supplied functions are guarded. A throwing function never crashes the pipeline or takes down monitoring for other assets. The guard covers three kinds of function: predicates, tunables, and the callbacks you hand to sources, sinks, and the driver.
 
 | Function type | On exception | Recovery |
 |---------------|-------------|----------|
 | **Predicate** (passIf, emitIf, persistIf, etc.) | Treated as `false` / skipped / invalid depending on node role | Automatic on next successful call; also cleared on reset |
 | **Tunable** (threshold, pageHinkley, etc.) | Last known-good value is retained | Automatic on next successful call; also cleared on reset |
+| **Source transform** (MQTT, CSV) | That one message is skipped and reported as `CALLBACK_FAILED`; the stream continues | Automatic on the next message |
+| **Notification callback** (`onStatus`, `onMetrics`, `onError`, `onDeliveryFailure`, `onCritical`, `onBackpressure`) | The fault is contained and reported once as `CALLBACK_FAILED`; the operation that fired the callback completes normally | Automatic on the next call |
 
-Errors are logged to console once per episode — not once per message — to prevent flooding at high message rates.
+Predicate and tunable errors are logged to console once per episode — not once per message — to prevent flooding at high message rates. Transform and callback faults are reported once per occurrence.
+
+One callback is deliberately outside the guard: QuestDB's strict-mode `onWarning`. There, the throw is the feature. It is how strict mode rejects a bad row, so composer never contains it.
 
 See [What Happens When User Functions Throw](./understanding-composer.md#what-happens-when-user-functions-throw), [What Happens When a Predicate Throws](./flow-language.md#what-happens-when-a-predicate-throws), and [What Happens When a Tunable Throws](./flow-language.md#what-happens-when-a-tunable-throws).
 

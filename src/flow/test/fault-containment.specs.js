@@ -176,12 +176,31 @@ describe( 'flow dispatch guard — MESSAGE_HANDLER_FAILED (ADR-018)', function (
         expect( feedPoison ).to.not.throw();
         errorSpy.restore();
 
-        // The fault is still visible: the fallback names the
-        // reporting failure, classified.
+        // The fault is still visible: the shared callback guard
+        // classifies the broken reporter (ADR-018 — a misbehaving
+        // user callback never fails silently).
         const lines = errorSpy.getCalls()
             .map( ( c ) => String( c.args[ 0 ] ) )
-            .filter( ( l ) => l.includes( 'onStatus threw' ) );
+            .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) && l.includes( 'onStatus' ) );
         expect( lines.length ).to.be.at.least( 1 );
+        expect( lines[ 0 ] ).to.contain( 'user onStatus boom' );
+    } );
+
+    it( 'a throwing user onStatus cannot swallow completion — whenComplete still resolves', async function () {
+        // The latent bug this pins: completion bookkeeping used to run
+        // AFTER the user's onStatus call in the same function, so a
+        // throwing handler skipped it and whenComplete() hung forever.
+        const { adapter, refs } = buildFeedableSource();
+        handle = await buildGuardFlow( 'guardCompleteSurvives', adapter, {
+            onStatus: function () {
+                throw new Error( 'user onStatus boom' );
+            }
+        } ).run();
+
+        refs.signalComplete();
+        // Hangs here (test timeout) if the completion branch was skipped.
+        await handle.whenComplete();
+        expect( refs.stopCalls ).to.equal( 1 );
     } );
 
     it( 'escalates after N consecutive failures; one success resets the count', async function () {

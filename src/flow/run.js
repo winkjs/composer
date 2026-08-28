@@ -17,6 +17,7 @@ import * as partitionManager from '../core/partition-manager/index.js';
 import { wireLinearGraph, emitters, storages, assertModuleDurability } from '../core/wiring/index.js';
 import shutdownManager from '../core/shutdown-manager/index.js';
 import { ENV_VARS } from '../core/env-vars.js';
+import { wrapCallback } from '../core/utils/callback-guard/index.js';
 
 /**
  * Wires and starts the pipeline for direct execution.
@@ -406,10 +407,23 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         //   2. Trigger the drain via observedShutdown — fire-and-forget
         //      with its rejection logged; shutdown is concurrent-safe
         //      and stages have their own timeouts.
-        const userOnStatus = config.onStatus;
+        // The user's handler is armed by the shared callback guard
+        // (ADR-018: a misbehaving user callback never interrupts the
+        // runtime that called it). Null when the flow has no handler,
+        // so the classified fallback branch below keeps red statuses
+        // loud.
+        const safeUserOnStatus = wrapCallback( config.onStatus, {
+            name: 'onStatus',
+            severity: 'red',
+            report: function ( severity, name, detail ) {
+                console.error(
+                    `WinkComposer/flow '${flowName}': user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+                );
+            }
+        } );
         const wrappedOnStatus = function ( s ) {
-            if ( userOnStatus ) {
-                userOnStatus( s );
+            if ( safeUserOnStatus ) {
+                safeUserOnStatus( s );
             } else if ( s && s.status === 'red' ) {
                 // No user handler: log the failure here, classified. The
                 // source's own console fallback fires only when NO handler
@@ -421,6 +435,10 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
                     'source reported status red with no error detail';
                 console.error( `WinkComposer/flow '${flowName}': source error [${code}]: ${message}` );
             }
+            // Completion bookkeeping runs after — and independently of —
+            // the user's reporter. A throwing onStatus must never swallow
+            // the flow's own completion: whenComplete waiters would hang
+            // and the source would never stop.
             if ( s && s.phase === 'complete' ) {
                 resolveWhenComplete();
                 observedShutdown();
@@ -430,9 +448,9 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         // The dispatch guard's reporting channel. Routing through
         // wrappedOnStatus keeps the two-party rule: a flow without a
         // user handler still gets the classified console fallback for
-        // red statuses. The wrapper call is itself guarded — the
-        // user's onStatus is user code, and a throw from it must not
-        // escape back into the dispatch catch that called us.
+        // red statuses. No local guard is needed here: the callback
+        // guard above contains a throwing user handler, and every other
+        // branch of wrappedOnStatus is throw-free.
         reportDispatchFailure = function ( err, isTerminal ) {
             const payload = {
                 status: 'red',
@@ -446,14 +464,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
                         `${err.message} — message skipped`
                 }
             };
-            try {
-                wrappedOnStatus( payload );
-            } catch ( statusErr ) {
-                console.error(
-                    `WinkComposer/flow '${flowName}': onStatus threw while reporting ` +
-                    `MESSAGE_HANDLER_FAILED: ${statusErr.message}`
-                );
-            }
+            wrappedOnStatus( payload );
         };
         stopSource = adapter.start( {
             ...config,

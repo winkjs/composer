@@ -110,6 +110,16 @@
  *   `{ timeout }` (a send against an unreachable server never settles —
  *   see the mid-row recovery section below).
  *
+ * Runtime console classification:
+ * - `CALLBACK_FAILED`  — the user's `onDeliveryFailure` itself threw or
+ *   rejected. The shared callback guard contains the fault (ADR-018):
+ *   the adapter keeps writing and flushing, and each fault becomes one
+ *   classified console line carrying the detail. `onWarning` is
+ *   deliberately NOT guarded: a throwing `onWarning` is strict mode —
+ *   the throw is the control flow that rejects the row — so wrapping
+ *   it would erase that contract (the ADR-027 exclusion; pinned by
+ *   the strict-mode specs).
+ *
  * Column-internal facts consumed (the ADR-018 column-internal facts
  * pattern):
  *
@@ -198,6 +208,7 @@ import pg from 'pg';
 
 import { ENV_VARS } from '../../env-vars.js';
 import { validators } from '../../utils/validate/index.js';
+import { wrapCallback } from '../../utils/callback-guard/index.js';
 import { buildPersistPlans } from './persist-plan.js';
 import { ensureTables } from './ensure-tables.js';
 import { assertColumnFacts } from './assert-columns.js';
@@ -213,6 +224,17 @@ import { assertColumnFacts } from './assert-columns.js';
  * @type {{ok: true}}
  */
 const RESULT_OK = { ok: true };
+
+/**
+ * Console channel for the callback guard: one classified line in this
+ * adapter's family. Receives an already-safe detail string, never the
+ * raw thrown value.
+ */
+const reportCallbackFault = function ( severity, name, detail ) {
+    console.error(
+        `WinkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+    );
+}; // reportCallbackFault()
 
 // Error results (INVALID_INSIGHT_TYPE, SEND_FAILED) are constructed per-call
 // because each carries dynamic content (the offending insightType name and the
@@ -417,8 +439,23 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
         PgClientClass = pg.Client
     } = deps;
 
-    // Build persist plans (pre-compiled closures)
+    // Build persist plans (pre-compiled closures). The callbacks go in
+    // RAW: buildPersistPlans validates them itself and arms its own
+    // guarded copy for the at-flush site. Handing it a pre-wrapped
+    // function would defeat that validation (the guard turns a
+    // non-function into null instead of the fail-fast INVALID_CONFIG).
     const persistPlans = buildPersistPlans( assetClass, tablePrefix, { onWarning, onDeliveryFailure } );
+
+    // Arm the delivery-failure callback for this module's own report
+    // sites: the idle-flush timer and the mid-row recovery flush. Both
+    // fire inside promise chains, where a broken handler used to become
+    // an unhandled rejection. The guard classifies the fault instead
+    // (ADR-018) and its cost stays inside the handler. Absent stays
+    // null, so the no-handler console/throw fallbacks keep their
+    // meaning.
+    const safeOnDeliveryFailure = wrapCallback( onDeliveryFailure, {
+        name: 'onDeliveryFailure', severity: 'red', report: reportCallbackFault
+    } );
 
     // Ensure tables exist via PostgreSQL wire protocol
     const [ pgHost, pgPort ] = pgUrl.split( ':' );
@@ -570,8 +607,8 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
                 // (the settle handler already cleared them from
                 // pressure). Same routing policy as the recovery flush:
                 // the caller owns the response when it asked to.
-                if ( onDeliveryFailure ) {
-                    onDeliveryFailure( err, { idleFlush: true, rowsLost: rows } );
+                if ( safeOnDeliveryFailure ) {
+                    safeOnDeliveryFailure( err, { idleFlush: true, rowsLost: rows } );
                 } else {
                     console.error(
                         `WinkComposer/questdb: idle flush failed; ${rows} buffered row(s) lost: ${err.message}`
@@ -629,8 +666,8 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
             bufferedRows = 0;
 
             entry.promise.catch( ( flushErr ) => {
-                if ( onDeliveryFailure ) {
-                    onDeliveryFailure( flushErr, { recovery: true } );
+                if ( safeOnDeliveryFailure ) {
+                    safeOnDeliveryFailure( flushErr, { recovery: true } );
                     return;
                 }
                 const failure = new Error(
