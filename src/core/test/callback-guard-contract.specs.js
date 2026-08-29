@@ -14,12 +14,14 @@
  * unwrapped, each pinned in its own suite.
  *
  * Data-driven per the house pattern (source-transform-contract):
- * one SITES table drives every wrapped call site, so a future
- * adapter cannot add an unwrapped callback silently — it must add
- * its row here or fail the floor guard. Each row runs four fault
- * faces: a thrown Error, a rejected promise, a thrown null, and a
- * reasonless rejection. The last two pin the guard's own fault
- * reporter: it must survive an error object that has no message.
+ * one SITES table drives every wrapped call site. The table is
+ * hand-maintained. The floor guard pins its size, so a removal is
+ * always deliberate — but it cannot detect a NEW callback that
+ * never joins the table. A mechanical enumeration to close that
+ * hole is a filed deferred follow-up (2026-08-28). Each row runs
+ * four fault faces: a thrown Error, a rejected promise, a thrown
+ * null, and a reasonless rejection. The last two pin the guard's
+ * own fault reporter: it must survive an error with no message.
  */
 
 /* eslint-disable no-sync, no-throw-literal, no-invalid-this */
@@ -162,9 +164,12 @@ const waitFor = function ( check, maxMs = 3000 ) {
 // to any adapter means adding a row here, or the floor guard fails
 // with this message. Each row's run( badCallback ) must:
 //   1. build the adapter with the bad callback installed,
-//   2. trigger the callback exactly once,
-//   3. return { faults, completed } — faults counted on the row's
-//      report channel, completed = the adapter's operation finished.
+//   2. trigger the callback a KNOWN number of times — a row whose
+//      lifecycle fires more than once declares the exact count in
+//      its `expectedFaults` field (default 1),
+//   3. return { faults, completed } — the RAW fault count on the
+//      row's report channel, never normalized; completed = the
+//      adapter's operation finished.
 // The row NEVER lets a callback fault escape as a test crash: the
 // trigger runs inside try/catch and an escape reads as completed:false.
 // ---------------------------------------------------------------------------
@@ -202,6 +207,7 @@ const SITES = [
     {
         key: 'flow runtime — user onStatus',
         callbackName: 'onStatus',
+        expectedFaults: 2,
         run: async function ( badCallback ) {
             const { adapter, refs } = buildFeedableSource();
             const handle = await flow( 'cgFlowStatus' )
@@ -225,8 +231,8 @@ const SITES = [
             const faults = countConsoleFaults( spy, 'onStatus' );
             spy.restore();
             await handle.shutdown().catch( () => null );
-            // Two triggers → two contained faults; report exactly half.
-            return { faults: faults / 2, completed };
+            // Two triggers → two contained faults (expectedFaults: 2).
+            return { faults, completed };
         }
     },
 
@@ -381,6 +387,7 @@ const SITES = [
     {
         key: 'questdb storage — onDeliveryFailure (at-flush site)',
         callbackName: 'onDeliveryFailure',
+        expectedFaults: 2,
         run: async function ( badCallback ) {
             const mockSender = makeMockSender();
             // resetBehavior first: the mock's default `returnsThis()` takes
@@ -405,7 +412,45 @@ const SITES = [
                 completed = false;
             }
             spy.restore();
-            return { faults: countConsoleFaults( spy, 'onDeliveryFailure' ) >= 1 ? 1 : 0, completed };
+            // Shut the storage down: its idle-flush interval and the
+            // rejecting mock would otherwise keep firing into later
+            // tests' console spies.
+            await storage.shutdown( { timeout: 1000 } ).catch( () => null );
+            // Two writes → two contained faults (expectedFaults: 2).
+            return { faults: countConsoleFaults( spy, 'onDeliveryFailure' ), completed };
+        }
+    },
+
+    {
+        key: 'questdb storage — onDeliveryFailure (idle-flush site)',
+        callbackName: 'onDeliveryFailure',
+        run: async function ( badCallback ) {
+            const mockSender = makeMockSender();
+            mockSender.flush.onFirstCall().rejects( new Error( 'idle boom' ) );
+            const storage = await createQuestDBStorage(
+                QDB_ASSET_CLASS, 'pump',
+                {
+                    ...QDB_OPTS,
+                    flushMode: 'manual',
+                    idleFlushAfterMs: 1,
+                    idleFlushCheckMs: 10,
+                    onDeliveryFailure: badCallback
+                },
+                makeMockDeps( mockSender )
+            );
+            const spy = sinon.spy( console, 'error' );
+            let completed = false;
+            try {
+                const first = storage.write( 'monitoring', QDB_MSG, 'p1' );
+                await waitFor( () => countConsoleFaults( spy, 'onDeliveryFailure' ) === 1 );
+                await settleTwice();
+                completed = ( first.ok === true );
+            } catch {
+                completed = false;
+            }
+            spy.restore();
+            await storage.shutdown( { timeout: 1000 } ).catch( () => null );
+            return { faults: countConsoleFaults( spy, 'onDeliveryFailure' ), completed };
         }
     },
 
@@ -414,7 +459,10 @@ const SITES = [
         callbackName: 'onDeliveryFailure',
         run: async function ( badCallback ) {
             const mockSender = makeMockSender();
-            mockSender.flush.rejects( new Error( 'ECONNREFUSED' ) );
+            // onFirstCall only: the first flush IS the recovery flush.
+            // A blanket .rejects would also fail the shutdown flush
+            // below and leave a rejecting stub firing into later tests.
+            mockSender.flush.onFirstCall().rejects( new Error( 'ECONNREFUSED' ) );
             mockSender.floatColumn.onFirstCall().throws( new Error( 'mid-row boom' ) );
             const storage = await createQuestDBStorage(
                 QDB_ASSET_CLASS, 'pump',
@@ -432,6 +480,7 @@ const SITES = [
                 completed = false;
             }
             spy.restore();
+            await storage.shutdown( { timeout: 1000 } ).catch( () => null );
             return { faults: countConsoleFaults( spy, 'onDeliveryFailure' ), completed };
         }
     },
@@ -439,6 +488,7 @@ const SITES = [
     {
         key: 'csv source — onStatus',
         callbackName: 'onStatus',
+        expectedFaults: 3,
         run: async function ( badCallback ) {
             const filePath = path.join(
                 os.tmpdir(),
@@ -455,7 +505,11 @@ const SITES = [
                     onStatus: badCallback,
                     onMessage: ( m ) => messages.push( m )
                 } );
-                await waitFor( () => messages.length === 3 );
+                // Wait on the fault lines themselves — the `complete`
+                // status needs one more EOF read after the last row, so
+                // a fixed settle after the message count can run ahead
+                // of it under load.
+                await waitFor( () => countConsoleFaults( spy, 'onStatus' ) === 3 );
                 await settleTwice();
                 // The replay survived its reporter: every row delivered.
                 completed = messages.length === 3;
@@ -467,18 +521,16 @@ const SITES = [
                 await stop().catch( () => null );
             }
             fs.unlinkSync( filePath );
-            // Lifecycle fires onStatus several times (starting, headers,
-            // complete); every one must be contained. Exactly one fault
-            // per trigger — report 1 when the count matches the trigger
-            // count, else the raw count to fail loudly.
-            const faults = countConsoleFaults( spy, 'onStatus' );
-            return { faults: faults >= 3 ? 1 : faults, completed };
+            // starting + headers + complete = three contained faults
+            // (expectedFaults: 3).
+            return { faults: countConsoleFaults( spy, 'onStatus' ), completed };
         }
     },
 
     {
         key: 'testHarness source — onStatus',
         callbackName: 'onStatus',
+        expectedFaults: 3,
         run: async function ( badCallback ) {
             const messages = [];
             const spy = sinon.spy( console, 'error' );
@@ -491,7 +543,10 @@ const SITES = [
                     onStatus: badCallback,
                     onMessage: ( m ) => messages.push( m )
                 } );
-                await waitFor( () => messages.length === 3 );
+                // Wait on the fault lines themselves — the `complete`
+                // status lands after the last message, so a fixed settle
+                // after the message count can run ahead of it.
+                await waitFor( () => countConsoleFaults( spy, 'onStatus' ) === 3 );
                 await settleTwice();
                 completed = messages.length === 3;
             } catch {
@@ -501,9 +556,9 @@ const SITES = [
             if ( stop ) {
                 await stop().catch( () => null );
             }
-            const faults = countConsoleFaults( spy, 'onStatus' );
-            // starting + generating + complete = three contained faults.
-            return { faults: faults >= 3 ? 1 : faults, completed };
+            // starting + generating + complete = three contained faults
+            // (expectedFaults: 3).
+            return { faults: countConsoleFaults( spy, 'onStatus' ), completed };
         }
     }
 
@@ -546,7 +601,7 @@ describe( 'callback guard contract (cross-adapter, ADR-018)', function () {
         expect(
             SITES.length,
             'SITES must list every wrapped callback site — add the new row to this table'
-        ).to.equal( 11 );
+        ).to.equal( 12 );
     } );
 
     for ( const site of SITES ) {
@@ -557,7 +612,11 @@ describe( 'callback guard contract (cross-adapter, ADR-018)', function () {
                     const bad = mode.make( site.key );
                     const { faults, completed } = await site.run( bad );
                     await settleTwice();
-                    expect( faults, 'exactly one classified CALLBACK_FAILED report' ).to.equal( 1 );
+                    const expected = site.expectedFaults || 1;
+                    expect(
+                        faults,
+                        `exactly ${expected} classified CALLBACK_FAILED report(s) — one per trigger`
+                    ).to.equal( expected );
                     expect( completed, 'the operation must complete despite the callback fault' ).to.equal( true );
                     expect( unhandled.length, 'unhandled rejection escaped the guard' ).to.equal( 0 );
                 } );

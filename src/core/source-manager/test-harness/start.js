@@ -111,6 +111,15 @@ export const start = function ( config ) {
         throw err;
     }
 
+    // The guard below turns a non-function into null (absent). So a
+    // misconfigured handler must be rejected here, loudly, before the
+    // wrap can silently erase it. Null stays legal as "no handler".
+    if ( onStatus !== null && typeof onStatus !== 'function' ) {
+        const err = new Error( 'testHarness: onStatus must be a function' );
+        err.code = 'INVALID_CONFIG';
+        throw err;
+    }
+
     // Pull out template options with defaults.
     const seed         = messageTemplate.seed;
     const messageCount = messageTemplate.messageCount ?? DEFAULT_MESSAGE_COUNT;
@@ -132,8 +141,8 @@ export const start = function ( config ) {
     } );
 
     // The user's onStatus is armed once by the shared callback guard
-    // (ADR-018): a throw or rejection inside it becomes one classified
-    // CALLBACK_FAILED console line and generation continues. Absent
+    // (ADR-018). A throw or rejection inside it becomes one classified
+    // CALLBACK_FAILED console line, and generation continues. Absent
     // stays null, so the no-handler console fallback below keeps its
     // exact meaning.
     const safeOnStatus = wrapCallback( onStatus, {

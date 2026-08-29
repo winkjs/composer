@@ -196,6 +196,25 @@ describe( 'callback guard — wrapCallback', function () {
             expect( report.firstCall.args[ 2 ] ).to.equal( 'then blew up' );
         } );
 
+        it( 'sinks a thenable whose then RETURNS a rejected promise (fresh-eyes find, 2026-08-28)', async function () {
+            // A non-conforming thenable can ignore its handlers and hand
+            // back a rejected promise instead. Discarding that return
+            // used to leak it as an unhandled rejection.
+            const report = sinon.spy();
+            const thenable = {
+                then () {
+                    return Promise.reject( new Error( 'evil return' ) );
+                }
+            };
+            const wrapped = wrapCallback( () => thenable, { name: 'onStatus', severity: 'red', report } );
+            wrapped( {} );
+            await settle();
+            await settle();
+            expect( report.calledOnce ).to.equal( true );
+            expect( report.firstCall.args[ 2 ] ).to.equal( 'evil return' );
+            expect( unhandled.length ).to.equal( 0 );
+        } );
+
     } );
 
     describe( 'the reporter is throw-proof', function () {

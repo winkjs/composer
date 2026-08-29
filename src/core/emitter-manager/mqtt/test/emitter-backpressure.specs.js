@@ -381,6 +381,9 @@ describe( 'mqtt emitter — backpressure', function () {
             expect( escaped, 'the throw must not escape into the ack chain' ).to.equal( false );
             const lines = guardLines( errorSpy, 'onCritical' );
             expect( lines ).to.have.length( 1 );
+            // The line carries this adapter's family prefix, so an
+            // operator can attribute the fault without a stack trace.
+            expect( lines[ 0 ] ).to.contain( 'WinkComposer/mqtt-emitter' );
             expect( lines[ 0 ] ).to.contain( 'critical handler down' );
             // The decoupling pin: the second signal survives the first
             // handler's bug — on the poisoned ack and on every drain

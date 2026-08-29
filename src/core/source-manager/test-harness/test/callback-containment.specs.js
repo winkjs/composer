@@ -104,6 +104,26 @@ describe( 'testHarness source — a broken user onStatus is contained (ADR-018)'
         await stop();
     } );
 
+    it( 'rejects a truthy non-function onStatus at start() — fail-fast, never silent absence', function () {
+        // The guard turns a non-function into null (absent). Without
+        // this assert, a misconfigured `onStatus: 'log'` would silently
+        // become "no handler" instead of failing loudly at setup.
+        let thrown = null;
+        try {
+            start( {
+                messageTemplate: TEMPLATE,
+                assetClass: ASSET_CLASS,
+                onMessage: () => undefined,
+                onStatus: 'log'
+            } );
+        } catch ( err ) {
+            thrown = err;
+        }
+        expect( thrown ).to.not.equal( null );
+        expect( thrown.code ).to.equal( 'INVALID_CONFIG' );
+        expect( thrown.message ).to.contain( 'onStatus must be a function' );
+    } );
+
     it( 'an async-rejecting onStatus leaves no unhandled rejection', async function () {
         const onStatus = sinon.stub().callsFake(
             () => Promise.reject( new Error( 'async reporter down' ) )

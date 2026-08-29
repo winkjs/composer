@@ -5,19 +5,23 @@
  *
  * Adapters and the flow runtime hand the user's functions to this
  * module once, at setup. The armed version they get back contains
- * every fault the user's code can produce — a plain throw, a
- * rejected promise, even a `throw null` with no message to read —
- * and turns it into one classified CALLBACK_FAILED report. The
- * operation that invoked the callback continues unharmed. This is
- * ADR-018's callback-isolation rule: a misbehaving user callback
- * never reaches transport code and never fails silently. ADR-027
- * scopes which callbacks are wrapped: notification callbacks only.
- * A callback whose throw carries meaning (QuestDB's strict-mode
- * onWarning) and the flow-guarded onMessage stay unwrapped.
+ * every fault the user's code can produce. That covers a plain
+ * throw, a rejected promise, and even a `throw null` with no
+ * message to read. Each fault becomes one classified
+ * CALLBACK_FAILED report. The operation that invoked the callback
+ * continues unharmed. This is ADR-018's callback-isolation rule:
+ * a misbehaving user callback never reaches transport code and
+ * never fails silently. ADR-027 scopes which callbacks are
+ * wrapped: notification callbacks only. A callback whose throw
+ * carries meaning (QuestDB's strict-mode onWarning) and the
+ * flow-guarded onMessage stay unwrapped.
  *
  * Design constraints, in force at every call site:
  * - Wrap once at setup; never per message. The armed closure's
- *   success-path cost is one try frame and one typeof check.
+ *   success-path cost is one try frame and one typeof check. An
+ *   async callback additionally costs one derived promise per
+ *   call — that cost follows the user's own choice of an async
+ *   handler.
  * - Fixed two-argument signature: every wrapped callback takes at
  *   most two arguments, so no rest-array is allocated per call.
  *   A one-argument callback observes a trailing undefined; that is
@@ -25,8 +29,9 @@
  * - The fault reporter is throw-proof. Every containment guarantee
  *   reduces to "reporting a fault cannot itself fault". The report
  *   closure receives an already-safe detail string, never the raw
- *   thrown value, and its own failure falls back to one bare
- *   console line with no user-value interpolation.
+ *   thrown value. When the report closure itself fails, the guard
+ *   falls back to one bare console line with no user-value
+ *   interpolation.
  */
 
 /**
@@ -96,7 +101,21 @@ const wrapCallback = function ( fn, { name, severity, report } ) {
         try {
             const result = fn( a, b );
             if ( result && typeof result.then === 'function' ) {
-                result.then( undefined, faultFn );
+                // An async callback costs one derived promise per call.
+                // That allocation is proportional to the user's own
+                // choice of an async handler; a sync callback allocates
+                // nothing here.
+                const settled = result.then( undefined, faultFn );
+                // A native promise cannot reject past this point, because
+                // faultFn cannot throw. A non-conforming thenable can
+                // ignore its handlers and RETURN a rejected promise
+                // instead; sink that one level so it cannot leak as an
+                // unhandled rejection. The guard contains bugs, not
+                // in-process adversaries — a deeper chain of hostile
+                // thenables stays the caller's own fault.
+                if ( !( result instanceof Promise ) && settled && typeof settled.then === 'function' ) {
+                    settled.then( undefined, faultFn );
+                }
             }
         } catch ( err ) {
             faultFn( err );

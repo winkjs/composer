@@ -182,7 +182,9 @@ describe( 'flow dispatch guard — MESSAGE_HANDLER_FAILED (ADR-018)', function (
         const lines = errorSpy.getCalls()
             .map( ( c ) => String( c.args[ 0 ] ) )
             .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) && l.includes( 'onStatus' ) );
-        expect( lines.length ).to.be.at.least( 1 );
+        // One poison message → one dispatch-failure report → exactly
+        // one contained reporter fault.
+        expect( lines ).to.have.lengthOf( 1 );
         expect( lines[ 0 ] ).to.contain( 'user onStatus boom' );
     } );
 

@@ -163,7 +163,8 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
     describe( 'idle-flush site', function () {
 
         it( 'contains a throwing handler; the timer and later writes survive', async function () {
-            mockSender.flush.onFirstCall().rejects( new Error( 'idle boom' ) );
+            const idleError = new Error( 'idle boom' );
+            mockSender.flush.onFirstCall().rejects( idleError );
             const onDeliveryFailure = sinon.stub().throws( new Error( 'handler down' ) );
             const storage = await makeStorage( { ...IDLE_OPTS, onDeliveryFailure } );
             const spy = sinon.spy( console, 'error' );
@@ -172,6 +173,10 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             await waitFor( () => onDeliveryFailure.called );
             await settle();
 
+            // Two-argument passthrough at this site: the raw error and
+            // the idle-flush context reach the handler unchanged.
+            expect( onDeliveryFailure.firstCall.args[ 0 ] ).to.equal( idleError );
+            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { idleFlush: true, rowsLost: 1 } );
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 1 );
             expect( lines[ 0 ] ).to.contain( 'handler down' );
@@ -179,6 +184,26 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             // The adapter survives its reporter's bug: a later write and
             // a clean shutdown still work.
             expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ) ).to.deep.equal( { ok: true } );
+            await storage.shutdown( { timeout: 1000 } );
+        } );
+
+        it( 'contains an async-rejecting handler — no unhandled rejection', async function () {
+            mockSender.flush.onFirstCall().rejects( new Error( 'idle boom' ) );
+            const onDeliveryFailure = sinon.stub().callsFake(
+                () => Promise.reject( new Error( 'async handler down' ) )
+            );
+            const storage = await makeStorage( { ...IDLE_OPTS, onDeliveryFailure } );
+            const spy = sinon.spy( console, 'error' );
+
+            storage.write( 'monitoring', GOOD_MSG, 'p1' );
+            await waitFor( () => onDeliveryFailure.called );
+            await settle();
+            await settle();
+
+            const lines = faultLines( spy );
+            expect( lines ).to.have.lengthOf( 1 );
+            expect( lines[ 0 ] ).to.contain( 'async handler down' );
+            expect( unhandled ).to.have.lengthOf( 0 );
             await storage.shutdown( { timeout: 1000 } );
         } );
 

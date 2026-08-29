@@ -244,6 +244,15 @@ export const start = function ( config ) {
         endMsgId = null
     } = config;
 
+    // The guard below turns a non-function into null (absent). So a
+    // misconfigured handler must be rejected here, loudly, before the
+    // wrap can silently erase it. Null stays legal as "no handler".
+    if ( onStatus !== null && typeof onStatus !== 'function' ) {
+        const err = new Error( 'CSV source: onStatus must be a function' );
+        err.code = 'INVALID_CONFIG';
+        throw err;
+    }
+
     let stopped = false;
     let rowCount = 0;
     let rowIndex = 0;
@@ -251,8 +260,8 @@ export const start = function ( config ) {
     let inRange = ( startMsgId === null );  // Start immediately if no startMsgId
 
     // The user's onStatus is armed once by the shared callback guard
-    // (ADR-018): a throw or rejection inside it becomes one classified
-    // CALLBACK_FAILED console line and the replay continues. Absent
+    // (ADR-018). A throw or rejection inside it becomes one classified
+    // CALLBACK_FAILED console line, and the replay continues. Absent
     // stays null, so every no-handler console fallback below keeps
     // its exact meaning.
     const safeOnStatus = wrapCallback( onStatus, {
@@ -299,10 +308,10 @@ export const start = function ( config ) {
     };
 
     // The user's transform is pre-armed by the shared callback guard,
-    // once here — never per row. A throw inside it becomes the
-    // sentinel plus one per-record CALLBACK_FAILED report; the row
-    // index travels as the guard's per-call context, so the success
-    // path allocates nothing (ADR-018).
+    // once here — never per row (ADR-018). A throw inside it becomes
+    // the sentinel plus one per-record CALLBACK_FAILED report. The
+    // row index travels as the guard's per-call context, so the
+    // success path allocates nothing.
     const reportTransformFault = function ( detail, dataRowIndex ) {
         reportCallbackError( dataRowIndex, `transform threw: ${detail}` );
     };

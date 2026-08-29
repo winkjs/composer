@@ -399,6 +399,17 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         // too (they bypass the DSL entirely).
         assertModuleDurability( adapter.id || 'source', adapter );
 
+        // The callback guard below turns a non-function into null
+        // (absent). Validate raw first, so a misconfigured handler
+        // fails loudly at setup instead of silently vanishing. Placed
+        // here for the same reason as the durability check above:
+        // direct runFlow() callers bypass the DSL schema.
+        if ( config.onStatus !== undefined && config.onStatus !== null && typeof config.onStatus !== 'function' ) {
+            const err = new Error( `WinkComposer/flow '${flowName}': onStatus must be a function` );
+            err.code = 'INVALID_CONFIG';
+            throw err;
+        }
+
         // Wrap user's onStatus so the runtime can spot the natural-
         // completion signal without taking it away from the user.
         // When the source signals `phase: 'complete'`:

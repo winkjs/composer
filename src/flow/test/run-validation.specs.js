@@ -954,3 +954,49 @@ describe( 'runFlow — signal handler coverage', function () {
     } );
 
 } );
+
+// ============================================================================
+// SOURCE CALLBACK VALIDATION
+// ============================================================================
+describe( 'runFlow — source onStatus validation', function () {
+
+    it( 'rejects a truthy non-function onStatus in the source config — fail-fast, never silent absence', async function () {
+        // The callback guard turns a non-function into null (absent).
+        // Without this assert, a direct runFlow() caller passing
+        // `onStatus: 'log'` would silently lose their handler instead
+        // of failing loudly at setup. The DSL schema covers only the
+        // DSL path.
+        const specs = [
+            {
+                nodeType: 'ES Mean',
+                name: 'mean1',
+                stats: { esMean: { storeAs: 'mean1' } },
+                from: { x: 'value' },
+                halfLife: 5
+            }
+        ];
+        const runtime = {
+            source: {
+                adapter: {
+                    id: 'stubSource',
+                    durabilityClass: 'best-effort',
+                    start: () => () => undefined
+                },
+                config: { onStatus: 'log' }
+            },
+            emitters: {},
+            partitionField: null,
+            specializationField: null
+        };
+        let thrown = null;
+        try {
+            await runFlow( 'cb-validation-test', specs, new Set( [ 'esMean' ] ), runtime );
+        } catch ( err ) {
+            thrown = err;
+        }
+        expect( thrown ).to.not.equal( null );
+        expect( thrown.code ).to.equal( 'INVALID_CONFIG' );
+        expect( thrown.message ).to.contain( 'onStatus must be a function' );
+    } );
+
+} );

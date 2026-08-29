@@ -344,15 +344,16 @@ const createMQTTSourceClient = function ( config ) {
             return;
         }
 
-        // Apply optional transform, pre-armed by the shared guard at
-        // startup: a throw skips this one message with a per-record
-        // CALLBACK_FAILED report and the stream continues — user code
+        // Apply the optional transform, pre-armed by the shared guard
+        // at startup. A throw skips this one message with a per-record
+        // CALLBACK_FAILED report, and the stream continues. User code
         // must never propagate into mqtt.js's event processing
         // (transform contract, 2026-07-11). The return is held to the
-        // same record shape as the payload: null/undefined stays the
-        // intentional silent drop; a scalar or array return is one
-        // per-record CALLBACK_FAILED. The shape check runs only when a
-        // transform is configured, so the plain path pays nothing.
+        // same record shape as the payload. A null/undefined return
+        // stays the intentional silent drop. A scalar or array return
+        // is one per-record CALLBACK_FAILED. The shape check runs only
+        // when a transform is configured, so the plain path pays
+        // nothing.
         let finalMessage;
         if ( guardedTransform ) {
             finalMessage = guardedTransform( message, topic );

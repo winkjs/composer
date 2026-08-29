@@ -506,6 +506,58 @@ describe( 'MQTT Source Status Reporter — broken user callbacks are contained (
         expect( faults[ 0 ].error.message ).to.contain( 'metrics sink down' );
     } );
 
+    it( 'a broken onMetrics prints the classified console line even when onStatus is listening (fresh-eyes find, 2026-08-28)', function () {
+        // Inside a flow the runtime installs its own onStatus wrapper,
+        // which forwards only red payloads when the user gave no
+        // handler. The yellow fault payload alone can therefore vanish.
+        // The console line is the guaranteed audience.
+        const statuses = [];
+        const reporter = createStatusReporter( {
+            nowFn: makeClock().nowFn,
+            onStatus: ( s ) => statuses.push( s ),
+            onMetrics: function () {
+                throw new Error( 'metrics sink down' );
+            }
+        } );
+        reporter.starting();
+        statuses.length = 0;
+        const errorSpy = sinon.spy( console, 'error' );
+        reporter.tick();
+        errorSpy.restore();
+        expect( guardLines( errorSpy, 'onMetrics' ) ).to.have.length( 1 );
+        // The yellow payload still reaches the listening handler too.
+        const faults = statuses.filter(
+            ( s ) => s.error && ( s.error.code === 'CALLBACK_FAILED' )
+        );
+        expect( faults ).to.have.length( 1 );
+        expect( faults[ 0 ].status ).to.equal( 'yellow' );
+    } );
+
+    it( 'both onMetrics and onStatus broken: each fault contained, each on its own line', function () {
+        // The onMetrics fault report itself invokes the guarded
+        // onStatus. This is the one site where one guard's report can
+        // trip a second guard; both must contain.
+        const reporter = createStatusReporter( {
+            nowFn: makeClock().nowFn,
+            onStatus: function () {
+                throw new Error( 'status sink down' );
+            },
+            onMetrics: function () {
+                throw new Error( 'metrics sink down' );
+            }
+        } );
+        reporter.starting();
+        const errorSpy = sinon.spy( console, 'error' );
+        expect( function () {
+            reporter.tick();
+            reporter.tick();
+        } ).to.not.throw();
+        errorSpy.restore();
+        expect( guardLines( errorSpy, 'onMetrics' ) ).to.have.length( 2 );
+        expect( guardLines( errorSpy, 'onStatus' ) ).to.have.length( 2 );
+        expect( unhandled.length ).to.equal( 0 );
+    } );
+
     it( 'a broken onMetrics with no onStatus falls back to the classified console line', function () {
         const reporter = createStatusReporter( {
             nowFn: makeClock().nowFn,

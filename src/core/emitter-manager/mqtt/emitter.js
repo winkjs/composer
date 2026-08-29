@@ -313,13 +313,13 @@ export const createEmitter = function ( config ) {
     assertOptionalCallback( config.onBackpressure, 'onBackpressure' );
 
     // The three notification callbacks are armed by the shared
-    // callback guard — validated raw above, wrapped once here (ADR-018:
-    // a misbehaving user callback never reaches transport code; these
-    // three run inside mqtt.js's publish ack chain, where a throw
-    // would land in the client library). Each wrap is null when the
-    // callback is absent, so every no-handler path below — including
-    // the deliberate unhandled-rejection escape hatch for an
-    // unhandled delivery failure — keeps its exact meaning.
+    // callback guard. They were validated raw above and are wrapped
+    // once here. The wrap matters because all three run inside
+    // mqtt.js's publish ack chain, where a user throw would land in
+    // the client library (ADR-018). Each wrap is null when the
+    // callback is absent, so every no-handler path below keeps its
+    // exact meaning. That includes the deliberate unhandled-rejection
+    // escape hatch for an unhandled delivery failure.
     const reportCallbackFault = function ( severity, name, detail ) {
         console.error(
             `WinkComposer/mqtt-emitter: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`

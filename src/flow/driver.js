@@ -78,10 +78,10 @@ const headlessDriver = function ( handle, opts = {} ) {
 
     // Armed once at construction (validate raw first, then wrap). The
     // fault reporter is user code too, so it gets the same containment
-    // as the messages it reports on (ADR-018: a misbehaving user
-    // callback never interrupts the operation that invoked it). A
-    // throwing or rejecting onError costs one classified console line;
-    // the feed continues and the counters stay truthful.
+    // as the messages it reports on. ADR-018's rule: a misbehaving
+    // user callback never interrupts the operation that invoked it.
+    // A throwing or rejecting onError costs one classified console
+    // line. The feed continues and the counters stay truthful.
     const onError = wrapCallback( userOnError, {
         name: 'onError',
         severity: 'red',

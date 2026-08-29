@@ -112,13 +112,13 @@
  *
  * Runtime console classification:
  * - `CALLBACK_FAILED`  — the user's `onDeliveryFailure` itself threw or
- *   rejected. The shared callback guard contains the fault (ADR-018):
- *   the adapter keeps writing and flushing, and each fault becomes one
+ *   rejected. The shared callback guard contains the fault (ADR-018).
+ *   The adapter keeps writing and flushing, and each fault becomes one
  *   classified console line carrying the detail. `onWarning` is
- *   deliberately NOT guarded: a throwing `onWarning` is strict mode —
- *   the throw is the control flow that rejects the row — so wrapping
- *   it would erase that contract (the ADR-027 exclusion; pinned by
- *   the strict-mode specs).
+ *   deliberately NOT guarded. A throwing `onWarning` is strict mode:
+ *   the throw is the instruction that rejects the row. Wrapping it
+ *   would erase that contract (the ADR-027 exclusion, pinned by the
+ *   strict-mode specs).
  *
  * Column-internal facts consumed (the ADR-018 column-internal facts
  * pattern):

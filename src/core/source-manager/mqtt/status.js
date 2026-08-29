@@ -225,14 +225,13 @@ const createStatusReporter = function ( options = {} ) {
         };
     };
 
-    // Both user callbacks are armed by the shared callback guard —
-    // validated raw above, wrapped here, once (ADR-018: a misbehaving
-    // user callback never reaches transport code and never fails
-    // silently). A broken onStatus reports to the console in this
-    // adapter's classified line family; it cannot report through
-    // itself. A broken onMetrics reports as a yellow payload through
-    // emitStatus below — the channel every per-record fault already
-    // uses — so a flow or dashboard sees it where it watches.
+    // Both user callbacks are armed by the shared callback guard.
+    // They were validated raw above and are wrapped here, once
+    // (ADR-018: a misbehaving user callback never reaches transport
+    // code and never fails silently). A broken onStatus reports to
+    // the console in this adapter's classified line family. It
+    // cannot report through itself. A broken onMetrics reports on
+    // both channels; the comment at its wrap below explains why.
     const safeOnStatus = wrapCallback( onStatus, {
         name: 'onStatus',
         severity: 'red',
@@ -257,22 +256,35 @@ const createStatusReporter = function ( options = {} ) {
         }
     };
 
-    // The metrics fault payload allocates on the failure path only;
+    // The metrics fault report allocates on the failure path only.
     // `connected` and `phase` read the reporter's live state at fault
-    // time, so the report tells the truth about the moment it fired.
+    // time, so the payload tells the truth about the moment it fired.
+    //
+    // The console line comes first and always fires. It is the
+    // guaranteed audience: inside a flow the runtime installs its own
+    // onStatus wrapper, which forwards only red payloads when the
+    // user gave no handler, so the yellow payload alone could vanish
+    // (fresh-eyes find, 2026-08-28). The payload then additionally
+    // reaches a listening handler, so a health view sees the
+    // degradation. With no handler at all, emitStatus would print
+    // the same line a second time — skip the payload there.
     const safeOnMetrics = wrapCallback( onMetrics, {
         name: 'onMetrics',
         severity: 'yellow',
         report: function ( severity, name, detail ) {
-            emitStatus( {
-                status: 'yellow',
-                connected,
-                phase,
-                error: {
-                    code: 'CALLBACK_FAILED',
-                    message: `user callback ${name} failed: ${detail}`
-                }
-            } );
+            const message = `user callback ${name} failed: ${detail}`;
+            console.error( `MQTT source error [CALLBACK_FAILED]: ${message}` );
+            if ( safeOnStatus ) {
+                emitStatus( {
+                    status: severity,
+                    connected,
+                    phase,
+                    error: {
+                        code: 'CALLBACK_FAILED',
+                        message
+                    }
+                } );
+            }
         }
     } );
 

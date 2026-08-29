@@ -287,14 +287,15 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
     }
 
     const onWarning = providedOnWarning || defaultOnWarning;
-    // onWarning stays raw on purpose: a strict-mode onWarning throws,
-    // and that throw is the control flow that rejects the row (ADR-027
-    // keeps value-consumed callbacks out of the guard's scope).
-    // onDeliveryFailure only notifies, so the shared guard arms it —
-    // validated raw above, wrapped once here (ADR-018: a broken
-    // handler costs its own output, never the flush chain). Absent
-    // stays null, so the no-handler DELIVERY_FAILED escape hatch
-    // below keeps its exact meaning.
+    // onWarning stays raw on purpose. A strict-mode onWarning throws,
+    // and that throw is the instruction that rejects the row. ADR-027
+    // keeps such callbacks — ones whose throw or return the adapter
+    // acts on — out of the guard's scope. onDeliveryFailure only
+    // notifies, so the shared guard arms it. It was validated raw
+    // above and is wrapped once here (ADR-018: a broken handler costs
+    // its own output, never the flush chain). Absent stays null, so
+    // the no-handler DELIVERY_FAILED escape hatch below keeps its
+    // exact meaning.
     const onDeliveryFailure = wrapCallback( providedOnDeliveryFailure || null, {
         name: 'onDeliveryFailure', severity: 'red', report: reportCallbackFault
     } );
