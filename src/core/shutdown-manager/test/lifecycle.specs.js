@@ -243,6 +243,26 @@ describe( 'shutdown-manager — top-level forced-shutdown timeout', function () 
         expect( warnCalls.some( ( m ) => m.includes( 'Forced shutdown' ) ) ).to.equal( true );
     } );
 
+    it( 'a timed-out drain prints no per-rejection lines — its results are still unknown', async function () {
+        // On timeout the drains are still in flight, so no per-handle
+        // outcome exists to print. The forced-shutdown warning and
+        // exit 1 carry the outcome.
+        const errorStub = sinon.stub( console, 'error' );
+        try {
+            manager.register( { shutdown: () => new Promise( () => undefined ) } );
+
+            const graceful = await manager.shutdown();
+
+            expect( graceful ).to.equal( false );
+            const lines = errorStub.getCalls()
+                .map( ( c ) => c.args.join( ' ' ) )
+                .filter( ( m ) => m.includes( 'Flow drain failed' ) );
+            expect( lines ).to.have.lengthOf( 0 );
+        } finally {
+            errorStub.restore();
+        }
+    } );
+
     it( 'returns true when the drain completes within the timeout', async function () {
         const fastHandle = {
             shutdown: () => new Promise( ( resolve ) => setTimeout( resolve, 5 ) )
@@ -290,6 +310,96 @@ describe( 'shutdown-manager — top-level forced-shutdown timeout', function () 
                 done( err );
             }
         } );
+    } );
+
+} );
+
+describe( 'shutdown-manager — a rejected drain fails the shutdown (exit-1 ruling, 2026-08-29)', function () {
+
+    // A drain that REJECTS means a flow lost data at shutdown — the
+    // adapter said so with a classified error. Before this ruling the
+    // rejection sat unread inside Promise.allSettled: no line, exit 0.
+    // Now every rejection prints one classified line, and the shutdown
+    // reports not-graceful so the signal handler exits 1.
+
+    let manager;
+    let emittersShutdown;
+    let logStub;
+    let warnStub;
+    let errorStub;
+
+    beforeEach( function () {
+        manager = createShutdownManager();
+        emittersShutdown = sinon.stub( emitters, 'shutdown' ).resolves( [] );
+        logStub = sinon.stub( console, 'log' );
+        warnStub = sinon.stub( console, 'warn' );
+        errorStub = sinon.stub( console, 'error' );
+    } );
+
+    afterEach( function () {
+        emittersShutdown.restore();
+        logStub.restore();
+        warnStub.restore();
+        errorStub.restore();
+    } );
+
+    const drainFailureLines = function () {
+        return errorStub.getCalls()
+            .map( ( c ) => c.args.join( ' ' ) )
+            .filter( ( m ) => m.includes( 'Flow drain failed' ) );
+    };
+
+    it( 'a drain rejecting with a classified loss fails the shutdown and prints one line', async function () {
+        const loss = new Error( 'WinkComposer/questdb: final flush failed' );
+        loss.code = 'DELIVERY_FAILED';
+        loss.dropped = { count: 3 };
+        manager.register( { shutdown: sinon.stub().rejects( loss ) } );
+
+        const graceful = await manager.shutdown();
+
+        expect( graceful ).to.equal( false );
+        const lines = drainFailureLines();
+        expect( lines ).to.have.lengthOf( 1 );
+        expect( lines[ 0 ] ).to.contain( '[DELIVERY_FAILED]' );
+        expect( lines[ 0 ] ).to.contain( 'final flush failed' );
+        expect( lines[ 0 ] ).to.contain( '3' );
+    } );
+
+    it( 'one rejecting drain among clean ones still fails the shutdown; every handle drains', async function () {
+        const loss = new Error( 'drain lost data' );
+        loss.code = 'SHUTDOWN_TIMEOUT';
+        const bad = { shutdown: sinon.stub().rejects( loss ) };
+        const good = { shutdown: sinon.stub().resolves() };
+        manager.register( bad );
+        manager.register( good );
+
+        const graceful = await manager.shutdown();
+
+        expect( graceful ).to.equal( false );
+        expect( bad.shutdown.calledOnce ).to.equal( true );
+        expect( good.shutdown.calledOnce ).to.equal( true );
+        expect( drainFailureLines() ).to.have.lengthOf( 1 );
+    } );
+
+    it( 'a rejection with no code and no message still prints a classified line, never throws', async function () {
+        manager.register( { shutdown: () => Promise.reject( null ) } );
+
+        const graceful = await manager.shutdown();
+
+        expect( graceful ).to.equal( false );
+        const lines = drainFailureLines();
+        expect( lines ).to.have.lengthOf( 1 );
+        expect( lines[ 0 ] ).to.contain( '[UNKNOWN]' );
+    } );
+
+    it( 'all drains resolving stays graceful with zero drain-failure lines', async function () {
+        manager.register( { shutdown: sinon.stub().resolves() } );
+        manager.register( { shutdown: sinon.stub().resolves() } );
+
+        const graceful = await manager.shutdown();
+
+        expect( graceful ).to.equal( true );
+        expect( drainFailureLines() ).to.have.lengthOf( 0 );
     } );
 
 } );

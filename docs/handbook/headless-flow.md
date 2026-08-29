@@ -96,6 +96,8 @@ A flow with a source stops when the source runs out of data. A headless flow has
 
 **The process is asked to stop.** When you called `.run()`, the flow registered itself with the framework's signal handlers. So `Ctrl-C` (SIGINT) or `kill` (SIGTERM) drains every running flow and exits, with nothing wired by you. A long-running push service often relies on this alone and never calls `shutdown()` itself. If a drain runs longer than 30 seconds (`SHUTDOWN_FORCE_TIMEOUT_MS`), the process exits anyway, so a stuck sink cannot hang it forever.
 
+The stop also sets the process exit code. Exit 0 means every flow drained clean. Exit 1 means the stop was forced by the timeout, or some flow's drain failed and lost buffered data. Each such loss is also printed as one classified console line. So a supervisor such as systemd or Docker can treat a data-losing stop as a failure.
+
 Either path runs the same drain: stop the source if there is one, flush the emitters, then flush the storage.
 
 **A delivery failure during the drain is loud, not fatal.** Each sink gets its full chance to deliver what it holds. When one cannot finish in time, the framework logs one classified line naming the sink, the reason, and the exact count — and the drain still completes for the other sinks. `handle.shutdown()` itself still resolves; it rejects only when a drain stage as a whole fails, such as a source that refuses to stop. The log line looks like this:

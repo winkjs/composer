@@ -21,6 +21,15 @@
  *   wider scope: the per-adapter `{ timeout }` (one adapter's drain),
  *   the per-flow stage budget, and this process-level ceiling on the
  *   whole exit.
+ * - **Exit 1 on a data-losing stop** (the 2026-08-29 ruling). A drain
+ *   that rejects means that flow lost data at shutdown; the adapter
+ *   said so with a classified error. Each rejection prints one
+ *   classified console line, and the process exits 1 — a supervisor
+ *   (systemd, Docker, Kubernetes, a batch script) must never read a
+ *   data-losing stop as clean. This extends ADR-018's delivery
+ *   invariant to the process boundary. Callers who invoke
+ *   `handle.shutdown()` directly are unaffected: they receive the
+ *   rejection themselves and own their own response.
  *
  * This layer owns NO storage. The storage-directory cleanup it used to
  * run (an `fs.rm` of STORAGE_DIR at dev/test shutdown) was removed
@@ -120,15 +129,24 @@ const createShutdownManager = function () {
     /**
      * Iterate every registered flow handle, calling `handle.shutdown()`
      * on each in parallel via `Promise.allSettled`. Race the whole drain
-     * against `timeoutMs`; if the timeout wins, return false so the
-     * caller can log + force-exit with code 1.
+     * against `timeoutMs`.
      *
-     * Returns true when no handles are registered (e.g., the legacy
-     * code path with no modern flows in process).
+     * A drain that REJECTS means that flow lost data at shutdown — the
+     * adapter said so with a classified error (`DELIVERY_FAILED` or
+     * `SHUTDOWN_TIMEOUT`, per ADR-018 a shutdown never resolves cleanly
+     * over a loss). Each rejection prints one classified console line
+     * and counts in `failedDrains`, so the caller can refuse the clean
+     * exit code (the 2026-08-29 exit-1 ruling).
+     *
+     * @param {number} timeoutMs - Ceiling for the whole drain
+     * @returns {Promise<{timedOut: boolean, failedDrains: number}>}
+     *   `timedOut` — the race hit the ceiling; the drains are still in
+     *   flight, so their outcomes are unknown and `failedDrains` stays 0.
+     *   `failedDrains` — how many drains rejected (0 with no handles).
      */
     const drainHandles = async function ( timeoutMs ) {
         if ( handles.size === 0 ) {
-            return true;
+            return { timedOut: false, failedDrains: 0 };
         }
 
         const drainAll = Promise.allSettled(
@@ -153,7 +171,25 @@ const createShutdownManager = function () {
         // that runs the manager and then expects to exit cleanly.
         // Same canonical pattern used by every source `stopFn`.
         clearTimeout( timerHandle );
-        return winner !== TIMED_OUT;
+        if ( winner === TIMED_OUT ) {
+            return { timedOut: true, failedDrains: 0 };
+        }
+
+        // The drain settled in time: read every outcome. The reads are
+        // null-safe because a rejection reason can be anything.
+        let failedDrains = 0;
+        for ( let i = 0; i < winner.length; i += 1 ) {
+            if ( winner[ i ].status === 'rejected' ) {
+                failedDrains += 1;
+                const reason = winner[ i ].reason;
+                const code = ( reason && reason.code ) || 'UNKNOWN';
+                const detail = ( reason && reason.message ) || String( reason );
+                const count = reason && reason.dropped && reason.dropped.count;
+                const droppedNote = ( typeof count === 'number' ) ? ` — ${count} message(s) dropped` : '';
+                console.error( `  ✗ Flow drain failed [${code}]: ${detail}${droppedNote}` );
+            }
+        }
+        return { timedOut: false, failedDrains };
     };
 
     // ========================================================================
@@ -167,11 +203,16 @@ const createShutdownManager = function () {
      * 1. Drain registered flow handles (modern path).
      * 2. Run the legacy path block (clustered for retirement; warns once
      *    when actually doing work).
-     * 3. Return graceful (true) / forced (false) — the caller decides
-     *    the exit code.
+     * 3. Return graceful (true) / not-graceful (false) — the caller
+     *    decides the exit code.
      *
-     * @returns {Promise<boolean>} true on graceful completion, false on
-     *   forced timeout
+     * Graceful means BOTH: the drain finished inside the timeout, AND
+     * every drain resolved clean. A drain that rejected lost data, so
+     * it must not read as a clean stop (the 2026-08-29 exit-1 ruling;
+     * ADR-018's delivery invariant, extended to the process boundary).
+     *
+     * @returns {Promise<boolean>} true on graceful completion; false on
+     *   forced timeout or on any rejected drain
      */
     const shutdown = async function () {
         if ( isShuttingDown ) {
@@ -184,13 +225,19 @@ const createShutdownManager = function () {
 
         // Phase 1 (modern path): drain registered flow handles, racing
         // against the forced-shutdown timeout.
-        const graceful = await drainHandles( ENV_VARS.shutdownForceTimeoutMs );
-        if ( !graceful ) {
+        const drain = await drainHandles( ENV_VARS.shutdownForceTimeoutMs );
+        if ( drain.timedOut ) {
             console.warn(
                 `  ⚠ Forced shutdown — flow drain exceeded ${ENV_VARS.shutdownForceTimeoutMs}ms; ` +
                 'some adapters may not have completed cleanly'
             );
         }
+        if ( drain.failedDrains > 0 ) {
+            console.warn(
+                `  ⚠ ${drain.failedDrains} flow drain(s) lost data (lines above) — shutdown is not clean`
+            );
+        }
+        const graceful = !drain.timedOut && ( drain.failedDrains === 0 );
 
         try {
             // ================================================================
@@ -251,7 +298,9 @@ const createShutdownManager = function () {
      * process regardless of caller.
      *
      * On signal: runs `shutdown()`, then `process.exit(0)` on graceful
-     * or `process.exit(1)` on forced timeout.
+     * completion. Exit is 1 on a forced timeout or when any flow's
+     * drain rejected — a rejected drain lost data, and the exit code
+     * must say so (the 2026-08-29 exit-1 ruling).
      */
     const attachHandlers = function () {
         if ( attached ) {
