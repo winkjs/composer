@@ -5,7 +5,7 @@ import pluginSecurity from 'eslint-plugin-security';
 
 export default [
   {
-    ignores: [ '**/archive/**', '**/examples/**' ]
+    ignores: [ '**/examples/**' ]
   },
   { languageOptions: { globals: { ...globals.browser, ...globals.node } } },
   pluginJs.configs.recommended,
