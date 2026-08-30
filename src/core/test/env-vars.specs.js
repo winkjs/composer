@@ -954,4 +954,91 @@ describe( 'env-vars', function () {
 
     } );
 
+    // ========================================================================
+    // LOGGER CONFIGURATION (ADR-028)
+    // ========================================================================
+
+    describe( 'logger configuration (ADR-028)', function () {
+
+        let validators;
+
+        before( async function () {
+            const mod = await import( '../env-vars.js' );
+            validators = mod.validators;
+        } );
+
+        it( 'ENV_VARS.logger defaults to console', async function () {
+            const { ENV_VARS } = await import( '../env-vars.js' );
+            expect( ENV_VARS.logger ).to.equal( 'console' );
+        } );
+
+        it( 'ENV_VARS.logLevel defaults to debug outside production', async function () {
+            const { ENV_VARS } = await import( '../env-vars.js' );
+            // mocha runs with NODE_ENV unset or 'test' — never production
+            expect( ENV_VARS.logLevel ).to.equal( 'debug' );
+        } );
+
+        it( 'logLevel defaults to info in production (child process)', async function () {
+            // COMPOSER_LOG_LEVEL must be absent (an empty string fails
+            // fast by design), so it is deleted from the child env.
+            const childEnv = { ...process.env, NODE_ENV: 'production' };
+            delete childEnv.COMPOSER_LOG_LEVEL;
+            const child = spawn( 'node', [ '--input-type=module', '-e',
+                `import( '${envVarsPath}' ).then( ( m ) => console.log( m.ENV_VARS.logLevel ) )` ], {
+                env: childEnv,
+                stdio: [ 'pipe', 'pipe', 'pipe' ]
+            } );
+            const out = await new Promise( ( resolve ) => {
+                let stdout = '';
+                child.stdout.on( 'data', ( d ) => {
+                    stdout += d.toString();
+                } );
+                child.on( 'close', () => resolve( stdout.trim() ) );
+            } );
+            expect( out ).to.equal( 'info' );
+        } );
+
+        it( 'logger validator accepts each transport name', function () {
+            const v = validators;
+            expect( v.logger( 'console' ) ).to.equal( null );
+            expect( v.logger( 'json' ) ).to.equal( null );
+            expect( v.logger( 'silent' ) ).to.equal( null );
+        } );
+
+        it( 'logger validator rejects an unknown transport', function () {
+            expect( validators.logger( 'file' ) ).to.include( 'Must be one of' );
+        } );
+
+        it( 'logLevel validator accepts each level name', function () {
+            const v = validators;
+            expect( v.logLevel( 'debug' ) ).to.equal( null );
+            expect( v.logLevel( 'info' ) ).to.equal( null );
+            expect( v.logLevel( 'warn' ) ).to.equal( null );
+            expect( v.logLevel( 'error' ) ).to.equal( null );
+        } );
+
+        it( 'logLevel validator rejects an unknown level', function () {
+            expect( validators.logLevel( 'verbose' ) ).to.include( 'Must be one of' );
+        } );
+
+        it( 'rejects invalid COMPOSER_LOGGER at startup', async function () {
+            const result = await runWithEnv( {
+                NODE_ENV: 'test',
+                COMPOSER_LOGGER: 'file'
+            } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'Must be one of' );
+        } );
+
+        it( 'rejects invalid COMPOSER_LOG_LEVEL at startup', async function () {
+            const result = await runWithEnv( {
+                NODE_ENV: 'test',
+                COMPOSER_LOG_LEVEL: 'verbose'
+            } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'Must be one of' );
+        } );
+
+    } );
+
 } );

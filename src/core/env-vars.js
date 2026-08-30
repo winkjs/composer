@@ -16,10 +16,24 @@ import os from 'os';
 // to nothing intended.
 const rawYieldMs = ( process.env.YIELD_TIME_THRESHOLD_MS ?? '500' ).trim();
 
+// The log-level default depends on NODE_ENV, and the ENV_VARS object
+// literal cannot read its own nodeEnv entry while it is being built.
+// So NODE_ENV is resolved once here and used in both places (the same
+// hoisting precedent as rawYieldMs above). Production defaults to
+// 'info' so an edge box does not fill its journal with debug lines;
+// everything else defaults to 'debug' for development visibility.
+// ADR-028 records the logger architecture.
+const rawNodeEnv = ( process.env.NODE_ENV ?? 'development' ).trim();
+
 const ENV_VARS = {
     // Core Configuration
     edgeDeviceId: ( process.env.EDGE_DEVICE_ID ?? os.hostname() ).trim(),
-    nodeEnv: ( process.env.NODE_ENV ?? 'development' ).trim(),
+    nodeEnv: rawNodeEnv,
+
+    // Logging (ADR-028). 'logger' picks the transport the facade
+    // writes through; 'logLevel' picks the lowest level that prints.
+    logger: ( process.env.COMPOSER_LOGGER ?? 'console' ).trim(),
+    logLevel: ( process.env.COMPOSER_LOG_LEVEL ?? ( ( rawNodeEnv === 'production' ) ? 'info' : 'debug' ) ).trim(),
 
     // Partition Management (see ADR-016)
     maxPartitionsAllowed: parseInt( process.env.COMPOSER_MAX_PARTITIONS_ALLOWED ?? '10000', 10 ),
@@ -117,6 +131,22 @@ const validators = {
         return null;
     },
 
+    logger: function ( value ) {
+        const validTransports = [ 'console', 'json', 'silent' ];
+        if ( !validTransports.includes( value ) ) {
+            return `Must be one of ${validTransports.join( ', ' )}, got: "${value}"`;
+        }
+        return null;
+    },
+
+    logLevel: function ( value ) {
+        const validLevels = [ 'debug', 'info', 'warn', 'error' ];
+        if ( !validLevels.includes( value ) ) {
+            return `Must be one of ${validLevels.join( ', ' )}, got: "${value}"`;
+        }
+        return null;
+    },
+
     mqttMsgExpiry: function ( value, originalEnv ) {
         if ( isNaN( value ) || value <= 0 ) {
             return `Must be positive integer, got: "${originalEnv}"`;
@@ -193,6 +223,8 @@ const validators = {
 const validationConfig = [
     { field: 'edgeDeviceId', validator: validators.edgeDeviceId },
     { field: 'nodeEnv', validator: validators.nodeEnv },
+    { field: 'logger', validator: validators.logger, label: 'COMPOSER_LOGGER' },
+    { field: 'logLevel', validator: validators.logLevel, label: 'COMPOSER_LOG_LEVEL' },
     { field: 'maxPartitionsAllowed', validator: validators.positiveInt, originalEnv: 'COMPOSER_MAX_PARTITIONS_ALLOWED' },
     { field: 'messageFailureThreshold', validator: validators.positiveInt, originalEnv: 'COMPOSER_MESSAGE_FAILURE_THRESHOLD' },
     { field: 'yieldTimeThresholdMs', validator: validators.nonNegativeNumberOrInfinity, originalEnv: 'YIELD_TIME_THRESHOLD_MS' },

@@ -15,10 +15,26 @@ Most of these have an equivalent option you can pass directly in a flow — the 
 |----------|---------|--------------|
 | `EDGE_DEVICE_ID` | machine hostname | Device identity; used in MQTT topics, so it must be topic-safe (letters, digits, `_ - / .`) |
 | `NODE_ENV` | `development` | Run mode: `development`, `production`, or `test` |
+| `COMPOSER_LOGGER` | `console` | Transport for framework log lines: `console` (readable lines), `json` (one JSON object per line, for log collectors), or `silent` |
+| `COMPOSER_LOG_LEVEL` | `info` in production, `debug` otherwise | Lowest level that prints: `debug`, `info`, `warn`, or `error` |
 | `COMPOSER_MAX_PARTITIONS_ALLOWED` | `10000` | Cap on isolated per-asset pipelines |
 | `COMPOSER_MESSAGE_FAILURE_THRESHOLD` | `5` | Consecutive message failures before a flow stops — and before a repeatedly failing partition is quarantined. See [Resilience → When a node throws](./resilience.md#when-a-node-throws) |
 | `SHUTDOWN_FORCE_TIMEOUT_MS` | `30000` | Deadline for graceful shutdown before a forced exit; matches Kubernetes' 30-second default |
 | `YIELD_TIME_THRESHOLD_MS` | `500` | Longest stretch the pipeline runs before offering the event loop a breath; `Infinity` disables yielding. Per-flow override: [`.yield()`](./nodes/configuration.md#yield) |
+
+### The logger settings
+
+A transport is where a framework log line goes. The default,
+`console`, prints readable lines. Errors and warnings go to stderr,
+the rest to stdout. The `json` transport prints the same records as
+one JSON object per line, on the same stream split. Log collectors
+on Kubernetes consume that form directly. `silent` discards
+everything.
+
+Composer never writes a log file itself. Your supervisor turns the
+streams into files with one line of config. The routes: journald
+under systemd, the container runtime under Kubernetes, or a shell
+redirect plus logrotate anywhere else.
 
 ### The yield threshold: when it matters
 
