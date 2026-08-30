@@ -191,7 +191,7 @@ const ERR_SHUTTING_DOWN = {
  * @returns {TypeError}
  */
 const invalidConfig = function ( message ) {
-    const err = new TypeError( message );
+    const err = new TypeError( 'winkComposer/mqttEmitter: ' + message );
     err.code = 'INVALID_CONFIG';
     return err;
 };
@@ -551,7 +551,7 @@ export const createEmitter = function ( config ) {
                     if ( err ) {
                         state.stats.publishErrors += 1;
                         const deliveryErr = new Error(
-                            `MQTT publish failed (topic=${topic}): ${err.message || err.code || 'unknown'}`
+                            `winkComposer/mqttEmitter: publish failed (topic=${topic}): ${err.message || err.code || 'unknown'}`
                         );
                         deliveryErr.code = 'DELIVERY_FAILED';
                         deliveryErr.cause = err;
@@ -727,21 +727,21 @@ export const createEmitter = function ( config ) {
         }
         state.hasConnectedOnce = true;
         if ( config.debug ) {
-            console.log( `Connected to ${redactedBrokerUrl}` );
+            console.log( `winkComposer/mqttEmitter: Connected to ${redactedBrokerUrl}` );
         }
     } );
 
     client.on( 'offline', () => {
         state.connected = false;
         if ( config.debug ) {
-            console.log( `Offline - ${state.unacked} messages in flight` );
+            console.log( `winkComposer/mqttEmitter: Offline - ${state.unacked} messages in flight` );
         }
     } );
 
     client.on( 'error', ( err ) => {
         state.stats.errors += 1;
         if ( config.debug ) {
-            console.error( `MQTT error: ${err.message}` );
+            console.error( `winkComposer/mqttEmitter: client error: ${err.message}` );
         }
     } );
 

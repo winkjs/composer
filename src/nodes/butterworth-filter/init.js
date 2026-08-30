@@ -74,14 +74,14 @@ const init = function ( spec ) {
     // Validate the computed cutoff
     if ( cutoffHz <= 0 || cutoffHz >= nyquistHz ) {
         throw new RangeError(
-            `Computed cutoff ${cutoffHz.toFixed(1)}Hz is outside valid range (0, ${nyquistHz}Hz)`
+            `winkComposer/butterworthFilter: Computed cutoff ${cutoffHz.toFixed(1)}Hz is outside valid range (0, ${nyquistHz}Hz)`
         );
     }
 
     // Warn about potential numerical issues
     const normalizedCutoff = cutoffHz / nyquistHz;
     if ( normalizedCutoff < 0.001 && !state.acceptNumericalRisk ) {
-        console.warn( `Very low cutoff (${cutoffHz.toFixed(3)}Hz) may cause numerical instability` );
+        console.warn( `winkComposer/butterworthFilter: Very low cutoff (${cutoffHz.toFixed(3)}Hz) may cause numerical instability` );
     }
 
     // Store configuration for reference
@@ -127,14 +127,14 @@ const init = function ( spec ) {
     /* c8 ignore next 5 -- defensive: bilinear transform produces stable coefficients for valid Nyquist-bounded cutoff */
     if ( Math.abs( state.a2 ) >= 1 ) {
         throw new Error(
-            `Filter unstable: coefficient a2 (${state.a2.toFixed(4)}) is outside stability bounds`
+            `winkComposer/butterworthFilter: Filter unstable: coefficient a2 (${state.a2.toFixed(4)}) is outside stability bounds`
         );
     }
 
     /* c8 ignore next 5 -- defensive: same Nyquist guard prevents a1 stability violation */
     if ( Math.abs( state.a1 ) >= 1 + state.a2 ) {
         throw new Error(
-            `Filter unstable: coefficient a1 (${state.a1.toFixed(4)}) violates stability condition |a1| < 1 + a2`
+            `winkComposer/butterworthFilter: Filter unstable: coefficient a1 (${state.a1.toFixed(4)}) violates stability condition |a1| < 1 + a2`
         );
     }
 

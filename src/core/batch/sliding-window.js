@@ -7,10 +7,10 @@
 export const createWindow = function ( capacity, fieldOrder ) {
     // Input validation
     if ( !capacity || capacity <= 0 ) {
-        throw new Error( 'capacity must be positive integer' );
+        throw new Error( 'winkComposer/batch: capacity must be positive integer' );
     }
     if ( !Array.isArray( fieldOrder ) || fieldOrder.length === 0 ) {
-        throw new Error( 'fieldOrder must be non-empty array' );
+        throw new Error( 'winkComposer/batch: fieldOrder must be non-empty array' );
     }
 
     // Pre-allocate all row objects with stable shape

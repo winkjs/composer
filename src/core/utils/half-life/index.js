@@ -14,7 +14,7 @@
  */
 export const halfLifeToAlpha = function ( halfLife ) {
     if ( typeof halfLife !== 'number' || !Number.isFinite( halfLife ) || ( halfLife <= 0 ) ) {
-        throw new Error( 'Half-life must be a finite number > 0' );
+        throw new Error( 'winkComposer/halfLife: Half-life must be a finite number > 0' );
     }
     // alpha = 1 - exp( -ln(2) / halfLife ); use expm1 to avoid cancellation
     let alpha = -Math.expm1( -( Math.LN2 / halfLife ) );
@@ -37,7 +37,7 @@ export const halfLifeToAlpha = function ( halfLife ) {
  */
 export const alphaToHalfLife = function ( alpha ) {
     if ( typeof alpha !== 'number' || !Number.isFinite( alpha ) || ( alpha <= 0 ) || ( alpha >= 1 ) ) {
-        throw new Error( 'Alpha must be a finite number in (0,1)' );
+        throw new Error( 'winkComposer/halfLife: Alpha must be a finite number in (0,1)' );
     }
     // halfLife = ln(2) / -ln(1 - alpha) ; use log1p(-alpha) for stability
     return Math.LN2 / ( -Math.log1p( -alpha ) );
@@ -53,10 +53,10 @@ export const alphaToHalfLife = function ( alpha ) {
  */
 export const halfLifeToWarmupSamples = function ( halfLifeSamples, settledFraction = 0.95 ) {
     if ( typeof halfLifeSamples !== 'number' || !Number.isFinite( halfLifeSamples ) || ( halfLifeSamples <= 0 ) ) {
-        throw new Error( 'halfLifeSamples must be a finite number > 0' );
+        throw new Error( 'winkComposer/halfLife: halfLifeSamples must be a finite number > 0' );
     }
     if ( typeof settledFraction !== 'number' || !Number.isFinite( settledFraction ) || ( settledFraction <= 0 ) || ( settledFraction >= 1 ) ) {
-        throw new Error( 'settledFraction must be a finite number in (0,1)' );
+        throw new Error( 'winkComposer/halfLife: settledFraction must be a finite number in (0,1)' );
     }
     // nHL = -log2(1 - settledFraction) = -ln(1 - s)/ln2
     const nHalfLives = ( -Math.log1p( -settledFraction ) ) / Math.LN2;

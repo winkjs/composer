@@ -31,7 +31,7 @@ const moduleCache = new Map();
 export const loadNodeModule = async function ( nodeName ) {
     // Validate node name
     if ( !isValidNodeName( nodeName ) ) {
-        throw new Error( `Unknown node type: "${nodeName}"` );
+        throw new Error( `winkComposer/flow: Unknown node type: "${nodeName}"` );
     }
 
     // Return cached module if available

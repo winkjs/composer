@@ -227,7 +227,7 @@ the next. Your `onStatus` handler receives one red report:
     phase: 'running',
     error: {
         code: 'MESSAGE_HANDLER_FAILED',
-        message: 'Node execution failed at index 2: ...'
+        message: 'winkComposer/wiring: Node execution failed at index 2: ...'
     }
 }
 ```

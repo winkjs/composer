@@ -38,7 +38,7 @@ const validateMatrix = function ( X, caller ) {
         const row = X[ i ];
         if ( !Array.isArray( row ) || row.length !== p ) {
             throw new Error(
-                caller + ': row ' + i + ' has length ' +
+                'winkComposer/' + caller + ': row ' + i + ' has length ' +
                 ( Array.isArray( row ) ? row.length : 'N/A' ) +
                 ', expected ' + p + '.'
             );
@@ -46,7 +46,7 @@ const validateMatrix = function ( X, caller ) {
         for ( let j = 0; j < p; j += 1 ) {
             if ( !validators.isFinite( row[ j ] ) ) {
                 throw new Error(
-                    caller + ': non-finite value at row ' + i +
+                    'winkComposer/' + caller + ': non-finite value at row ' + i +
                     ', column ' + j + '.'
                 );
             }
@@ -67,7 +67,7 @@ const validateMatrix = function ( X, caller ) {
 const validateBinaryLabels = function ( y, n, caller ) {
     if ( !Array.isArray( y ) || y.length !== n ) {
         throw new Error(
-            caller + ': y must be an array with length ' + n +
+            'winkComposer/' + caller + ': y must be an array with length ' + n +
             ', got ' + ( Array.isArray( y ) ? y.length : typeof y ) + '.'
         );
     }
@@ -75,7 +75,7 @@ const validateBinaryLabels = function ( y, n, caller ) {
     for ( let i = 0; i < n; i += 1 ) {
         if ( y[ i ] !== 0 && y[ i ] !== 1 ) {
             throw new Error(
-                caller + ': y[' + i + '] = ' + y[ i ] +
+                'winkComposer/' + caller + ': y[' + i + '] = ' + y[ i ] +
                 ', expected 0 or 1.'
             );
         }
@@ -93,7 +93,7 @@ const validateBinaryArray = function ( arr, name, caller ) {
     for ( let i = 0; i < arr.length; i += 1 ) {
         if ( arr[ i ] !== 0 && arr[ i ] !== 1 ) {
             throw new Error(
-                caller + ': ' + name + '[' + i + '] = ' + arr[ i ] +
+                'winkComposer/' + caller + ': ' + name + '[' + i + '] = ' + arr[ i ] +
                 ', expected 0 or 1.'
             );
         }

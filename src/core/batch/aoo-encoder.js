@@ -43,13 +43,13 @@
 export const createAooEncoder = function ( { maxRows, fieldOrder, codec } ) {
     // Input validation - fail fast on misconfiguration
     if ( !Array.isArray( fieldOrder ) || fieldOrder.length === 0 ) {
-        throw new Error( 'fieldOrder must be non-empty array of field names' );
+        throw new Error( 'winkComposer/batch: fieldOrder must be non-empty array of field names' );
     }
     if ( !maxRows || maxRows <= 0 ) {
-        throw new Error( 'maxRows must be positive integer' );
+        throw new Error( 'winkComposer/batch: maxRows must be positive integer' );
     }
     if ( !codec || typeof codec.pack !== 'function' ) {
-        throw new Error( 'codec must have pack() method');
+        throw new Error( 'winkComposer/batch: codec must have pack() method' );
     }
 
     // Pre-allocate row objects with stable shape.
@@ -98,7 +98,7 @@ export const createAooEncoder = function ( { maxRows, fieldOrder, codec } ) {
     const encode = function ( producerId, seq, srcRows, count ) {
         // Validate count doesn't exceed pre-allocated capacity
         if ( count > maxRows ) {
-            throw new Error( `Cannot encode ${count} rows, max capacity is ${maxRows}` );
+            throw new Error( `winkComposer/batch: Cannot encode ${count} rows, max capacity is ${maxRows}` );
         }
 
         // Copy source data into pre-allocated row objects

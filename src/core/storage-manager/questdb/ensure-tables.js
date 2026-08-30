@@ -162,7 +162,7 @@ const ensureTables = async function ( pgClient, assetClass, tablePrefix, options
                 // originates from QuestDB's PG-wire DDL response, not from
                 // our pre-validation of caller-supplied config.
                 const wrapped = new Error(
-                    `Failed to create table '${tableName}': ${err.message}`
+                    `winkComposer/questdb: Failed to create table '${tableName}': ${err.message}`
                 );
                 wrapped.code = 'SCHEMA_ERROR';
                 throw wrapped;

@@ -53,7 +53,7 @@ const toUint8 = function ( bytes ) {
         return new Uint8Array( bytes.buffer, bytes.byteOffset, bytes.byteLength );
     }
 
-    throw new TypeError( 'Expected BufferSource' );
+    throw new TypeError( 'winkComposer/codec: Expected BufferSource' );
 };
 
 /**
@@ -126,7 +126,7 @@ export const createCodec = function ( format = 'msgpack' ) {
         } );
     }
 
-    throw new TypeError( `Unknown format: ${format}` );
+    throw new TypeError( `winkComposer/codec: Unknown format: ${format}` );
 };
 
 // Pre-created codecs for convenience

@@ -142,7 +142,7 @@ describe( 'mqtt emitter — debug event logs', function () {
             const originalError = console.error;
             let logged = false;
             console.error = ( msg ) => {
-                if ( msg.includes( 'MQTT error' ) ) {
+                if ( msg.includes( 'winkComposer/mqttEmitter: client error' ) ) {
                     logged = true;
                 }
             };

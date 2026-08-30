@@ -142,7 +142,7 @@ const wireNode = function ( nodeModule, nodeIndex, nextHops = [], options = {} )
 
             // Provide node-level error isolation with contextual information
             // This prevents individual node failures from crashing the entire flow
-            const nodeError = new Error( `Node execution failed at index ${nodeIndex}: ${error.message}` );
+            const nodeError = new Error( `winkComposer/wiring: Node execution failed at index ${nodeIndex}: ${error.message}` );
             nodeError.cause = error;
             nodeError.nodeIndex = nodeIndex;
             nodeError.nodeModule = nodeModule.getNodeType ? nodeModule.getNodeType() : 'unknown';
