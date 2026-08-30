@@ -1,6 +1,6 @@
 # Semantics
 
-WinkComposer's semantics system provides a declarative metadata layer that defines data schemas, validation rules, and storage integration. Semantics serve as the Single Source of Truth (SSOT) for:
+Composer's semantics system provides a declarative metadata layer that defines data schemas, validation rules, and storage integration. Semantics serve as the Single Source of Truth (SSOT) for:
 
 - **Column definitions**: Data types, units, physical ranges, operational limits
 - **Asset classes**: Equipment types with their associated measurements

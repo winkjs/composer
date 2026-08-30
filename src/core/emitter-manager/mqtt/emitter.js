@@ -322,7 +322,7 @@ export const createEmitter = function ( config ) {
     // escape hatch for an unhandled delivery failure.
     const reportCallbackFault = function ( severity, name, detail ) {
         console.error(
-            `WinkComposer/mqtt-emitter: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+            `winkComposer/mqttEmitter: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
         );
     };
     const onDeliveryFailure = wrapCallback( config.onDeliveryFailure, {
@@ -379,7 +379,7 @@ export const createEmitter = function ( config ) {
     const requestedQueueSize = config.maxQueueSize || DEFAULT_MAX_QUEUE_SIZE;
     if ( requestedQueueSize > MQTT_INFLIGHT_ID_LIMIT ) {
         console.warn(
-            `WinkComposer/mqtt-emitter: maxQueueSize ${requestedQueueSize} exceeds the MQTT ` +
+            `winkComposer/mqttEmitter: maxQueueSize ${requestedQueueSize} exceeds the MQTT ` +
             `packet-id ceiling — clamped to ${MQTT_INFLIGHT_ID_LIMIT}`
         );
     }
@@ -681,7 +681,7 @@ export const createEmitter = function ( config ) {
         // an incomplete drain must not read as a clean one (ADR-018).
         if ( undeliveredCount > 0 ) {
             const err = new Error(
-                `WinkComposer/mqtt-emitter: shutdown closed with ${undeliveredCount} message(s) unacknowledged`
+                `winkComposer/mqttEmitter: shutdown closed with ${undeliveredCount} message(s) unacknowledged`
             );
             err.code = 'SHUTDOWN_TIMEOUT';
             err.dropped = { count: undeliveredCount };

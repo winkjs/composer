@@ -80,7 +80,7 @@ import { wrapCallback, wrapTransform, TRANSFORM_THREW } from '../../utils/callba
  * raw thrown value.
  */
 const reportCallbackFault = function ( severity, name, detail ) {
-    console.error( `CSV source error [CALLBACK_FAILED]: user callback ${name} failed: ${detail}` );
+    console.error( `winkComposer/csvSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
 }; // reportCallbackFault()
 
 /**
@@ -248,7 +248,7 @@ export const start = function ( config ) {
     // misconfigured handler must be rejected here, loudly, before the
     // wrap can silently erase it. Null stays legal as "no handler".
     if ( onStatus !== null && typeof onStatus !== 'function' ) {
-        const err = new Error( 'CSV source: onStatus must be a function' );
+        const err = new Error( 'winkComposer/csvSource: onStatus must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -283,7 +283,7 @@ export const start = function ( config ) {
                 error: { code: 'DECODE_ERROR', message }
             } );
         } else {
-            console.error( `CSV source error [DECODE_ERROR]: ${message}` );
+            console.error( `winkComposer/csvSource: decode failed [DECODE_ERROR]: ${message}` );
         }
     };
 
@@ -303,7 +303,7 @@ export const start = function ( config ) {
                 error: { code: 'CALLBACK_FAILED', message }
             } );
         } else {
-            console.error( `CSV source error [CALLBACK_FAILED]: ${message}` );
+            console.error( `winkComposer/csvSource: source error [CALLBACK_FAILED]: ${message}` );
         }
     };
 
@@ -474,7 +474,7 @@ export const start = function ( config ) {
                 error: { code, message }
             } );
         } else {
-            console.error( `CSV source error [${code}]: ${message}` );
+            console.error( `winkComposer/csvSource: source error [${code}]: ${message}` );
         }
     } ).finally( () => {
         resolveFinished();

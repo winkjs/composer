@@ -63,7 +63,7 @@ The ceiling does **not** limit sustained throughput. While the broker is reachab
 When the buffer reaches 90% of its cap, new publishes are refused on the spot with a `STORAGE_FULL` error, instead of being accepted and dropped later. In a flow, `emitIf` reads that refusal and logs one line for the episode:
 
 ```text
-WinkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=STORAGE_FULL): Store at or above pressure limit (0.9) — cannot accept message
+winkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=STORAGE_FULL): Store at or above pressure limit (0.9) — cannot accept message
 ```
 
 ### The source's duplicate filter: two knobs

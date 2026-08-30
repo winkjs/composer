@@ -568,7 +568,7 @@ describe( 'CSV Source — Structured Error Reporting', function () {
             await driveErrorScenario( { path: missingPath }, null );
 
             expect( errorCalls ).to.have.lengthOf( 1 );
-            expect( errorCalls[ 0 ] ).to.include( 'CSV source error' );
+            expect( errorCalls[ 0 ] ).to.include( 'winkComposer/csvSource' );
             expect( errorCalls[ 0 ] ).to.include( '[SOURCE_UNREACHABLE]' );
         } finally {
             console.error = originalConsoleError;

@@ -131,7 +131,7 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             expect( onDeliveryFailure.callCount ).to.equal( 2 );
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 2 );
-            expect( lines[ 0 ] ).to.contain( 'WinkComposer/questdb' );
+            expect( lines[ 0 ] ).to.contain( 'winkComposer/questdb' );
             expect( lines[ 0 ] ).to.contain( 'handler down' );
             expect( unhandled ).to.have.lengthOf( 0 );
             await storage.shutdown( { timeout: 1000 } );

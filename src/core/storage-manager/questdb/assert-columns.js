@@ -89,7 +89,7 @@ const assertColumnFacts = function ( assetClass ) {
             const supportedTypes = Object.keys( DDL_TYPES ).join( ', ' );
             const actualType = colSpec ? String( colSpec.type ) : 'undefined';
             const err = new Error(
-                `WinkComposer/questdb: column '${colName}' has invalid or missing type '${actualType}'; ` +
+                `winkComposer/questdb: column '${colName}' has invalid or missing type '${actualType}'; ` +
                 `expected one of: ${supportedTypes}`
             );
             err.code = 'INVALID_CONFIG';
@@ -106,7 +106,7 @@ const assertColumnFacts = function ( assetClass ) {
                 !Number.isFinite( colSpec.resolution ) ||
                 colSpec.resolution <= 0 ) {
                 const err = new Error(
-                    `WinkComposer/questdb: column '${colName}' has type 'float64' ` +
+                    `winkComposer/questdb: column '${colName}' has type 'float64' ` +
                     `but resolution is '${colSpec.resolution}'; ` +
                     'expected positive finite number (or omit for passthrough)'
                 );

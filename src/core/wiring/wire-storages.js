@@ -161,7 +161,7 @@ const storages = ( function () {
 
             const module = storageModules[ storageName ];
             if ( !module?.createStorage ) {
-                throw new Error( `composer: Invalid storage module: ${storageName}` );
+                throw new Error( `winkComposer/wiring: Invalid storage module: ${storageName}` );
             }
 
             // ADR-018 module-surface check: the module must say what a
@@ -323,7 +323,7 @@ const storages = ( function () {
                 const err = result.reason || {};
                 const dropped = err.dropped ? ` dropped=${describeDropped( err.dropped )}` : '';
                 console.error(
-                    `WinkComposer/wiring: storage '${names[ i ]}' shutdown failed [${err.code || 'UNKNOWN'}]: ${err.message || String( err )}${dropped}`
+                    `winkComposer/wiring: storage '${names[ i ]}' shutdown failed [${err.code || 'UNKNOWN'}]: ${err.message || String( err )}${dropped}`
                 );
             }
         } );

@@ -67,7 +67,7 @@ const describeFault = function ( err ) {
  * again, and this is the floor the whole guard stands on.
  */
 const reportFallback = function () {
-    console.error( 'WinkComposer/callback-guard: a callback fault report failed [CALLBACK_FAILED]' );
+    console.error( 'winkComposer/callbackGuard: a callback fault report failed [CALLBACK_FAILED]' );
 }; // reportFallback()
 
 /**

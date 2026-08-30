@@ -72,7 +72,7 @@ export const lookupByField = function ( field, map, defaultVal ) {
 export const pickByField = function ( map ) {
     const fn = () => {
         throw new Error(
-            'WinkComposer/flow: pickByField is resolved at build time inside forEach; ' +
+            'winkComposer/flow: pickByField is resolved at build time inside forEach; ' +
             'it has no runtime value. Use it only for a forEach option.'
         );
     };

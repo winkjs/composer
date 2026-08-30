@@ -47,7 +47,7 @@ const update = function ( state, msg ) {
     } catch ( error ) {
         if ( !state.tunableErrorLogged ) {
             state.tunableErrorLogged = true;
-            console.error( `WinkComposer/${state.nodeType}: tunable threw: ${error.message}` );
+            console.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
         }
     }
 

@@ -80,6 +80,6 @@ export const generateField = function ( fieldSpec, prng, msgIndex, intervalMs ) 
         default:
             // Unreachable in practice — validate.js rejects unknown
             // types at startup. Kept for clarity at the boundary.
-            throw new Error( `testHarness: unknown field type "${fieldSpec.type}"` );
+            throw new Error( `winkComposer/testHarness: unknown field type "${fieldSpec.type}"` );
     }
 };

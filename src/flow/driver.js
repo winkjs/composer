@@ -45,7 +45,7 @@ import { wrapCallback } from '../core/utils/callback-guard/index.js';
  * @returns {void}
  */
 const logFault = function ( error ) {
-    console.error( `composer/headlessDriver: a message failed — ${error.message}` );
+    console.error( `winkComposer/headlessDriver: a message failed — ${error.message}` );
 }; // logFault()
 
 /**
@@ -64,7 +64,7 @@ const logFault = function ( error ) {
 const headlessDriver = function ( handle, opts = {} ) {
     if ( !handle || typeof handle.processMessage !== 'function' ) {
         throw new TypeError(
-            'composer/headlessDriver: handle must be the object returned by ' +
+            'winkComposer/headlessDriver: handle must be the object returned by ' +
             'flow(...).run() — it has no processMessage() function'
         );
     }
@@ -72,7 +72,7 @@ const headlessDriver = function ( handle, opts = {} ) {
     const userOnError = opts.onError === undefined ? logFault : opts.onError;
     if ( typeof userOnError !== 'function' ) {
         throw new TypeError(
-            'composer/headlessDriver: onError must be a function'
+            'winkComposer/headlessDriver: onError must be a function'
         );
     }
 
@@ -87,7 +87,7 @@ const headlessDriver = function ( handle, opts = {} ) {
         severity: 'red',
         report: function ( severity, name, detail ) {
             console.error(
-                `composer/headlessDriver: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+                `winkComposer/headlessDriver: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
             );
         }
     } );
@@ -147,7 +147,7 @@ const headlessDriver = function ( handle, opts = {} ) {
         const isSync = typeof source?.[ Symbol.iterator ] === 'function';
         if ( !isAsync && !isSync ) {
             throw new TypeError(
-                'composer/headlessDriver.feedAll: source must be a sync or async ' +
+                'winkComposer/headlessDriver.feedAll: source must be a sync or async ' +
                 'iterable (an array, a generator, or a stream)'
             );
         }

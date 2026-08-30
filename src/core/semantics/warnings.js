@@ -24,7 +24,7 @@
  * Standard warning prefix for semantic validation warnings.
  * @type {string}
  */
-const WARNING_PREFIX = 'WinkComposer/semantics';
+const WARNING_PREFIX = 'winkComposer/semantics';
 
 // ============================================================================
 // DEFAULT WARNING HANDLER
@@ -32,7 +32,7 @@ const WARNING_PREFIX = 'WinkComposer/semantics';
 
 /**
  * Default warning handler for semantic validation issues.
- * Logs to console in WinkComposer format.
+ * Logs to console in winkComposer format.
  *
  * @param {string} message - Warning message describing the issue
  */

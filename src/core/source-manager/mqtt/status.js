@@ -103,7 +103,7 @@ import { wrapCallback } from '../../utils/callback-guard/index.js';
  */
 const assertOptionalFunction = function ( value, name ) {
     if ( value !== undefined && value !== null && typeof value !== 'function' ) {
-        const err = new Error( `WinkComposer/mqtt-source: ${name} must be a function` );
+        const err = new Error( `winkComposer/mqttSource: ${name} must be a function` );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -129,7 +129,7 @@ const assertOptionalFunction = function ( value, name ) {
  */
 const createStatusReporter = function ( options = {} ) {
     if ( typeof options !== 'object' || options === null ) {
-        const err = new Error( 'WinkComposer/mqtt-source: status reporter options must be an object' );
+        const err = new Error( 'winkComposer/mqttSource: status reporter options must be an object' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -146,7 +146,7 @@ const createStatusReporter = function ( options = {} ) {
     assertOptionalFunction( onMetrics, 'onMetrics' );
     assertOptionalFunction( dedupSizeFn, 'dedupSizeFn' );
     if ( typeof nowFn !== 'function' ) {
-        const err = new Error( 'WinkComposer/mqtt-source: nowFn must be a function' );
+        const err = new Error( 'winkComposer/mqttSource: nowFn must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -154,7 +154,7 @@ const createStatusReporter = function ( options = {} ) {
          ( typeof expectedQuietPeriodMs !== 'number' ||
            expectedQuietPeriodMs < 1 ||
            !Number.isInteger( expectedQuietPeriodMs ) ) ) {
-        const err = new Error( 'WinkComposer/mqtt-source: expectedQuietPeriodMs must be a positive integer' );
+        const err = new Error( 'winkComposer/mqttSource: expectedQuietPeriodMs must be a positive integer' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -236,7 +236,7 @@ const createStatusReporter = function ( options = {} ) {
         name: 'onStatus',
         severity: 'red',
         report: function ( severity, name, detail ) {
-            console.error( `MQTT source error [CALLBACK_FAILED]: user callback ${name} failed: ${detail}` );
+            console.error( `winkComposer/mqttSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
         }
     } );
 
@@ -252,7 +252,7 @@ const createStatusReporter = function ( options = {} ) {
         if ( safeOnStatus ) {
             safeOnStatus( payload );
         } else if ( payload.error ) {
-            console.error( `MQTT source error [${payload.error.code}]: ${payload.error.message}` );
+            console.error( `winkComposer/mqttSource: source error [${payload.error.code}]: ${payload.error.message}` );
         }
     };
 
@@ -273,7 +273,7 @@ const createStatusReporter = function ( options = {} ) {
         severity: 'yellow',
         report: function ( severity, name, detail ) {
             const message = `user callback ${name} failed: ${detail}`;
-            console.error( `MQTT source error [CALLBACK_FAILED]: ${message}` );
+            console.error( `winkComposer/mqttSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
             if ( safeOnStatus ) {
                 emitStatus( {
                     status: severity,

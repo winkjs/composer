@@ -12,12 +12,12 @@ const expandXOutputsOptions = function ( meta, nodeArgs, flowState ) {
         const param = inputs[ i ];
 
         if ( seenX[ param ] === 1 ) {
-            throw new Error( `WinkComposer/flow: duplicate input found: '${param}'.` );
+            throw new Error( `winkComposer/flow: duplicate input found: '${param}'.` );
         }
         seenX[ param ] = 1;
 
         const instName = `${baseName}_${param}`;
-        if ( isNodeNameDuplicate( instName ) ) throw Error( `WinkComposer/flow: duplicate node ${instName} found.` );
+        if ( isNodeNameDuplicate( instName ) ) throw Error( `winkComposer/flow: duplicate node ${instName} found.` );
         const stats = Object.create( null );
         for ( const st in outputs ) {
             if (Object.prototype.hasOwnProperty.call( outputs, st ) ) {
@@ -47,12 +47,12 @@ const expandXOptions = function ( meta, nodeArgs, flowState ) {
         const param = inputs[ i ];
 
         if ( seenX[ param ] === 1 ) {
-            throw new Error( `WinkComposer/flow: duplicate input found: '${param}'.` );
+            throw new Error( `winkComposer/flow: duplicate input found: '${param}'.` );
         }
         seenX[ param ] = 1;
 
         const instName = `${baseName}_${param}`;
-        if ( isNodeNameDuplicate( instName ) ) throw Error( `WinkComposer/flow: duplicate node ${instName} found.` );
+        if ( isNodeNameDuplicate( instName ) ) throw Error( `winkComposer/flow: duplicate node ${instName} found.` );
 
         const spec = meta.buildSpec( instName, param, ...balanceArgs );
         specs.push( spec );

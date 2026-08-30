@@ -84,7 +84,7 @@ const assertColumnFacts = function ( columns ) {
                 !Number.isFinite( colSpec.resolution ) ||
                 colSpec.resolution <= 0 ) {
                 const err = new Error(
-                    `WinkComposer/terminal: column '${colName}' has type 'float64' ` +
+                    `winkComposer/terminal: column '${colName}' has type 'float64' ` +
                     `but resolution is '${colSpec.resolution}'; ` +
                     'expected positive finite number (or omit the field to use the global precision)'
                 );

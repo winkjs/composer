@@ -520,7 +520,7 @@ describe( 'Flow API Schema — validateFlowArrayConfig', function () {
         it( 'throws for non-array input', function () {
             const result = validateFlowArrayConfig( 'invalid', arraySchema, 'testMethod' );
 
-            expect( () => result.throwIfInvalid() ).to.throw( /WinkComposer\/flow\.testMethod/ );
+            expect( () => result.throwIfInvalid() ).to.throw( /winkComposer\/flow\.testMethod/ );
             expect( () => result.throwIfInvalid() ).to.throw( /Expected array/ );
         } );
 

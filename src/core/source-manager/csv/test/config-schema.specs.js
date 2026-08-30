@@ -132,8 +132,8 @@ describe( 'CSV Source — required field: path', function () {
 
     it( 'throwIfInvalid throws TypeError with adapter id in message', function () {
         const result = validate( {} );
-        expect( () => result.throwIfInvalid( 'flow/source:csv' ) )
-            .to.throw( TypeError, /WinkComposer\/flow\/source:csv validation failed/ );
+        expect( () => result.throwIfInvalid( 'flow.source.csv' ) )
+            .to.throw( TypeError, /winkComposer\/flow\.source\.csv: validation failed/ );
     } );
 
 } );

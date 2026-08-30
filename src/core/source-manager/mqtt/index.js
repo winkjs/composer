@@ -1,7 +1,7 @@
 // core/source-manager/mqtt/index.js
 
 /**
- * @fileoverview MQTT source adapter for WinkComposer aggregator.
+ * @fileoverview MQTT source adapter for winkComposer.
  *
  * Subscribes to edge composer MQTT outputs with deduplication for QoS 1.
  * Extracts winkDedupId from MQTT v5 user properties to filter retransmissions.

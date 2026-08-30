@@ -103,7 +103,7 @@ Either path runs the same drain: stop the source if there is one, flush the emit
 **A delivery failure during the drain is loud, not fatal.** Each sink gets its full chance to deliver what it holds. When one cannot finish in time, the framework logs one classified line naming the sink, the reason, and the exact count — and the drain still completes for the other sinks. `handle.shutdown()` itself still resolves; it rejects only when a drain stage as a whole fails, such as a source that refuses to stop. The log line looks like this:
 
 ```text
-WinkComposer/wiring: emitter 'mqtt' shutdown failed [SHUTDOWN_TIMEOUT]: WinkComposer/mqtt-emitter: shutdown closed with 2 message(s) unacknowledged dropped={"count":2}
+winkComposer/wiring: emitter 'mqtt' shutdown failed [SHUTDOWN_TIMEOUT]: winkComposer/mqttEmitter: shutdown closed with 2 message(s) unacknowledged dropped={"count":2}
 ```
 
 To handle delivery failures in code rather than by reading logs, give the emitter or storage an `onDeliveryFailure` function in its config — it is called with the classified error for each failure. See [Configuration](./nodes/configuration.md#emitter).

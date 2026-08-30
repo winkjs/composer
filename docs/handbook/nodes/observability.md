@@ -116,7 +116,7 @@ A failed publish is loud. The node logs the first failure of an episode and stay
 - **The emitter refuses or breaks.** The node records the error's code and message, logs the first failure of the episode, and stays quiet until a publish succeeds. A typical line:
 
 ```text
-WinkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=STORAGE_FULL): Store at or above pressure limit (0.9) — cannot accept message
+winkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=STORAGE_FULL): Store at or above pressure limit (0.9) — cannot accept message
 ```
 
 The codes a publish can return: `STORAGE_FULL` (the emitter's buffer is at its limit — see [the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-60000-messages)), `ENCODE_ERROR` (the codec could not encode the message; the message never entered the buffer), `SHUTTING_DOWN` (publish arrived during shutdown), and `MALFORMED_RESULT` (a third-party emitter broke its return contract; built-in emitters never produce this).
@@ -179,7 +179,7 @@ they are working fields, not typos.
 - **The storage refuses or breaks.** The node records the error's code and message, logs the first failure of the episode, and stays quiet until a write succeeds. A typical line:
 
 ```text
-WinkComposer/persistIf: storage write failed (node=persistStats, insightType=washCycleStats, code=SEND_FAILED): <the storage client's error message>
+winkComposer/persistIf: storage write failed (node=persistStats, insightType=washCycleStats, code=SEND_FAILED): <the storage client's error message>
 ```
 
 The codes a write can return: `SEND_FAILED` (the storage client threw while building the row; the adapter recovers itself and the next write proceeds), `INVALID_INSIGHT_TYPE` (no persist plan exists for the name — a configuration error), `SHUTTING_DOWN` (write arrived after shutdown began), and `MALFORMED_RESULT` (a third-party adapter broke its return contract; built-in adapters never produce this).

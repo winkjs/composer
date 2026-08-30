@@ -1,5 +1,5 @@
 /**
- * WinkComposer-specific validators
+ * winkComposer-specific validators
  * Domain-specific validation functions for streaming analytics nodes
  */
 
@@ -121,7 +121,7 @@ const noSelfTriggers = {
             !trgr.targets.includes( spec.name )
         );
     },
-    error: 'composer/validation: Node cannot trigger control methods on itself'
+    error: 'winkComposer/validation: Node cannot trigger control methods on itself'
 }; // noSelfTriggers
 
 // Export all composer validators

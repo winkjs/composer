@@ -24,7 +24,7 @@ import { validateBinaryArray } from './validate.js';
  */
 const confusionMatrix = function ( predictions, labels ) {
     if ( predictions.length !== labels.length ) {
-        throw new Error( 'confusionMatrix: predictions and labels must have the same length.' );
+        throw new Error( 'winkComposer/confusionMatrix: predictions and labels must have the same length.' );
     }
 
     validateBinaryArray( predictions, 'predictions', 'confusionMatrix' );
@@ -85,7 +85,7 @@ const classificationMetrics = function ( cm ) {
  */
 const sweepThresholds = function ( probabilities, labels, thresholds ) {
     if ( probabilities.length !== labels.length ) {
-        throw new Error( 'sweepThresholds: probabilities and labels must have the same length.' );
+        throw new Error( 'winkComposer/sweepThresholds: probabilities and labels must have the same length.' );
     }
 
     validateBinaryArray( labels, 'labels', 'sweepThresholds' );

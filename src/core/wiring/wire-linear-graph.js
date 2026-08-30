@@ -11,7 +11,7 @@ const wireLinearGraph = function ( specs, nodeModules, options = {} ) {
         const nodeModule = nodeModules[ moduleName ];
 
         if (!nodeModule) {
-            throw new Error( `composer/wireGraph: Node module '${moduleName}' not found for nodeType '${spec.nodeType}'` );
+            throw new Error( `winkComposer/wiring: Node module '${moduleName}' not found for nodeType '${spec.nodeType}'` );
         }
 
         const nextHops = nextHop ? [ nextHop ] : [];

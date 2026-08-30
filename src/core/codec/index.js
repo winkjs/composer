@@ -1,11 +1,11 @@
 // src/core/codec/index.js
 
 /**
- * @fileoverview Universal codec for WinkComposer and Dashboard
+ * @fileoverview Universal codec for winkComposer and Dashboard
  *
  * Provides efficient message serialization for MQTT transport with support
  * for both MessagePack (binary, efficient) and JSON (text, debuggable).
- * Works identically in Node.js (WinkComposer) and browsers (Dashboard).
+ * Works identically in Node.js (winkComposer) and browsers (Dashboard).
  *
  * Design principles:
  * - Zero dependencies on Node.js-specific APIs

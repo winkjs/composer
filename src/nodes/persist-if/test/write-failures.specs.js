@@ -133,7 +133,7 @@ describe( 'Persist-If Node — write failures', function () {
             errorSpy.restore();
             expect( errorSpy.callCount ).to.equal( 1 );
             const logged = errorSpy.firstCall.args[ 0 ];
-            expect( logged ).to.include( 'WinkComposer/persistIf' );
+            expect( logged ).to.include( 'winkComposer/persistIf' );
             expect( logged ).to.include( 'loudTest' );
             expect( logged ).to.include( 'temperature' );
             expect( logged ).to.include( 'SEND_FAILED' );

@@ -27,7 +27,7 @@ import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 
 // Standard error prefix for all semantic loader errors
-const ERR_PREFIX = 'WinkComposer/semantics: ';
+const ERR_PREFIX = 'winkComposer/semantics: ';
 import { glob } from 'glob';
 import { validateWithSchema } from '../utils/validate/index.js';
 import {

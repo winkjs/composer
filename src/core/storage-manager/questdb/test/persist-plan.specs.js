@@ -624,7 +624,7 @@ describe( 'Persist Plan Builder', function () {
                 plans.monitoring( mockSender, { ts: 1000, temp: null }, 'p1' );
 
                 expect( warnStub.calledOnce ).to.equal( true );
-                expect( warnStub.firstCall.args[ 0 ] ).to.match( /WinkComposer\/questdb:.*column 'temp' is null/ );
+                expect( warnStub.firstCall.args[ 0 ] ).to.match( /winkComposer\/questdb:.*column 'temp' is null/ );
             } finally {
                 warnStub.restore();
             }

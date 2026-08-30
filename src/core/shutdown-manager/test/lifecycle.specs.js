@@ -350,7 +350,7 @@ describe( 'shutdown-manager — a rejected drain fails the shutdown (exit-1 ruli
     };
 
     it( 'a drain rejecting with a classified loss fails the shutdown and prints one line', async function () {
-        const loss = new Error( 'WinkComposer/questdb: final flush failed' );
+        const loss = new Error( 'winkComposer/questdb: final flush failed' );
         loss.code = 'DELIVERY_FAILED';
         loss.dropped = { count: 3 };
         manager.register( { shutdown: sinon.stub().rejects( loss ) } );

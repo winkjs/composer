@@ -78,7 +78,7 @@ After emitIf:       → copy sent to MQTT
 
 ## Overview
 
-WinkComposer provides composable nodes for building real-time streaming analytics. Each node has a specific purpose in your pipeline:
+Composer provides composable nodes for building real-time streaming analytics. Each node has a specific purpose in your pipeline:
 
 - **Signal Conditioning**: Clean and prepare raw sensor data
 - **Feature Extraction**: Derive meaningful patterns and statistics
@@ -131,7 +131,7 @@ When a node is **disabled** (by a controller), it acts as if it doesn't exist �
 ## Timestamps
 
 > [!IMPORTANT]
-> Every timestamp in WinkComposer — whether it comes from your data or is generated internally — must be an integer representing **milliseconds since January 1, 1970 (UTC)**. Getting this wrong will produce silently incorrect durations, dwell times, and storage records.
+> Every timestamp in Composer — whether it comes from your data or is generated internally — must be an integer representing **milliseconds since January 1, 1970 (UTC)**. Getting this wrong will produce silently incorrect durations, dwell times, and storage records.
 
 ### Why Milliseconds Since Epoch
 
@@ -183,7 +183,7 @@ and recovery — see the [Resilience](./resilience.md) guide.
 
 ### What Happens When Input Is Bad
 
-Streaming data is messy. Sensors go offline (missing or invalid values), PLCs emit sentinel values (-9999, 65535), division by zero produces meaningless results, and startup transients mean the first few readings can't be trusted. WinkComposer handles this at two levels:
+Streaming data is messy. Sensors go offline (missing or invalid values), PLCs emit sentinel values (-9999, 65535), division by zero produces meaningless results, and startup transients mean the first few readings can't be trusted. Composer handles this at two levels:
 
 **First line of defense — the `sanitize` node.** Place it at the start of your pipeline to catch bad data before it enters the computation chain. It validates against configured ranges, value lists, or custom predicates — and marks failures as invalid for all downstream nodes:
 

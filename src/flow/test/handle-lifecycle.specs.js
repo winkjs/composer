@@ -152,7 +152,7 @@ describe( 'flow handle — a red source status must reach a human', function () 
 
         expect( errorSpy.callCount ).to.equal( 1 );
         const logged = errorSpy.firstCall.args[ 0 ];
-        expect( logged ).to.include( 'WinkComposer/flow' );
+        expect( logged ).to.include( 'winkComposer/flow' );
         expect( logged ).to.include( 'redStatusFallback' );
         expect( logged ).to.include( 'READ_ERROR' );
         expect( logged ).to.include( 'disk vanished' );

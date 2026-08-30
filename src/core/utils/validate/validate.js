@@ -95,7 +95,7 @@ const validateWithSchema = function ( schema, object, pathPrefix = 'object' ) {
         // Throw if invalid - used in init functions
         throwIfInvalid: ( nodeType ) => {
             if ( !valid ) {
-                const errorMessage = `WinkComposer/${nodeType} validation failed:\n  ${errors.join( '\n  ' )}`;
+                const errorMessage = `winkComposer/${nodeType}: validation failed:\n  ${errors.join( '\n  ' )}`;
                 throw new TypeError( errorMessage );
             }
         }

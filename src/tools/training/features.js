@@ -38,13 +38,13 @@ const AVAILABLE_STATS = [ 'max', 'sum', 'countAbove' ];
  */
 const group = function ( name, ids, accessor, options ) {
     if ( typeof name !== 'string' || name.length === 0 ) {
-        throw new Error( 'features.group: name must be a non-empty string' );
+        throw new Error( 'winkComposer/features.group: name must be a non-empty string' );
     }
     if ( !Array.isArray( ids ) || ids.length === 0 ) {
-        throw new Error( 'features.group: ids must be a non-empty array' );
+        throw new Error( 'winkComposer/features.group: ids must be a non-empty array' );
     }
     if ( typeof accessor !== 'function' ) {
-        throw new Error( 'features.group: accessor must be a function' );
+        throw new Error( 'winkComposer/features.group: accessor must be a function' );
     }
 
     const stats = ( options && Array.isArray( options.stats ) ) ?
@@ -54,7 +54,7 @@ const group = function ( name, ids, accessor, options ) {
     for ( let i = 0; i < stats.length; i += 1 ) {
         if ( AVAILABLE_STATS.indexOf( stats[ i ] ) === -1 ) {
             throw new Error(
-                'features.group: unknown stat "' + stats[ i ] +
+                'winkComposer/features.group: unknown stat "' + stats[ i ] +
                 '". Available: ' + AVAILABLE_STATS.join( ', ' )
             );
         }
@@ -65,7 +65,7 @@ const group = function ( name, ids, accessor, options ) {
         1.5;
 
     if ( typeof countAboveThreshold !== 'number' ) {
-        throw new Error( 'features.group: countAboveThreshold must be a number' );
+        throw new Error( 'winkComposer/features.group: countAboveThreshold must be a number' );
     }
 
     return {
@@ -90,10 +90,10 @@ const group = function ( name, ids, accessor, options ) {
  */
 const scalar = function ( name, accessor ) {
     if ( typeof name !== 'string' || name.length === 0 ) {
-        throw new Error( 'features.scalar: name must be a non-empty string' );
+        throw new Error( 'winkComposer/features.scalar: name must be a non-empty string' );
     }
     if ( typeof accessor !== 'function' ) {
-        throw new Error( 'features.scalar: accessor must be a function' );
+        throw new Error( 'winkComposer/features.scalar: accessor must be a function' );
     }
     return { type: SCALAR, name: name, accessor: accessor };
 };
@@ -112,13 +112,13 @@ const scalar = function ( name, accessor ) {
  */
 const counter = function ( name, sourceAccessor, predicate ) {
     if ( typeof name !== 'string' || name.length === 0 ) {
-        throw new Error( 'features.counter: name must be a non-empty string' );
+        throw new Error( 'winkComposer/features.counter: name must be a non-empty string' );
     }
     if ( typeof sourceAccessor !== 'function' ) {
-        throw new Error( 'features.counter: sourceAccessor must be a function' );
+        throw new Error( 'winkComposer/features.counter: sourceAccessor must be a function' );
     }
     if ( typeof predicate !== 'function' ) {
-        throw new Error( 'features.counter: predicate must be a function' );
+        throw new Error( 'winkComposer/features.counter: predicate must be a function' );
     }
     return { type: COUNTER, name: name, sourceAccessor: sourceAccessor, predicate: predicate };
 };
@@ -134,7 +134,7 @@ const counter = function ( name, sourceAccessor, predicate ) {
  */
 const buildExtractor = function ( schema ) {
     if ( !Array.isArray( schema ) || schema.length === 0 ) {
-        throw new Error( 'features.buildExtractor: schema must be a non-empty array' );
+        throw new Error( 'winkComposer/features.buildExtractor: schema must be a non-empty array' );
     }
 
     // Build feature names from schema
@@ -149,7 +149,7 @@ const buildExtractor = function ( schema ) {
             names.push( col.name );
         } else {
             throw new Error(
-                'features.buildExtractor: unknown column type "' +
+                'winkComposer/features.buildExtractor: unknown column type "' +
                 String( col.type ) + '" at index ' + i
             );
         }
@@ -160,7 +160,7 @@ const buildExtractor = function ( schema ) {
     for ( let i = 0; i < names.length; i += 1 ) {
         if ( seen[ names[ i ] ] ) {
             throw new Error(
-                'features.buildExtractor: duplicate feature name "' + names[ i ] + '"'
+                'winkComposer/features.buildExtractor: duplicate feature name "' + names[ i ] + '"'
             );
         }
         seen[ names[ i ] ] = true;

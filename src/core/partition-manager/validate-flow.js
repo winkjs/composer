@@ -145,7 +145,7 @@ const validateFlow = function ( flow ) {
             actualType = typeof flow;
         }
         throw new TypeError(
-            `WinkComposer/partitionManager validation failed:\n  flow: Expected object, got ${actualType}`
+            `winkComposer/partitionManager: validation failed:\n  flow: Expected object, got ${actualType}`
         );
     }
 

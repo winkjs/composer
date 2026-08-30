@@ -22,7 +22,7 @@ const update = function ( state, msg ) {
             // Log first error per episode; suppress subsequent until recovery
             if ( !state.predicateErrorLogged ) {
                 state.predicateErrorLogged = true;
-                console.error( `WinkComposer/controller: predicate threw exception: ${error.message}` );
+                console.error( `winkComposer/controller: predicate threw exception: ${error.message}` );
             }
             // Skip to next condition
             continue;  // eslint-disable-line no-continue

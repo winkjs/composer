@@ -232,7 +232,7 @@ const RESULT_OK = { ok: true };
  */
 const reportCallbackFault = function ( severity, name, detail ) {
     console.error(
-        `WinkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+        `winkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
     );
 }; // reportCallbackFault()
 
@@ -423,12 +423,12 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // Runtime validation — required from either DSL config or ENV_VARS.
     // Per ADR-018, setup-time throws carry classified err.code.
     if ( !ilpUrl ) {
-        const err = new Error( 'WinkComposer/questdb: ilpUrl required — set in .storage() config or QUESTDB_ILP_URL env var' );
+        const err = new Error( 'winkComposer/questdb: ilpUrl required — set in .storage() config or QUESTDB_ILP_URL env var' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
     if ( !pgUrl ) {
-        const err = new Error( 'WinkComposer/questdb: pgUrl required — set in .storage() config or QUESTDB_PG_URL env var' );
+        const err = new Error( 'winkComposer/questdb: pgUrl required — set in .storage() config or QUESTDB_PG_URL env var' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -482,7 +482,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
         await pgClient.connect();
     } catch ( connErr ) {
         const err = new Error(
-            `WinkComposer/questdb: could not connect to PostgreSQL at ${pgUrl} — ${connErr.message}`
+            `winkComposer/questdb: could not connect to PostgreSQL at ${pgUrl} — ${connErr.message}`
         );
         err.code = NETWORK_ERROR_CODES.has( connErr.code ) ?
             'TRANSPORT_UNREACHABLE' :
@@ -611,7 +611,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
                     safeOnDeliveryFailure( err, { idleFlush: true, rowsLost: rows } );
                 } else {
                     console.error(
-                        `WinkComposer/questdb: idle flush failed; ${rows} buffered row(s) lost: ${err.message}`
+                        `winkComposer/questdb: idle flush failed; ${rows} buffered row(s) lost: ${err.message}`
                     );
                 }
             } finally {
@@ -671,7 +671,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
                     return;
                 }
                 const failure = new Error(
-                    `WinkComposer/questdb: recovery flush failed after a mid-row write error: ${flushErr.message}. ` +
+                    `winkComposer/questdb: recovery flush failed after a mid-row write error: ${flushErr.message}. ` +
                     'Completed rows in that batch were dropped. Provide an `onDeliveryFailure` callback ' +
                     'in the storage config to handle these explicitly.'
                 );
@@ -686,7 +686,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
             // write() must still return its classified result rather than
             // throw (ADR-018: the hot path never throws), and the
             // failure must be visible.
-            console.error( `WinkComposer/questdb: sender recovery failed: ${recoveryErr.message}` );
+            console.error( `winkComposer/questdb: sender recovery failed: ${recoveryErr.message}` );
         }
     }; // recoverSender()
 
@@ -719,7 +719,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
                 ok: false,
                 error: {
                     code: 'SHUTTING_DOWN',
-                    message: 'WinkComposer/questdb: write rejected — storage is shutting down'
+                    message: 'winkComposer/questdb: write rejected — storage is shutting down'
                 }
             };
         }
@@ -879,7 +879,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
      */
     const closeQuietly = function () {
         return sender.close().catch( function ( closeErr ) {
-            console.error( `WinkComposer/questdb: transport close failed during lossy shutdown: ${closeErr.message}` );
+            console.error( `winkComposer/questdb: transport close failed during lossy shutdown: ${closeErr.message}` );
         } );
     }; // closeQuietly()
 
@@ -971,7 +971,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
                 await closeQuietly();
                 const dropped = totalRows - deliveredRows;
                 const timedOut = new Error(
-                    `WinkComposer/questdb: ${err.message}; ${dropped} buffered row(s) dropped`
+                    `winkComposer/questdb: ${err.message}; ${dropped} buffered row(s) dropped`
                 );
                 timedOut.code = 'SHUTDOWN_TIMEOUT';
                 timedOut.dropped = { count: dropped };
@@ -981,7 +981,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
             if ( failedRows > 0 ) {
                 await closeQuietly();
                 const failure = new Error(
-                    `WinkComposer/questdb: flush failed during shutdown: ${firstFailure.message}; ${failedRows} buffered row(s) dropped`
+                    `winkComposer/questdb: flush failed during shutdown: ${firstFailure.message}; ${failedRows} buffered row(s) dropped`
                 );
                 failure.code = 'DELIVERY_FAILED';
                 failure.dropped = { count: failedRows };
@@ -1220,7 +1220,7 @@ const createStorage = function ( config ) {
         // remediation differs — they need to add .assetClass() to the
         // flow definition, not edit env vars or storage config.
         const err = new Error(
-            'WinkComposer/questdb: assetClass is required - add .assetClass(assetClassDef) to flow before .storage()'
+            'winkComposer/questdb: assetClass is required - add .assetClass(assetClassDef) to flow before .storage()'
         );
         err.code = 'MISSING_ASSET_CLASS';
         throw err;

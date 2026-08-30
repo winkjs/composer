@@ -173,7 +173,7 @@ export const ASSET_CLASS_SCHEMA = {
 };
 
 const throwInvalidConfig = function ( errors ) {
-    const err = new Error( `testHarness: ${errors.join( '; ' )}` );
+    const err = new Error( `winkComposer/testHarness: ${errors.join( '; ' )}` );
     err.code = 'INVALID_CONFIG';
     throw err;
 };

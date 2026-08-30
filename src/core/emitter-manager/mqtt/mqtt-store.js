@@ -110,7 +110,7 @@ export const createMQTTStore = function ( path, options = {} ) {
     const requestedQueueSize = options.maxQueueSize || DEFAULT_MAX_QUEUE_SIZE;
     if ( requestedQueueSize > MQTT_INFLIGHT_ID_LIMIT ) {
         console.warn(
-            `WinkComposer/mqtt-store: maxQueueSize ${requestedQueueSize} exceeds the MQTT ` +
+            `winkComposer/mqttStore: maxQueueSize ${requestedQueueSize} exceeds the MQTT ` +
             `16-bit packet-id space; clamped to ${MQTT_INFLIGHT_ID_LIMIT}`
         );
     }

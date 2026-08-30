@@ -59,7 +59,7 @@ const serializeValue = function ( value, indent ) {
 
     if ( t === 'function' ) {
         const funcStr = value.toString();
-        if ( funcStr.includes( '[native code]' ) ) throw Error( 'WinkComposer/flow: only regular or arrow functions are supported.' );
+        if ( funcStr.includes( '[native code]' ) ) throw Error( 'winkComposer/flow: only regular or arrow functions are supported.' );
         return funcStr;
     }
 

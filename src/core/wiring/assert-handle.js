@@ -17,7 +17,7 @@
  * - Startup runs once per flow; the check costs nothing at runtime.
  *
  * Error message format (same across sinks):
- *   `WinkComposer/adapter: '<adapterId>' missing required method '<name>'`
+ *   `winkComposer/adapter: '<adapterId>' missing required method '<name>'`
  *
  * @see ADR-018 (sink method surface)
  */
@@ -32,23 +32,23 @@
  * @param {*} handle - the value returned from the factory
  * @param {string[]} requiredMethods - method names that must be functions
  *   on the handle (e.g., [ 'publishNow', 'shutdown', 'getHealth' ])
- * @throws {Error} `WinkComposer/adapter: '<adapterId>' factory returned non-object handle`
+ * @throws {Error} `winkComposer/adapter: '<adapterId>' factory returned non-object handle`
  *   if `handle` is null/undefined/non-object.
- * @throws {Error} `WinkComposer/adapter: '<adapterId>' missing required method '<name>'`
+ * @throws {Error} `winkComposer/adapter: '<adapterId>' missing required method '<name>'`
  *   on the first missing or non-function method (fails fast — does not
  *   enumerate every gap, since one is enough to abort wiring).
  */
 const assertHandle = function ( adapterId, handle, requiredMethods ) {
     if ( !handle || typeof handle !== 'object' ) {
         throw new Error(
-            `WinkComposer/adapter: '${adapterId}' factory returned non-object handle`
+            `winkComposer/adapter: '${adapterId}' factory returned non-object handle`
         );
     }
     for ( let i = 0; i < requiredMethods.length; i += 1 ) {
         const name = requiredMethods[ i ];
         if ( typeof handle[ name ] !== 'function' ) {
             throw new Error(
-                `WinkComposer/adapter: '${adapterId}' missing required method '${name}'`
+                `winkComposer/adapter: '${adapterId}' missing required method '${name}'`
             );
         }
     }

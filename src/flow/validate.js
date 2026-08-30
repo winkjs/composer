@@ -254,7 +254,7 @@ export const validateFlowOrThrow = function ( flowName, specs, nodeModules, regi
     if ( !result.valid ) {
         const errorList = result.errors.map( ( e ) => `  - ${e}` ).join( '\n' );
         throw new Error(
-            `Flow '${flowName}' validation failed:\n${errorList}`
+            `winkComposer/flow '${flowName}': validation failed:\n${errorList}`
         );
     }
 };

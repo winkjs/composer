@@ -333,7 +333,7 @@ describe( 'wire-emitters', function () {
 
             expect( thrown ).to.be.an( 'error' );
             expect( thrown.message ).to.equal(
-                `WinkComposer/adapter: '${target}' missing required method 'publishNow'`
+                `winkComposer/adapter: '${target}' missing required method 'publishNow'`
             );
         } );
 

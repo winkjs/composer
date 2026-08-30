@@ -59,22 +59,22 @@ describe( 'assert-handle', function () {
 
         it( 'throws a descriptive error when the handle is null', function () {
             expect( () => assertHandle( 'mock', null, [ 'publishNow' ] ) )
-                .to.throw( 'WinkComposer/adapter: \'mock\' factory returned non-object handle' );
+                .to.throw( 'winkComposer/adapter: \'mock\' factory returned non-object handle' );
         } );
 
         it( 'throws when the handle is undefined', function () {
             expect( () => assertHandle( 'mock', undefined, [ 'publishNow' ] ) )
-                .to.throw( 'WinkComposer/adapter: \'mock\' factory returned non-object handle' );
+                .to.throw( 'winkComposer/adapter: \'mock\' factory returned non-object handle' );
         } );
 
         it( 'throws when the handle is a primitive (string)', function () {
             expect( () => assertHandle( 'mock', 'not-an-object', [ 'publishNow' ] ) )
-                .to.throw( 'WinkComposer/adapter: \'mock\' factory returned non-object handle' );
+                .to.throw( 'winkComposer/adapter: \'mock\' factory returned non-object handle' );
         } );
 
         it( 'throws when the handle is a primitive (number)', function () {
             expect( () => assertHandle( 'mock', 42, [ 'publishNow' ] ) )
-                .to.throw( 'WinkComposer/adapter: \'mock\' factory returned non-object handle' );
+                .to.throw( 'winkComposer/adapter: \'mock\' factory returned non-object handle' );
         } );
 
         it( 'includes the adapter id in the error message (operator can identify the misconfigured target)', function () {
@@ -96,7 +96,7 @@ describe( 'assert-handle', function () {
             };
 
             expect( () => assertHandle( 'mock', handle, [ 'publishNow', 'shutdown', 'getHealth' ] ) )
-                .to.throw( 'WinkComposer/adapter: \'mock\' missing required method \'getHealth\'' );
+                .to.throw( 'winkComposer/adapter: \'mock\' missing required method \'getHealth\'' );
         } );
 
         it( 'throws when a required method exists but is not a function', function () {
@@ -107,7 +107,7 @@ describe( 'assert-handle', function () {
             };
 
             expect( () => assertHandle( 'mock', handle, [ 'publishNow', 'shutdown', 'getHealth' ] ) )
-                .to.throw( 'WinkComposer/adapter: \'mock\' missing required method \'shutdown\'' );
+                .to.throw( 'winkComposer/adapter: \'mock\' missing required method \'shutdown\'' );
         } );
 
         it( 'fails fast on the first missing method (does not enumerate every gap)', function () {

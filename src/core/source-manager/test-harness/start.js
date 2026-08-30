@@ -69,7 +69,7 @@ import { wrapCallback } from '../../utils/callback-guard/index.js';
  * raw thrown value.
  */
 const reportCallbackFault = function ( severity, name, detail ) {
-    console.error( `testHarness error [CALLBACK_FAILED]: user callback ${name} failed: ${detail}` );
+    console.error( `winkComposer/testHarness: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
 }; // reportCallbackFault()
 
 const DEFAULT_MESSAGE_COUNT = 1000;
@@ -106,7 +106,7 @@ export const start = function ( config ) {
     validateAssetClass( assetClass );
 
     if ( typeof onMessage !== 'function' ) {
-        const err = new Error( 'testHarness: onMessage must be a function' );
+        const err = new Error( 'winkComposer/testHarness: onMessage must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -115,7 +115,7 @@ export const start = function ( config ) {
     // misconfigured handler must be rejected here, loudly, before the
     // wrap can silently erase it. Null stays legal as "no handler".
     if ( onStatus !== null && typeof onStatus !== 'function' ) {
-        const err = new Error( 'testHarness: onStatus must be a function' );
+        const err = new Error( 'winkComposer/testHarness: onStatus must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -222,7 +222,7 @@ export const start = function ( config ) {
                 error: { code: 'GENERATOR_ERROR', message }
             } );
         } else {
-            console.error( `testHarness error [GENERATOR_ERROR]: ${message}` );
+            console.error( `winkComposer/testHarness: generator failed [GENERATOR_ERROR]: ${message}` );
         }
     } ).finally( () => {
         resolveFinished();

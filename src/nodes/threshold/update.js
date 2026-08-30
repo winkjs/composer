@@ -27,7 +27,7 @@ const update = function ( state, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.tunableErrorLogged ) {
             state.tunableErrorLogged = true;
-            console.error( `WinkComposer/${state.nodeType}: tunable threw: ${error.message}` );
+            console.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
         }
     }
 

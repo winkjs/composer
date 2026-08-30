@@ -34,7 +34,7 @@ const checkPredicate = function ( state, value, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.predicateErrorLogged ) {
             state.predicateErrorLogged = true;
-            console.error( `WinkComposer/sanitize: predicate threw exception: ${error.message}` );
+            console.error( `winkComposer/sanitize: predicate threw exception: ${error.message}` );
         }
         return false;
     }
@@ -64,7 +64,7 @@ const update = function ( state, msg ) {
         } catch ( error ) {
             if ( !state.tunableErrorLogged ) {
                 state.tunableErrorLogged = true;
-                console.error( `WinkComposer/${state.nodeType}: tunable threw: ${error.message}` );
+                console.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
             }
         }
     }

@@ -87,7 +87,7 @@ import {
  */
 const assertPositiveInteger = function ( value, name ) {
     if ( typeof value !== 'number' || value < 1 || !Number.isInteger( value ) ) {
-        const err = new Error( `WinkComposer/mqtt-source: ${name} must be a positive integer` );
+        const err = new Error( `winkComposer/mqttSource: ${name} must be a positive integer` );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -114,7 +114,7 @@ const assertPositiveInteger = function ( value, name ) {
  */
 const createDedupCache = function ( options = {} ) {
     if ( typeof options !== 'object' || options === null ) {
-        const err = new Error( 'WinkComposer/mqtt-source: dedup options must be an object' );
+        const err = new Error( 'winkComposer/mqttSource: dedup options must be an object' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -128,7 +128,7 @@ const createDedupCache = function ( options = {} ) {
     assertPositiveInteger( windowMs, 'windowMs' );
     assertPositiveInteger( maxEntries, 'maxEntries' );
     if ( typeof nowFn !== 'function' ) {
-        const err = new Error( 'WinkComposer/mqtt-source: nowFn must be a function' );
+        const err = new Error( 'winkComposer/mqttSource: nowFn must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }

@@ -279,7 +279,7 @@ describe( 'flow — chainable configuration methods', function () {
             };
 
             expect( () => flow( 'test' ).assetClass( malformed ) )
-                .to.throw( /WinkComposer\/flow\.assetClass: validation failed/ );
+                .to.throw( /winkComposer\/flow\.assetClass: validation failed/ );
         } );
 
         it( 'throws when name is missing', function () {

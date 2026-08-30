@@ -1,5 +1,5 @@
 /**
- * WinkComposer validation module
+ * winkComposer validation module
  * Provides schema-based validation for node specifications
  */
 

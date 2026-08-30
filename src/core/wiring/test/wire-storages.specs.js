@@ -454,7 +454,7 @@ describe( 'wire-storages', function () {
 
             expect( thrown ).to.be.an( 'error' );
             expect( thrown.message ).to.equal(
-                'WinkComposer/adapter: \'noWrite\' missing required method \'write\''
+                'winkComposer/adapter: \'noWrite\' missing required method \'write\''
             );
         } );
 

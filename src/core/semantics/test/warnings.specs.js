@@ -17,8 +17,8 @@ describe( 'Warning Infrastructure', function () {
 
     describe( 'WARNING_PREFIX', function () {
 
-        it( 'should be the standard WinkComposer/semantics prefix', function () {
-            expect( WARNING_PREFIX ).to.equal( 'WinkComposer/semantics' );
+        it( 'should be the standard winkComposer/semantics prefix', function () {
+            expect( WARNING_PREFIX ).to.equal( 'winkComposer/semantics' );
         } );
 
     } );
@@ -43,7 +43,7 @@ describe( 'Warning Infrastructure', function () {
             defaultOnWarning( 'test message' );
             expect( consoleWarnStub.calledOnce ).to.equal( true );
             expect( consoleWarnStub.firstCall.args[ 0 ] ).to.equal(
-                'WinkComposer/semantics: test message'
+                'winkComposer/semantics: test message'
             );
         } );
 
@@ -51,7 +51,7 @@ describe( 'Warning Infrastructure', function () {
             defaultOnWarning( '' );
             expect( consoleWarnStub.calledOnce ).to.equal( true );
             expect( consoleWarnStub.firstCall.args[ 0 ] ).to.equal(
-                'WinkComposer/semantics: '
+                'winkComposer/semantics: '
             );
         } );
 

@@ -121,7 +121,7 @@ const emitters = ( function () {
                 const module = emitterModules[ target ];
                 const factory = module && module.createEmitter;
                 if ( typeof factory !== 'function' ) {
-                    throw new Error( `composer: Invalid emitter module: ${target}` );
+                    throw new Error( `winkComposer/wiring: Invalid emitter module: ${target}` );
                 }
 
                 // ADR-018 module-surface check: the module must say what
@@ -235,7 +235,7 @@ const emitters = ( function () {
                 const err = result.reason || {};
                 const dropped = err.dropped ? ` dropped=${describeDropped( err.dropped )}` : '';
                 console.error(
-                    `WinkComposer/wiring: emitter '${names[ i ]}' shutdown failed [${err.code || 'UNKNOWN'}]: ${err.message || String( err )}${dropped}`
+                    `winkComposer/wiring: emitter '${names[ i ]}' shutdown failed [${err.code || 'UNKNOWN'}]: ${err.message || String( err )}${dropped}`
                 );
             }
         } );

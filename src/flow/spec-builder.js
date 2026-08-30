@@ -11,7 +11,7 @@ const buildStatsFromOutputs = function ( outputs ) {
         // overwrite case, caught at build time by check-output-collisions.js.
         if ( seenStoreAs[ storeAs ] ) {
             throw new Error(
-                `WinkComposer/flow: Node has duplicate storeAs '${storeAs}' ` +
+                `winkComposer/flow: Node has duplicate storeAs '${storeAs}' ` +
                 `for stats '${seenStoreAs[ storeAs ]}' and '${stat}'`
             );
         }

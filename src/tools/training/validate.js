@@ -24,14 +24,14 @@ import { validators } from '../../core/utils/validate/validators.js';
  */
 const validateMatrix = function ( X, caller ) {
     if ( !Array.isArray( X ) || X.length === 0 ) {
-        throw new Error( caller + ': X must be a non-empty array of rows.' );
+        throw new Error( 'winkComposer/' + caller + ': X must be a non-empty array of rows.' );
     }
 
     const n = X.length;
     const p = X[ 0 ].length;
 
     if ( p === 0 ) {
-        throw new Error( caller + ': rows must have at least one feature.' );
+        throw new Error( 'winkComposer/' + caller + ': rows must have at least one feature.' );
     }
 
     for ( let i = 0; i < n; i += 1 ) {

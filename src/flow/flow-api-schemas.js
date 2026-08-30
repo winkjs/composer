@@ -226,7 +226,7 @@ export const validateFlowConfig = function ( config, schema, methodName ) {
             valid: false,
             errors,
             throwIfInvalid: () => {
-                throw new Error( `WinkComposer/flow.${methodName}: ${errors[ 0 ]}` );
+                throw new Error( `winkComposer/flow.${methodName}: ${errors[ 0 ]}` );
             }
         };
     }
@@ -241,7 +241,7 @@ export const validateFlowConfig = function ( config, schema, methodName ) {
         throwIfInvalid: () => {
             if ( !validation.valid ) {
                 throw new Error(
-                    `WinkComposer/flow.${methodName}: validation failed:\n  - ${validation.errors.join( '\n  - ' )}`
+                    `winkComposer/flow.${methodName}: validation failed:\n  - ${validation.errors.join( '\n  - ' )}`
                 );
             }
         }
@@ -266,7 +266,7 @@ export const validateFlowArrayConfig = function ( config, schema, methodName ) {
             valid: false,
             errors,
             throwIfInvalid: () => {
-                throw new Error( `WinkComposer/flow.${methodName}: ${errors[ 0 ]}` );
+                throw new Error( `winkComposer/flow.${methodName}: ${errors[ 0 ]}` );
             }
         };
     }
@@ -280,7 +280,7 @@ export const validateFlowArrayConfig = function ( config, schema, methodName ) {
         throwIfInvalid: () => {
             if ( !validation.valid ) {
                 throw new Error(
-                    `WinkComposer/flow.${methodName}: validation failed:\n  - ${validation.errors.join( '\n  - ' )}`
+                    `winkComposer/flow.${methodName}: validation failed:\n  - ${validation.errors.join( '\n  - ' )}`
                 );
             }
         }

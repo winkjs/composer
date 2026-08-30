@@ -264,7 +264,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         } catch ( err ) {
             stageErrors.push( err );
             console.error(
-                `WinkComposer/flow: ${label} drain stage failed [${( err && err.code ) || 'UNKNOWN'}]: ` +
+                `winkComposer/flow: ${label} drain stage failed [${( err && err.code ) || 'UNKNOWN'}]: ` +
                 `${( err && err.message ) || String( err )} — later drain stages still ran`
             );
         }
@@ -312,7 +312,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
     const observedShutdown = function () {
         shutdown().catch( function ( err ) {
             console.error(
-                `WinkComposer/flow '${flowName}': shutdown failed ` +
+                `winkComposer/flow '${flowName}': shutdown failed ` +
                 `[${( err && err.code ) || 'UNKNOWN'}]: ${( err && err.message ) || String( err )}`
             );
         } );
@@ -338,7 +338,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
             if ( !erroredDropReported ) {
                 erroredDropReported = true;
                 console.error(
-                    `WinkComposer/flow '${flowName}': flow is in the terminal 'errored' ` +
+                    `winkComposer/flow '${flowName}': flow is in the terminal 'errored' ` +
                     'phase [MESSAGE_HANDLER_FAILED] — dropping this and all further messages'
                 );
             }
@@ -405,7 +405,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         // here for the same reason as the durability check above:
         // direct runFlow() callers bypass the DSL schema.
         if ( config.onStatus !== undefined && config.onStatus !== null && typeof config.onStatus !== 'function' ) {
-            const err = new Error( `WinkComposer/flow '${flowName}': onStatus must be a function` );
+            const err = new Error( `winkComposer/flow '${flowName}': onStatus must be a function` );
             err.code = 'INVALID_CONFIG';
             throw err;
         }
@@ -428,7 +428,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
             severity: 'red',
             report: function ( severity, name, detail ) {
                 console.error(
-                    `WinkComposer/flow '${flowName}': user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+                    `winkComposer/flow '${flowName}': user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
                 );
             }
         } );
@@ -444,7 +444,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
                 const code = ( s.error && s.error.code ) || 'UNKNOWN';
                 const message = ( s.error && s.error.message ) ||
                     'source reported status red with no error detail';
-                console.error( `WinkComposer/flow '${flowName}': source error [${code}]: ${message}` );
+                console.error( `winkComposer/flow '${flowName}': source error [${code}]: ${message}` );
             }
             // Completion bookkeeping runs after — and independently of —
             // the user's reporter. A throwing onStatus must never swallow

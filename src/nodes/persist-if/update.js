@@ -64,7 +64,7 @@ const update = function ( state, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.predicateErrorLogged ) {
             state.predicateErrorLogged = true;
-            console.error( `WinkComposer/persistIf: predicate threw exception: ${error.message}` );
+            console.error( `winkComposer/persistIf: predicate threw exception: ${error.message}` );
         }
         state.persistErrors += 1;
         state.lastPersistError = error.message;

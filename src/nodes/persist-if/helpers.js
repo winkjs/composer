@@ -75,7 +75,7 @@ const sweepAnnotateKeys = function ( state, record, msg ) {
 
     if ( invented.length > 0 ) {
         console.warn(
-            `WinkComposer/persistIf: annotate for node '${state.name}' ` +
+            `winkComposer/persistIf: annotate for node '${state.name}' ` +
             `(insightType '${state.insightType}') returned keys that are not declared columns: ` +
             `${invented.join( ', ' )}. These values are never stored, because the persist plan ` +
             'writes only declared columns. Check the key names against the asset class. ' +

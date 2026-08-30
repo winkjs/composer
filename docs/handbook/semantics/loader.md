@@ -66,7 +66,7 @@ const semantics = await loadSemantics('./semantics', {
 The loader uses **fail-fast** behavior: throws on first validation error with detailed context.
 
 ```
-WinkComposer/semantics: AssetClass 'pumpStats', column 'temperature':
+winkComposer/semantics: AssetClass 'pumpStats', column 'temperature':
   operational/specification limits exceed physicalRange bounds
 ```
 

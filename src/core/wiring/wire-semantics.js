@@ -151,7 +151,7 @@ const applySemanticsRequirement = function ( adapterId, module, runtimeAssetClas
             // QuestDB's existing createStorage guard; this layer
             // catches it earlier in the lifecycle.
             const err = new Error(
-                `WinkComposer/wiring: adapter '${adapterId}' declares semanticsRequirement.assetClass.required ` +
+                `winkComposer/wiring: adapter '${adapterId}' declares semanticsRequirement.assetClass.required ` +
                 'but the flow has no .assetClass() — add .assetClass(assetClassDef) to the flow definition'
             );
             err.code = 'MISSING_ASSET_CLASS';

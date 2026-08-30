@@ -255,7 +255,7 @@ describe( 'validate.js', function () {
 
             expect( () => {
                 validateFlowOrThrow( 'myFlow', specs, mockNodeModules, {}, questdbModuleMap, null );
-            } ).to.throw( /Flow 'myFlow' validation failed/ );
+            } ).to.throw( /winkComposer\/flow 'myFlow': validation failed/ );
         } );
 
         it( 'includes all errors in thrown exception', function () {

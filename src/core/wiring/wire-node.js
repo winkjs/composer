@@ -37,27 +37,27 @@ const wireNode = function ( nodeModule, nodeIndex, nextHops = [], options = {} )
     const maxRecentErrors = options.maxRecentErrors || 5;
     // Validate required node module interface at wire-time
     if ( !nodeModule || typeof nodeModule.update !== 'function' ) {
-        throw new TypeError( `composer/wireNode: Node module must implement update function; found ${typeof nodeModule.update}` );
+        throw new TypeError( `winkComposer/wiring: Node module must implement update function; found ${typeof nodeModule.update}` );
     }
 
     if ( typeof nodeModule.publishTo !== 'function' ) {
-        throw new TypeError( `composer/wireNode: Node module must implement publishTo function; found ${typeof nodeModule.publishTo}` );
+        throw new TypeError( `winkComposer/wiring: Node module must implement publishTo function; found ${typeof nodeModule.publishTo}` );
     }
 
     // Validate next hops are executable functions
     if ( !Array.isArray( nextHops ) ) {
-        throw new TypeError( `composer/wireNode: Next hops must be an array; found ${typeof nextHops}` );
+        throw new TypeError( `winkComposer/wiring: Next hops must be an array; found ${typeof nextHops}` );
     }
 
     for ( let i = 0; i < nextHops.length; i += 1 ) {
         if ( typeof nextHops[ i ] !== 'function' ) {
-            throw new TypeError( `composer/wireNode: Next hop at index ${i} must be a function; found ${typeof nextHops[ i ]}` );
+            throw new TypeError( `winkComposer/wiring: Next hop at index ${i} must be a function; found ${typeof nextHops[ i ]}` );
         }
     }
 
     // Validate node index for state store access
     if ( typeof nodeIndex !== 'number' || nodeIndex < 0 ) {
-        throw new RangeError( `composer/wireNode: Node index must be a non-negative number; found ${nodeIndex}` );
+        throw new RangeError( `winkComposer/wiring: Node index must be a non-negative number; found ${nodeIndex}` );
     }
 
     /**

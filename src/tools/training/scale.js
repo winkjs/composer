@@ -177,7 +177,7 @@ const computeRobustParams = function ( X ) {
  */
 const scale = function ( X, params ) {
     if ( !Array.isArray( X ) || X.length === 0 ) {
-        throw new Error( 'scale: X must be a non-empty array of rows.' );
+        throw new Error( 'winkComposer/scale: X must be a non-empty array of rows.' );
     }
 
     const n = X.length;
@@ -221,7 +221,7 @@ const scale = function ( X, params ) {
             result[ i ] = out;
         }
     } else {
-        throw new Error( 'scale: unknown method "' + method + '".' );
+        throw new Error( 'winkComposer/scale: unknown method "' + method + '".' );
     }
 
     return result;

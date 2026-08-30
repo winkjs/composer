@@ -187,17 +187,17 @@ const createMQTTSourceClient = function ( config ) {
     // Validate required config. Per ADR-018, setup-time throws carry
     // classified err.code (INVALID_CONFIG for missing/malformed config fields).
     if ( !brokerUrl ) {
-        const err = new Error( 'WinkComposer/mqtt-source: brokerUrl is required' );
+        const err = new Error( 'winkComposer/mqttSource: brokerUrl is required' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
     if ( !topics || ( Array.isArray( topics ) && topics.length === 0 ) ) {
-        const err = new Error( 'WinkComposer/mqtt-source: topics is required' );
+        const err = new Error( 'winkComposer/mqttSource: topics is required' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
     if ( typeof onMessage !== 'function' ) {
-        const err = new Error( 'WinkComposer/mqtt-source: onMessage must be a function' );
+        const err = new Error( 'winkComposer/mqttSource: onMessage must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -242,7 +242,7 @@ const createMQTTSourceClient = function ( config ) {
     // only — nothing here touches the message path.
     if ( !clientId && cleanStart !== true ) {
         console.warn(
-            'WinkComposer/mqtt-source: no clientId configured — this session ' +
+            'winkComposer/mqttSource: no clientId configured — this session ' +
             `is persistent under the auto-generated name '${generatedClientId}'. ` +
             'After a restart, composer connects under a NEW name, so messages ' +
             'the broker saved during the downtime are never delivered. Set a ' +

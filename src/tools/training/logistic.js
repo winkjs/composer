@@ -93,7 +93,7 @@ const train = function ( X, y, options ) {
         for ( let i = 0; i < n; i += 1 ) n1 += y[ i ];
         const n0 = n - n1;
         if ( n0 === 0 || n1 === 0 ) {
-            throw new Error( 'train: y must contain both classes (0 and 1).' );
+            throw new Error( 'winkComposer/train: y must contain both classes (0 and 1).' );
         }
         w[ 0 ] = n / ( 2 * n0 );
         w[ 1 ] = n / ( 2 * n1 );

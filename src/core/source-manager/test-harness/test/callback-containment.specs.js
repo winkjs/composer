@@ -98,7 +98,7 @@ describe( 'testHarness source — a broken user onStatus is contained (ADR-018)'
         expect( completeCall.args[ 0 ].count ).to.equal( 3 );
         const lines = faultLines( spy );
         expect( lines ).to.have.lengthOf( 3 );
-        expect( lines[ 0 ] ).to.contain( 'testHarness error' );
+        expect( lines[ 0 ] ).to.contain( 'winkComposer/testHarness' );
         expect( lines[ 0 ] ).to.contain( 'reporter down' );
         expect( unhandled ).to.have.lengthOf( 0 );
         await stop();

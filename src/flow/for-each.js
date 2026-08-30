@@ -90,7 +90,7 @@ export const makeForEach = function ( api, flowState ) {
             // rather than emit a silently-wrong per-field controller.
             if ( pattern === SIGNATURE_PATTERNS.nameLogic ) {
                 throw new Error(
-                    `WinkComposer/flow: forEach cannot fan a controller ('${args[ 0 ]}'); ` +
+                    `winkComposer/flow: forEach cannot fan a controller ('${args[ 0 ]}'); ` +
                     'fan data-processing nodes only.'
                 );
             }
@@ -109,7 +109,7 @@ export const makeForEach = function ( api, flowState ) {
             // Node-name collision check before building stats (matches make-node-method),
             // so a rejected node never registers its output params in the global checker.
             if ( isNodeNameDuplicate( t[ 0 ] ) ) {
-                throw new Error( `WinkComposer/flow: duplicate node ${t[ 0 ]} found.` );
+                throw new Error( `winkComposer/flow: duplicate node ${t[ 0 ]} found.` );
             }
 
             // Outputs: store each labelled output as `${field}_${label}`, and record the
@@ -122,7 +122,7 @@ export const makeForEach = function ( api, flowState ) {
                     const label = rawOutputs[ outKeys[ i ] ];
                     if ( Object.prototype.hasOwnProperty.call( recorded, label ) ) {
                         console.warn(
-                            `WinkComposer/flow: forEach output label '${label}' written by ` +
+                            `winkComposer/flow: forEach output label '${label}' written by ` +
                             `more than one step on field '${field}'; each.out will return the last.`
                         );
                     }
@@ -146,7 +146,7 @@ export const makeForEach = function ( api, flowState ) {
             targetArray.push( spec );
         } catch ( error ) {
             throw new Error(
-                `WinkComposer/flow: Failed to process "${callContext}"\n` +
+                `winkComposer/flow: Failed to process "${callContext}"\n` +
                 `  Reason: ${error.message}\n`
             );
         }
@@ -170,7 +170,7 @@ export const makeForEach = function ( api, flowState ) {
         each.out = function ( label ) {
             if ( !Object.prototype.hasOwnProperty.call( recorded, label ) ) {
                 throw new Error(
-                    `WinkComposer/flow: each.out( '${label}' ) on field '${field}': ` +
+                    `winkComposer/flow: each.out( '${label}' ) on field '${field}': ` +
                     `no earlier step in this chain wrote an output labelled '${label}'.`
                 );
             }
@@ -191,25 +191,25 @@ export const makeForEach = function ( api, flowState ) {
         // that only resolves at .endGroup(), so the callback cannot run where written.
         if ( groupByState.active ) {
             throw new Error(
-                'WinkComposer/flow: forEach inside groupBy is not supported yet; ' +
+                'winkComposer/flow: forEach inside groupBy is not supported yet; ' +
                 'the field list must be a concrete array at the call site.'
             );
         }
         if ( !Array.isArray( fields ) || fields.length === 0 ) {
-            throw new Error( 'WinkComposer/flow: forEach requires a non-empty array of field names.' );
+            throw new Error( 'winkComposer/flow: forEach requires a non-empty array of field names.' );
         }
         if ( typeof callback !== 'function' ) {
-            throw new Error( 'WinkComposer/flow: forEach requires a callback function.' );
+            throw new Error( 'winkComposer/flow: forEach requires a callback function.' );
         }
 
         const seen = Object.create( null );
         for ( let i = 0; i < fields.length; i += 1 ) {
             const field = fields[ i ];
             if ( typeof field !== 'string' || field.length === 0 ) {
-                throw new Error( 'WinkComposer/flow: forEach field names must be non-empty strings.' );
+                throw new Error( 'winkComposer/flow: forEach field names must be non-empty strings.' );
             }
             if ( Object.prototype.hasOwnProperty.call( seen, field ) ) {
-                throw new Error( `WinkComposer/flow: forEach duplicate field '${field}' in field list.` );
+                throw new Error( `winkComposer/flow: forEach duplicate field '${field}' in field list.` );
             }
             seen[ field ] = 1;
         }

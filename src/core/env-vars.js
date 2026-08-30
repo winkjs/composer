@@ -242,7 +242,7 @@ const validate = function () {
 
     // Fail fast with clear error message
     if ( errors.length > 0 ) {
-        console.error( 'composer: Environment variable validation failed:' );
+        console.error( 'winkComposer/envVars: Environment variable validation failed:' );
         errors.forEach( ( err ) => console.error( `   - ${err}` ) );
         process.exit( 1 ); // eslint-disable-line no-process-exit
     }

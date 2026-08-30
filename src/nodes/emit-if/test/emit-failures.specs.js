@@ -120,7 +120,7 @@ describe( 'Emit-If Node — publish failures', function () {
             errorSpy.restore();
             expect( errorSpy.callCount ).to.equal( 1 );
             const logged = errorSpy.firstCall.args[ 0 ];
-            expect( logged ).to.include( 'WinkComposer/emitIf' );
+            expect( logged ).to.include( 'winkComposer/emitIf' );
             expect( logged ).to.include( 'loudEmit' );
             expect( logged ).to.include( 'alert' );
             expect( logged ).to.include( 'STORAGE_FULL' );

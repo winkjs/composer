@@ -44,12 +44,12 @@ const resolveTriggers = function ( stateStore, triggers, scopedFlow ) {
         // Resolve first target to establish reference node type
         const firstTargetName = targets[ 0 ];
         if ( typeof firstTargetName !== 'string' || firstTargetName.length === 0 ) {
-            throw new TypeError( `Target name at trigger ${i}, target 0 must be a non-empty string; found '${firstTargetName}'` );
+            throw new TypeError( `winkComposer/partitionManager: Target name at trigger ${i}, target 0 must be a non-empty string; found '${firstTargetName}'` );
         }
 
         const firstTargetIndex = scopedFlow.specs.findIndex( ( spec ) => spec.name === firstTargetName );
         if ( firstTargetIndex === -1 ) {
-            throw new Error( `Target node '${firstTargetName}' not found in flow specs for trigger ${i}` );
+            throw new Error( `winkComposer/partitionManager: Target node '${firstTargetName}' not found in flow specs for trigger ${i}` );
         }
 
         // Get reference node module and validate control method exists
@@ -58,11 +58,11 @@ const resolveTriggers = function ( stateStore, triggers, scopedFlow ) {
         const referenceNode = scopedFlow.nodeModules[ moduleName ];
 
         if ( !referenceNode ) {
-            throw new Error( `Node module '${moduleName}' not found for nodeType '${firstSpec.nodeType}' in trigger ${i}` );
+            throw new Error( `winkComposer/partitionManager: Node module '${moduleName}' not found for nodeType '${firstSpec.nodeType}' in trigger ${i}` );
         }
 
         if ( typeof referenceNode[ control ] !== 'function' ) {
-            throw new Error( `Control method '${control}' not found on node type '${referenceNode.getNodeType?.() || firstSpec.nodeType}' for trigger ${i}` );
+            throw new Error( `winkComposer/partitionManager: Control method '${control}' not found on node type '${referenceNode.getNodeType?.() || firstSpec.nodeType}' for trigger ${i}` );
         }
 
         // Store first resolved target
@@ -73,12 +73,12 @@ const resolveTriggers = function ( stateStore, triggers, scopedFlow ) {
             const targetName = targets[ j ];
 
             if ( typeof targetName !== 'string' || targetName.length === 0 ) {
-                throw new TypeError( `Target name at trigger ${i}, target ${j} must be a non-empty string; found '${targetName}'` );
+                throw new TypeError( `winkComposer/partitionManager: Target name at trigger ${i}, target ${j} must be a non-empty string; found '${targetName}'` );
             }
 
             const targetIndex = scopedFlow.specs.findIndex( ( spec ) => spec.name === targetName );
             if ( targetIndex === -1 ) {
-                throw new Error( `Target node '${targetName}' not found in flow specs for trigger ${i}, target ${j}` );
+                throw new Error( `winkComposer/partitionManager: Target node '${targetName}' not found in flow specs for trigger ${i}, target ${j}` );
             }
 
             // Ensure all targets are homogeneous (same node type)
@@ -89,7 +89,7 @@ const resolveTriggers = function ( stateStore, triggers, scopedFlow ) {
             if ( targetNode !== referenceNode ) {
                 const refNodeType = referenceNode.getNodeType?.() || firstSpec.nodeType;
                 const targetNodeType = targetNode.getNodeType?.() || targetSpec.nodeType;
-                throw new Error( `Target node '${targetName}' (type: ${targetNodeType}) is incompatible with reference node type '${refNodeType}' for trigger ${i}` );
+                throw new Error( `winkComposer/partitionManager: Target node '${targetName}' (type: ${targetNodeType}) is incompatible with reference node type '${refNodeType}' for trigger ${i}` );
             }
 
             resolvedTargets[ j ] = stateStore[ targetIndex ];
@@ -128,7 +128,7 @@ const buildGraph = function ( flow, specs, partitionId, specializationType ) {
         const node = flow.nodeModules[ moduleName ];
 
         if ( !node ) {
-            throw new Error( `Node module '${moduleName}' not found for nodeType '${spec.nodeType}' at index ${k}` );
+            throw new Error( `winkComposer/partitionManager: Node module '${moduleName}' not found for nodeType '${spec.nodeType}' at index ${k}` );
         }
 
         // Initialize node state
@@ -235,7 +235,7 @@ const update = function ( composerState, msg ) {
         if ( !specs ) {
             // Log error and skip message - no default fallback
             // Note: Do NOT create partition entry for unknown specialization
-            console.error( `[PartitionManager] Unknown specialization '${specializationType}' for partition '${partitionId}'. Message dropped.` );
+            console.error( `winkComposer/partitionManager: Unknown specialization '${specializationType}' for partition '${partitionId}'. Message dropped.` );
             return null;
         }
 
@@ -249,7 +249,7 @@ const update = function ( composerState, msg ) {
             composerState.totalPartitionsCreated += 1;
             if ( composerState.totalPartitionsCreated > ENV_VARS.maxPartitionsAllowed ) {
                 console.error(
-                    `[PartitionManager] Partition creation for assetId '${partitionId}' ` +
+                    `winkComposer/partitionManager: Partition creation for assetId '${partitionId}' ` +
                     `failed — maxPartitionsAllowed (${ENV_VARS.maxPartitionsAllowed}) reached. ` +
                     'Message dropped.'
                 );
@@ -288,7 +288,7 @@ const update = function ( composerState, msg ) {
             if ( ledger.failures >= ENV_VARS.messageFailureThreshold ) {
                 ledger.quarantined = true;
                 console.error(
-                    `[PartitionManager] Partition '${partitionId}' quarantined after ` +
+                    `winkComposer/partitionManager: Partition '${partitionId}' quarantined after ` +
                     `${ledger.failures} consecutive creation failures ` +
                     `(last: ${creationError.message}). Later messages for it are dropped.`
                 );

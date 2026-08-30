@@ -77,7 +77,7 @@ The `interpretation` property is an **array of natural language strings** provid
 
 ## Three-Tier Limit Hierarchy
 
-WinkComposer enforces a nested limit hierarchy for robust validation:
+Composer enforces a nested limit hierarchy for robust validation:
 
 ```
 physicalRange (outer boundary - sensor limits)

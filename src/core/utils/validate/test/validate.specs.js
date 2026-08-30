@@ -301,7 +301,7 @@ describe( 'validateWithSchema', function () {
                 result.throwIfInvalid( 'MyNode' );
                 expect.fail( 'Should have thrown' );
             } catch ( e ) {
-                expect( e.message ).to.include( 'WinkComposer/MyNode' );
+                expect( e.message ).to.include( 'winkComposer/MyNode' );
             }
         } );
 

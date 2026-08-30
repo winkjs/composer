@@ -1,7 +1,7 @@
 // core/utils/validate/test/composer-validators.specs.js
 
 /**
- * @fileoverview Tests for WinkComposer-specific validators
+ * @fileoverview Tests for winkComposer-specific validators
  *
  * Tests cover:
  * - nodeField: Node field specification validation

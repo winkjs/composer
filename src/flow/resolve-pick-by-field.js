@@ -35,7 +35,7 @@ export const resolvePickByField = function ( value, field ) {
         const map = value.semantics.map;
         if ( !Object.prototype.hasOwnProperty.call( map, field ) ) {
             throw new Error(
-                `WinkComposer/flow: pickByField has no entry for field '${field}' ` +
+                `winkComposer/flow: pickByField has no entry for field '${field}' ` +
                 `(map keys: ${Object.keys( map ).join( ', ' )}).`
             );
         }

@@ -96,7 +96,7 @@ describe( 'CSV source — a broken user onStatus is contained (ADR-018)', functi
             // One classified line per contained fault, in this source's family.
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 3 );
-            expect( lines[ 0 ] ).to.contain( 'CSV source error' );
+            expect( lines[ 0 ] ).to.contain( 'winkComposer/csvSource' );
             expect( lines[ 0 ] ).to.contain( 'reporter down' );
             expect( unhandled ).to.have.lengthOf( 0 );
             await stop();

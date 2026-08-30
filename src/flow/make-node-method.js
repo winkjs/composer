@@ -8,7 +8,7 @@ import { specBuilder } from './spec-builder.js';
 import { getTargetArray } from './get-target-array.js';
 
 /**
- * Creates a chainable DSL method for a WinkComposer node.
+ * Creates a chainable DSL method for a winkComposer node.
  *
  * @param {Object} api - The fluent API object to extend
  * @param {string} node - Node type name (e.g., 'esMean')
@@ -79,9 +79,9 @@ export const makeNodeMethod = function ( api, node, meta, flowState ) {
             } else {
                 // Canonical builder path
                 const instName = args[ 0 ];
-                if ( effectiveNodeChecker( instName ) ) throw Error( `WinkComposer/flow: duplicate node ${instName} found.` );
+                if ( effectiveNodeChecker( instName ) ) throw Error( `winkComposer/flow: duplicate node ${instName} found.` );
                 const pattern = getSignaturePattern( schema );
-                if ( pattern === SIGNATURE_PATTERNS.unknown ) throw Error( `WinkComposer/flow: unknown signature pattern found for ${instName}.` );
+                if ( pattern === SIGNATURE_PATTERNS.unknown ) throw Error( `winkComposer/flow: unknown signature pattern found for ${instName}.` );
                 const status = validateWithSchema( schemas[ pattern ], [ ...args ], 'Arg' );
                 status.throwIfInvalid( 'argument' );
                 built = buildSpecFor[ pattern ]( [ ...args ] );
@@ -101,7 +101,7 @@ export const makeNodeMethod = function ( api, node, meta, flowState ) {
             }
         } catch ( error ) {
             const enhancedError = new Error(
-                `WinkComposer/flow: Failed to process "${callContext}"\n` +
+                `winkComposer/flow: Failed to process "${callContext}"\n` +
                 `  Reason: ${error.message}\n`
             );
 

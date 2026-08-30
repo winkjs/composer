@@ -93,7 +93,7 @@ This means pipelines adapt to context — operating mode, shift, sensor type, le
 
 ### Built-in Helpers
 
-WinkComposer provides helpers for common patterns. Each helper returns a function that works anywhere a static value is accepted:
+Composer provides helpers for common patterns. Each helper returns a function that works anywhere a static value is accepted:
 
 | Helper | What It Does | Example |
 |--------|-------------|---------|
@@ -123,7 +123,7 @@ Individual node entries flag tunable-capable options in plain text: the option's
 
 ### What Happens When a Tunable Throws
 
-Dynamic option functions can throw at runtime — for example, if a message lacks an expected field. WinkComposer handles this gracefully:
+Dynamic option functions can throw at runtime — for example, if a message lacks an expected field. Composer handles this gracefully:
 
 - **Last good value:** The node continues with the last successfully resolved value. The throwing call is simply skipped — the node processes the message using whatever value worked last.
 - **First-message edge case:** If the function throws before any value has been resolved, the node falls back to a safe default — it either stays inactive until the function succeeds or marks its outputs as invalid, depending on the node.
@@ -194,7 +194,7 @@ After threshold:  { ..., tempZ: 1.7, anomaly: false }
 
 ## Critical Concept: Single vs Multi-Field Processing
 
-WinkComposer nodes can process fields in two modes, and understanding this distinction is essential:
+Composer nodes can process fields in two modes, and understanding this distinction is essential:
 
 ### Single Field Mode (String Input)
 Pass a single field name as a **string**. You specify the exact output name:

@@ -92,7 +92,7 @@ import { wrapCallback } from '../../utils/callback-guard/index.js';
  */
 const reportCallbackFault = function ( severity, name, detail ) {
     console.error(
-        `WinkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
+        `winkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
     );
 }; // reportCallbackFault()
 
@@ -102,7 +102,7 @@ const reportCallbackFault = function ( severity, name, detail ) {
 
 /**
  * Default warning handler for invalid column values.
- * Logs to console in WinkComposer format.
+ * Logs to console in winkComposer format.
  *
  * Validation behavior:
  * - null/undefined columns: skip column only (QuestDB stores NULL)
@@ -120,7 +120,7 @@ const reportCallbackFault = function ( severity, name, detail ) {
  * @param {string} message - Warning message describing the issue
  */
 const defaultOnWarning = function ( message ) {
-    console.warn( `WinkComposer/questdb: ${message}` );
+    console.warn( `winkComposer/questdb: ${message}` );
 };
 
 /**
@@ -225,7 +225,7 @@ const assertIlpNames = function ( tableName, columnNames ) {
         }
     } catch ( err ) {
         const wrapped = new Error(
-            `WinkComposer/questdb: invalid ILP ${kind} '${current}' — ${err.message}`
+            `winkComposer/questdb: invalid ILP ${kind} '${current}' — ${err.message}`
         );
         wrapped.code = 'INVALID_CONFIG';
         wrapped.cause = err;
@@ -276,12 +276,12 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
 
     if ( providedOnWarning !== undefined && typeof providedOnWarning !== 'function' ) {
         // Per ADR-018, setup-time throws carry classified err.code.
-        const err = new Error( 'WinkComposer/questdb: onWarning must be a function' );
+        const err = new Error( 'winkComposer/questdb: onWarning must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
     if ( providedOnDeliveryFailure !== undefined && typeof providedOnDeliveryFailure !== 'function' ) {
-        const err = new Error( 'WinkComposer/questdb: onDeliveryFailure must be a function' );
+        const err = new Error( 'winkComposer/questdb: onDeliveryFailure must be a function' );
         err.code = 'INVALID_CONFIG';
         throw err;
     }
@@ -321,7 +321,7 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         // 'assetId' that no insightType persists stays legal.
         if ( persistedColumnNames.includes( 'assetId' ) || designatedTimestamp === 'assetId' ) {
             const err = new Error(
-                `WinkComposer/questdb: insightType '${insightTypeName}' uses reserved column name 'assetId' — ` +
+                `winkComposer/questdb: insightType '${insightTypeName}' uses reserved column name 'assetId' — ` +
                 'composer writes this column automatically from the flow\'s .assetId() field (the partition id); ' +
                 'rename the semantics column or remove it from this insightType'
             );
@@ -487,7 +487,7 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
                         return;
                     }
                     const failure = new Error(
-                        `WinkComposer/questdb: silent data loss — sender.at() async flush failed for table '${tableName}': ${err.message}. ` +
+                        `winkComposer/questdb: silent data loss — sender.at() async flush failed for table '${tableName}': ${err.message}. ` +
                         'Rows in this batch were dropped. Per the no-silent-failures contract this is a hard failure. ' +
                         'Provide an `onDeliveryFailure` callback in the storage config to handle these explicitly.'
                     );

@@ -1,7 +1,7 @@
 // core/mqtt-protocol.js
 
 /**
- * @fileoverview Shared MQTT protocol invariants for WinkComposer.
+ * @fileoverview Shared MQTT protocol invariants for winkComposer.
  *
  * These are design decisions, NOT deployment-configurable values.
  * Both source and emitter depend on identical values for interoperability:
@@ -18,7 +18,7 @@
 // ============================================================================
 
 /**
- * MQTT v5 user property keys for WinkComposer metadata.
+ * MQTT v5 user property keys for winkComposer metadata.
  * Publisher (emitter) writes these; subscriber (source) reads them.
  *
  * @type {Object}

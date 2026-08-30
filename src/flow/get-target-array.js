@@ -29,13 +29,13 @@ export const getTargetArray = function ( switchState, groupByState, flowDefiniti
     if ( switchState && switchState.active ) {
         if ( switchState.currentCase === null ) {
             throw new Error(
-                'WinkComposer/flow: node called outside of a .case() block - ' +
+                'winkComposer/flow: node called outside of a .case() block - ' +
                 'after .switch(), you must call .case() before adding nodes'
             );
         }
         if ( switchState.caseEnded ) {
             throw new Error(
-                'WinkComposer/flow: node called after .break() - ' +
+                'winkComposer/flow: node called after .break() - ' +
                 'start a new .case() before adding more nodes'
             );
         }

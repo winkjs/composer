@@ -90,7 +90,7 @@ const init = function ( spec ) {
     state.firstPersistErrorCode = null;
     // Static log prefix pre-built here per ADR-004 (no string building in
     // update beyond the two runtime fields, and only once per episode).
-    state.writeErrorLogPrefix = `WinkComposer/persistIf: storage write failed (node=${state.name}, insightType=${state.insightType}, code=`;
+    state.writeErrorLogPrefix = `winkComposer/persistIf: storage write failed (node=${state.name}, insightType=${state.insightType}, code=`;
 
     return state;
 }; // init()

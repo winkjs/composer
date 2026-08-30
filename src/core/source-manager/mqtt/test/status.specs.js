@@ -388,7 +388,7 @@ describe( 'MQTT Source Status Reporter — no-handler console fallback', functio
             .map( ( c ) => c.args[ 0 ] )
             .filter( ( line ) => typeof line === 'string' && line.includes( 'DECODE_ERROR' ) );
         expect( lines ).to.have.length( 1 );
-        expect( lines[ 0 ] ).to.equal( 'MQTT source error [DECODE_ERROR]: bad payload' );
+        expect( lines[ 0 ] ).to.equal( 'winkComposer/mqttSource: source error [DECODE_ERROR]: bad payload' );
     } );
 
     it( 'lifecycle payloads stay quiet without an onStatus handler (no console noise)', function () {

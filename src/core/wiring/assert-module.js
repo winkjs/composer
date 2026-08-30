@@ -19,7 +19,7 @@
  * `src/core/test/adapter-module-surface.specs.js`.
  *
  * Error message format (same shape as assert-handle.js):
- *   `WinkComposer/adapter: '<adapterId>' module missing valid
+ *   `winkComposer/adapter: '<adapterId>' module missing valid
  *    'durabilityClass' export — got <value>; expected one of ...`
  *
  * @see ADR-018 (module surface, durability)
@@ -52,7 +52,7 @@ const assertModuleDurability = function ( adapterId, module ) {
     }
     const got = ( typeof value === 'string' ) ? `'${value}'` : String( value );
     const err = new Error(
-        `WinkComposer/adapter: '${adapterId}' module missing valid 'durabilityClass' export ` +
+        `winkComposer/adapter: '${adapterId}' module missing valid 'durabilityClass' export ` +
         `(ADR-018) — got ${got}; expected one of ` +
         `${DURABILITY_CLASSES.map( ( c ) => `'${c}'` ).join( ' | ' )}`
     );
