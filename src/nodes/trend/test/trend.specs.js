@@ -394,14 +394,26 @@ describe( 'Trend Node', function () {
         } );
 
         it( 'detects likely_accelerating with increasing roc', function () {
-            // Accelerating signal (quadratic)
+            // Accelerating signal (quadratic). Deterministic: probed
+            // 2026-08-31 — this series ends at likely_accelerating with
+            // the trend rising, so the assertion is strict equality.
             for ( let i = 0; i < 30; i += 1 ) {
                 update( state, { value: 100 + ( i * i * 0.5 ) } );
             }
 
-            // May detect acceleration if SNR and conditions are met
-            // This depends on algorithm thresholds
-            expect( [ null, 'likely_accelerating', 'likely_decelerating' ] ).to.include( state.accelerationHint );
+            expect( state.accelerationHint ).to.equal( 'likely_accelerating' );
+        } );
+
+        it( 'detects likely_decelerating with decreasing roc', function () {
+            // Decelerating signal: the concave mirror of the spec above —
+            // the value still rises, but by less each step. Deterministic:
+            // probed 2026-08-31 — first fires at sample 17 and holds
+            // through sample 24 (trend rising, snr ≈ 7).
+            for ( let i = 0; i < 25; i += 1 ) {
+                update( state, { value: 100 + ( 30 * i ) - ( 0.5 * i * i ) } );
+            }
+
+            expect( state.accelerationHint ).to.equal( 'likely_decelerating' );
         } );
     } );
 

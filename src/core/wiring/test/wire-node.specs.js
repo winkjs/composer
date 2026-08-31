@@ -398,6 +398,29 @@ describe( 'wireNode', function () {
             expect( stateStore[ 0 ].errorStats ).to.equal( undefined );
         } );
 
+        it( 'falls back to type Error and a null stack for a nameless, stack-less throw', function () {
+            const node = createMockNode( {
+                update: () => {
+                    // An inline anonymous class instance: constructor.name
+                    // is '' and there is no .stack — the fallback arms of
+                    // both trackers.
+                    throw new ( class {} )();
+                }
+            } );
+
+            const wired = wireNode( node, 0, [] );
+            const stateStore = [ {} ];
+
+            try {
+                wired( stateStore, {} );
+            } catch {
+                // Expected
+            }
+
+            expect( stateStore[ 0 ].errorStats.errorsByType.Error ).to.equal( 1 );
+            expect( stateStore[ 0 ].errorStats.recentErrors[ 0 ].stack ).to.equal( null );
+        } );
+
         it( 'includes stack trace first line in recentErrors', function () {
             const node = createMockNode( {
                 update: () => {

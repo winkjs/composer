@@ -115,6 +115,22 @@ describe( 'scale', function () {
             expect( params.range[ 1 ] ).to.equal( 20 ); // 30 - 10
         } );
 
+        it( 'finds a minimum that arrives after the first row', function () {
+            // The fixture above keeps every column minimum in row one, so
+            // the min-update path never ran. Here column 0 dips in row two
+            // while column 1 peaks — both update paths in one matrix.
+            const X = [
+                [ 5, 1 ],
+                [ 3, 4 ]
+            ];
+            const params = computeMinMaxParams( X );
+
+            expect( params.min[ 0 ] ).to.equal( 3 );
+            expect( params.min[ 1 ] ).to.equal( 1 );
+            expect( params.range[ 0 ] ).to.equal( 2 ); // 5 - 3
+            expect( params.range[ 1 ] ).to.equal( 3 ); // 4 - 1
+        } );
+
         it( 'returns correct types', function () {
             const params = computeMinMaxParams( [ [ 1 ], [ 2 ] ] );
             expect( params.min ).to.be.instanceOf( Float64Array );

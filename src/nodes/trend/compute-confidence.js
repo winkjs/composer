@@ -5,7 +5,7 @@ const computeConfidence = function ( state ) {
     // Provides gradual trust building as statistics stabilize
     if ( state.samples < state.warmupSamples ) {
         const ramp = state.samples / Math.max( state.warmupSamples, 1 );
-        return ( ramp < 0 ) ? 0 : ( ramp > 1 ? 1 : ramp );
+        return Math.min( 1, Math.max( 0, ramp ) );
     }
 
     const epsilon = state.epsilon ?? 1e-12;
@@ -45,7 +45,7 @@ const computeConfidence = function ( state ) {
 
         // Combine factors: far from edge AND low noise AND persistent = high confidence
         const confStable = margin * quietness * persistenceFactor;
-        return ( confStable < 0 ) ? 0 : ( confStable > 1 ? 1 : confStable );
+        return Math.min( 1, Math.max( 0, confStable ) );
     }
 
     // TRENDING CONFIDENCE: "How confident are we in this trend direction?"
@@ -105,8 +105,8 @@ const computeConfidence = function ( state ) {
     // Therefore, we omit the quietness factor for rising/falling states.
     const confTrend = signalClarity * boundaryClarity * persistenceFactor;
 
-    // Ensure output is strictly in [0,1] despite numerical errors
-    return ( confTrend < 0 ) ? 0 : ( confTrend > 1 ? 1 : confTrend );
+    // Clamp to [0,1] — the published confidence contract
+    return Math.min( 1, Math.max( 0, confTrend ) );
 }; // computeConfidence()
 
 export { computeConfidence };

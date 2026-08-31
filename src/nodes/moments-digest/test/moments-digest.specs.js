@@ -672,4 +672,28 @@ describe( 'momentsDigest — Pause/Unpause control', function () {
         expect( methods ).to.have.property( 'pause' );
         expect( methods ).to.have.property( 'unpause' );
     } );
+
+    it( 'publishes nothing when disabled', function () {
+        // disable, unlike pause, silences publishTo too — the node
+        // must be invisible downstream (ADR-004 control semantics).
+        const state = init( {
+            nodeType: 'Moments Digest',
+            name: 'disablePub',
+            from: { x: 'x' },
+            windowSize: 4
+        } );
+
+        for ( let i = 0; i < 4; i += 1 ) {
+            const msg = Object.create( null );
+            msg.x = 10 + i;
+            update( state, msg );
+        }
+
+        state.disable = true;
+
+        const output = Object.create( null );
+        publishTo( state, output );
+
+        expect( Object.keys( output ) ).to.have.lengthOf( 0 );
+    } );
 } );

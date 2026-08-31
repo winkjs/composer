@@ -141,6 +141,40 @@ describe( 'metrics', function () {
             expect( results[ 2 ].threshold ).to.equal( 0.9 );
         } );
 
+        it( 'reports recall 0 when the labels hold no positives', function () {
+            // All-zero labels: tp + fn = 0, so recall takes its guarded 0
+            // instead of dividing by zero. Counts by hand: preds at 0.5
+            // are [1, 1, 0] → fp=2, tn=1.
+            const probs = new Float64Array( [ 0.9, 0.8, 0.2 ] );
+            const labels = [ 0, 0, 0 ];
+
+            const r = sweepThresholds( probs, labels, [ 0.5 ] )[ 0 ];
+
+            expect( r.tp ).to.equal( 0 );
+            expect( r.fp ).to.equal( 2 );
+            expect( r.fn ).to.equal( 0 );
+            expect( r.tn ).to.equal( 1 );
+            expect( r.recall ).to.equal( 0 );
+            expect( r.precision ).to.equal( 0 );
+        } );
+
+        it( 'reports specificity and fpr 0 when the labels hold no negatives', function () {
+            // All-one labels: tn + fp = 0, so specificity and fpr take
+            // their guarded 0s. Counts by hand: preds at 0.5 are
+            // [1, 0, 0] → tp=1, fn=2.
+            const probs = new Float64Array( [ 0.9, 0.2, 0.4 ] );
+            const labels = [ 1, 1, 1 ];
+
+            const r = sweepThresholds( probs, labels, [ 0.5 ] )[ 0 ];
+
+            expect( r.tp ).to.equal( 1 );
+            expect( r.fn ).to.equal( 2 );
+            expect( r.tn ).to.equal( 0 );
+            expect( r.fp ).to.equal( 0 );
+            expect( r.specificity ).to.equal( 0 );
+            expect( r.fpr ).to.equal( 0 );
+        } );
+
         it( 'low threshold catches all positives', function () {
             const probs = new Float64Array( [ 0.1, 0.3, 0.7, 0.9 ] );
             const labels = [ 0, 0, 1, 1 ];

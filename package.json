@@ -27,7 +27,7 @@
     },
     "scripts": {
         "pretest": "npm run lint",
-        "test": "mocha --recursive \"src/**/*.specs.js\" --ignore \"src/**/slow-*.specs.js\"",
+        "test": "c8 --reporter=text-summary --check-coverage --statements 100 --branches 100 --functions 100 --lines 100 mocha --recursive \"src/**/*.specs.js\" --ignore \"src/**/slow-*.specs.js\"",
         "test:hardening": "node --expose-gc node_modules/mocha/bin/mocha.js --recursive \"src/**/slow-*.specs.js\" --timeout 300000 --exit",
         "test:coverage": "c8 --reporter=html mocha --recursive \"src/**/*.specs.js\" --ignore \"src/**/slow-*.specs.js\"",
         "lint": "eslint \"src/**/*.js\""
