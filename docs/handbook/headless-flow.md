@@ -16,7 +16,7 @@ If a built-in source adapter already fits, such as `csv` or `mqtt`, prefer `.sou
 
 ## The driver
 
-Feed the flow with a driver. A driver is a small object, bound to one running flow, that hands messages to the flow one at a time and gets the awkward parts right for you. Create one with `headlessDriver( handle )`.
+Feed the flow with a driver. A driver is a small object bound to one running flow. It hands messages to the flow one at a time and gets the awkward parts right for you. Create one with `headlessDriver( handle )`.
 
 A driver has two methods, one for each way data reaches you:
 
@@ -62,7 +62,7 @@ Two things are easy to get wrong when you feed a flow by hand. The driver gets t
 
 **Catching faults.** A message can make a node throw. An example is a reading whose field cannot be parsed. The driver catches the fault, so one bad message never stops the feed. It hands the fault to your `onError` function and counts it in `failed`. If you give no `onError`, the driver logs each fault.
 
-Your `onError` is guarded too. If it throws or rejects, the feed continues and the counters stay truthful. The driver reports each such fault as one classified `CALLBACK_FAILED` console line. A bug in your fault reporter costs you its output, never the feed.
+Your `onError` is guarded too. If it throws or rejects, the feed continues and the counters stay truthful. The driver reports each such fault as one classified `CALLBACK_FAILED` log line. A bug in your fault reporter costs you its output, never the feed.
 
 The catch is needed because of how a flow without a source reports. A sourced flow contains a node fault itself and reports it red through the source's status channel. A headless flow has no such channel — your feeding code is the only listener. So the flow throws the fault straight back to the code that fed the message, and the driver is the catch that code needs.
 
@@ -96,19 +96,21 @@ A flow with a source stops when the source runs out of data. A headless flow has
 
 **The process is asked to stop.** When you called `.run()`, the flow registered itself with the framework's signal handlers. So `Ctrl-C` (SIGINT) or `kill` (SIGTERM) drains every running flow and exits, with nothing wired by you. A long-running push service often relies on this alone and never calls `shutdown()` itself. If a drain runs longer than 30 seconds (`SHUTDOWN_FORCE_TIMEOUT_MS`), the process exits anyway, so a stuck sink cannot hang it forever.
 
-The stop also sets the process exit code. Exit 0 means every flow drained clean. Exit 1 means the stop was forced by the timeout, or some flow's drain failed and lost buffered data. Each such loss is also printed as one classified console line. So a supervisor such as systemd or Docker can treat a data-losing stop as a failure.
+The stop also sets the process exit code. Exit 0 means every flow drained clean. Exit 1 means the stop was forced by the timeout, or some flow's drain failed and lost buffered data. Each such loss is also logged as one classified line. So a supervisor such as systemd or Docker can treat a data-losing stop as a failure.
 
 Either path runs the same drain: stop the source if there is one, flush the emitters, then flush the storage.
 
-**A delivery failure during the drain is loud, not fatal.** Each sink gets its full chance to deliver what it holds. When one cannot finish in time, the framework logs one classified line naming the sink, the reason, and the exact count — and the drain still completes for the other sinks. `handle.shutdown()` itself still resolves; it rejects only when a drain stage as a whole fails, such as a source that refuses to stop. The log line looks like this:
+**A delivery failure during the drain is loud, not fatal.** Each sink gets its full chance to deliver what it holds. When one cannot finish in time, the framework logs one classified line naming the sink, the reason, and the exact count. The drain still completes for the other sinks. `handle.shutdown()` itself still resolves; it rejects only when a drain stage as a whole fails, such as a source that refuses to stop. The log line looks like this:
 
 ```text
 winkComposer/wiring: emitter 'mqtt' shutdown failed [SHUTDOWN_TIMEOUT]: winkComposer/mqttEmitter: shutdown closed with 2 message(s) unacknowledged dropped={"count":2}
 ```
 
-To handle delivery failures in code rather than by reading logs, give the emitter or storage an `onDeliveryFailure` function in its config — it is called with the classified error for each failure. See [Configuration](./nodes/configuration.md#emitter).
+To handle delivery failures in code rather than by reading logs, give the emitter or storage an `onDeliveryFailure` function in its config. It is called with the classified error for each failure. See [Configuration](./nodes/configuration.md#emitter).
 
-One sizing note for edge boxes. During a broker outage, undelivered MQTT messages wait in an in-memory buffer. The default cap is 10,000 messages (`MQTT_MAX_QUEUE_SIZE`, raiseable to 60,000), and new publishes are refused from 90% of the cap — so at defaults you can ride out about 2.5 hours of outage at 1 message per second, about 15 hours with the cap raised to the ceiling. The buffer is process memory, so a crash or power cut during the outage loses what it held. See [Environment Variables → the MQTT queue ceiling](./environment-variables.md#the-mqtt-queue-ceiling-60000-messages) for the full table and what to do when it is too short.
+One sizing note for edge boxes. During a broker outage, undelivered MQTT messages wait in an in-memory buffer. The default cap is 10,000 messages (`MQTT_MAX_QUEUE_SIZE`, raiseable to 60,000), and new publishes are refused from 90% of the cap. At defaults that rides out about 2.5 hours of outage at 1 message per second. With the cap at the ceiling it is about 15 hours.
+
+The buffer is process memory, so a crash or power cut during the outage loses what it held. See [Environment Variables → the MQTT queue ceiling](./environment-variables.md#the-mqtt-queue-ceiling-60000-messages) for the full table and what to do when it is too short.
 
 ## `whenComplete()` tracks the source, not your feed
 
@@ -134,9 +136,9 @@ A message can be skipped without an error, in two ways. Your code cannot see eit
 
 **A missing asset id.** The field you named in `.assetId()` must be on every message. If the field is missing, the message still runs, but every message missing the field shares one state instead of each asset having its own. Nothing warns you.
 
-**Too many assets.** One flow holds a limited number of distinct asset ids. The default is 10000, set by `COMPOSER_MAX_PARTITIONS_ALLOWED`. When a new id would push the count past the limit, its message is dropped, and the only sign is a line printed to the console.
+**Too many assets.** One flow holds a limited number of distinct asset ids. The default is 10000, set by `COMPOSER_MAX_PARTITIONS_ALLOWED`. When a new id would push the count past the limit, its message is dropped. One log line reports it. The drop also shows in [`handle.getStats()`](./nodes/observability.md#flow-counters), where `totalPartitionsCreated` keeps rising while `activePartitions` stays at the limit.
 
-To stay safe, make sure every message carries its asset id, and keep the number of distinct ids within the limit — or raise the limit with `COMPOSER_MAX_PARTITIONS_ALLOWED`.
+To stay safe, make sure every message carries its asset id. Keep the number of distinct ids within the limit, or raise the limit with `COMPOSER_MAX_PARTITIONS_ALLOWED`.
 
 ## See also
 

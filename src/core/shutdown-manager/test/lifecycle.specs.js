@@ -580,4 +580,22 @@ describe( 'shutdown-manager — error path inside legacy block', function () {
         expect( sawShutdownError ).to.equal( true );
     } );
 
+    it( 'logs String( error ) when the rejection reason carries no stack', async function () {
+        // A non-Error rejection (a bare string here) has no .stack.
+        // The log line must fall back to String( error ) instead of
+        // printing nothing. callsFake defers the rejected Promise to
+        // call time, so no unhandled-rejection warning fires.
+        emittersShutdown.restore();
+        emittersShutdown = sinon.stub( emitters, 'shutdown' )
+            .callsFake( () => Promise.reject( 'power lost mid-drain' ) );
+
+        const graceful = await manager.shutdown();
+
+        expect( graceful ).to.equal( false );
+        expect( process.exitCode ).to.equal( 1 );
+        const errorMessages = errorStub.getCalls().map( ( c ) => c.args.join( ' ' ) );
+        const sawFallback = errorMessages.some( ( m ) => m.includes( 'Shutdown error: power lost mid-drain' ) );
+        expect( sawFallback ).to.equal( true );
+    } );
+
 } );

@@ -1,9 +1,9 @@
 # Observability
 
 Observability means being able to see what a flow is doing from the
-outside. This chapter covers the machinery that provides it: the log
-lines the framework prints, the status and metrics a source reports,
-and the two output gates. The gates are `emitIf`, which publishes
+outside. This chapter covers the machinery that provides it: the
+framework's log lines, a source's status and metrics, the flow's
+counters, and the two output gates. The gates are `emitIf`, which publishes
 results, and `persistIf`, which stores them. They live here because
 they are how a flow's results become visible beyond the process.
 
@@ -69,9 +69,9 @@ Read the two fields together. The `status` is the severity: green means
 healthy, yellow means degraded but working, red means an operator
 should look now. The `phase` says whether the source is alive:
 `offline` and `reconnecting` mean it is still trying; `stopped` means
-it shut down. The MQTT source never gives up on its own — its library
-retries forever — so a broken broker address shows up as a red status
-whose `connected: false` never clears, not as a final failure.
+it shut down. The MQTT source never gives up on its own. Its library
+retries forever. So a broken broker address shows up as a red status
+whose `connected: false` never clears, never as a final failure.
 
 The channel is quiet by design. A status is emitted only when
 something changes; a reconnect storm that fails the same way five
@@ -120,10 +120,45 @@ duplicates, decode failures, and messages your `transform` dropped
 or threw on.
 
 Two of these earn a special watch. A rising `dedupBypassed` means a
-publisher is not stamping `winkDedupId` — that publisher's messages
+publisher is not stamping `winkDedupId`. That publisher's messages
 are not protected against duplicates at all. And a duplicate being
-dropped is *not* an error: it is QoS 1 doing its job, so it appears
+dropped is *not* an error — it is QoS 1 doing its job. So it appears
 here as `dedupHits`, never on the status channel.
+
+## Flow counters
+
+The channels above watch the source. The flow itself also counts,
+and `handle.getStats()` reads those counters. It returns a fresh
+snapshot object on each call:
+
+```javascript
+handle.getStats();
+// {
+//     droppedUnknownSpecialization: 0,  // messages dropped by .switch() routing
+//     totalPartitionsCreated: 12,       // partition creations attempted
+//     activePartitions: 12              // per-asset pipelines held right now
+// }
+```
+
+Each counter answers one question:
+
+- `droppedUnknownSpecialization` — how many messages named no
+  `.case()`. A message whose `.switch()` field carries an unknown
+  value is dropped and counted here. Each such drop also logs one
+  classified line; the counter is the machine-readable side of it.
+- `totalPartitionsCreated` — how many partition creations were
+  attempted. A message that would exceed
+  `COMPOSER_MAX_PARTITIONS_ALLOWED` still counts here, even though
+  its partition is rejected.
+- `activePartitions` — how many per-asset pipelines exist right now.
+
+The last two read together. While `activePartitions` sits at the
+partition limit, a rising `totalPartitionsCreated` counts messages
+being dropped by the cap. Like the source metrics, the counters only
+ever go up. Compare two snapshots to get a rate.
+
+The call is cheap but not free — it builds one small object. Poll it
+from a health check or a supervisor, never per message.
 
 ---
 
@@ -154,7 +189,12 @@ A failed publish is loud. The node logs the first failure of an episode and stay
 winkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=STORAGE_FULL): Store at or above pressure limit (0.9) — cannot accept message
 ```
 
-The codes a publish can return: `STORAGE_FULL` (the emitter's buffer is at its limit — see [the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-60000-messages)), `ENCODE_ERROR` (the codec could not encode the message; the message never entered the buffer), `SHUTTING_DOWN` (publish arrived during shutdown), and `MALFORMED_RESULT` (a third-party emitter broke its return contract; built-in emitters never produce this).
+A publish can return four codes:
+
+- `STORAGE_FULL` — the emitter's buffer is at its limit. See [the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-60000-messages).
+- `ENCODE_ERROR` — the codec could not encode the message. The message never entered the buffer.
+- `SHUTTING_DOWN` — the publish arrived during shutdown.
+- `MALFORMED_RESULT` — a third-party emitter broke its return contract. Built-in emitters never produce this.
 
 **Reset:** Resets emission counts and error tracking.
 
@@ -202,7 +242,7 @@ A failed write is loud. The node logs the first failure of an episode and stays 
 **Note:** Requires semantics configuration for schema definition. The stored row's timestamp always comes from the insight type's `designatedTimestamp` column in the message — the node has no say in it. See [Semantics](../semantics/index.md) and [storage](./configuration.md#storage).
 
 **A typo in an annotate key is named once.** The storage layer writes only
-the columns the asset class declares, so a key that is neither a declared
+the columns the asset class declares. So a key that is neither a declared
 column nor a message field would vanish without a trace. On the gate's first
 firing, the record's keys are checked, and every such key is named in one
 warning. Keys copied in from the message (a `...msg` spread) are not named —
@@ -217,7 +257,12 @@ they are working fields, not typos.
 winkComposer/persistIf: storage write failed (node=persistStats, insightType=washCycleStats, code=SEND_FAILED): <the storage client's error message>
 ```
 
-The codes a write can return: `SEND_FAILED` (the storage client threw while building the row; the adapter recovers itself and the next write proceeds), `INVALID_INSIGHT_TYPE` (no persist plan exists for the name — a configuration error), `SHUTTING_DOWN` (write arrived after shutdown began), and `MALFORMED_RESULT` (a third-party adapter broke its return contract; built-in adapters never produce this).
+A write can return four codes:
+
+- `SEND_FAILED` — the storage client threw while building the row. The adapter recovers itself and the next write proceeds.
+- `INVALID_INSIGHT_TYPE` — no persist plan exists for the name. This is a configuration error.
+- `SHUTTING_DOWN` — the write arrived after shutdown began.
+- `MALFORMED_RESULT` — a third-party adapter broke its return contract. Built-in adapters never produce this.
 
 **Reset:** Resets persistence counts and error tracking.
 
@@ -248,7 +293,9 @@ The codes a write can return: `SEND_FAILED` (the storage client threw while buil
 `annotate` builds a fresh object every time the gate fires. For an event
 gate that is fine: it fires a few times an hour, and a few small objects an
 hour cost nothing. A **dense** gate is different. It fires on every message,
-or nearly every message. On a dense gate, annotate creates one throwaway
+or nearly every message.
+
+On a dense gate, annotate creates one throwaway
 object per message. The JavaScript engine has to clean those objects up.
 That cleanup is called garbage collection, and on a small edge device it
 takes processor time away from the pipeline.
@@ -292,7 +339,9 @@ The gate uses it like any other annotate:
 **Why this is safe.** The pipeline processes one message at a time. Every
 bundled sink reads the whole record inside the write call, before that call
 returns. So by the time the next firing overwrites the record, nobody is
-still reading it. One caution: a third-party sink must read the record the
+still reading it.
+
+One caution: a third-party sink must read the record the
 same way — fully, inside the call. That requirement is part of the adapter
 development standards. Check it before using this pattern in a flow with a
 sink that did not ship with composer.
@@ -302,8 +351,8 @@ mistake.
 
 1. **Overwrite every changing field on every firing.** Suppose `value` were
    written only when the message carries one. On the next firing without a
-   value, the record would still hold the previous message's number, and
-   that stale number would be written to the database. Overwriting every
+   value, the record would still hold the previous message's number.
+   That stale number would be written to the database. Overwriting every
    changing field, every time, makes stale values impossible.
 2. **Always fill the designated timestamp.** A record without it is not
    written at all. The row is skipped with a warning, and the data is lost.
@@ -316,7 +365,7 @@ mistake.
 
 A misspelled key in the record is caught for you. On the gate's first
 firing, every key that is neither a declared column nor a message field is
-named in one warning — see the note in the persistIf section above.
+named in one warning. See the note in the persistIf section above.
 
 The pattern works the same way on `emitIf`. The only difference is where
 the record goes: to the broker instead of the database. The

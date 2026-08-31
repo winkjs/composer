@@ -709,6 +709,8 @@ const handle = await flow('pipeline')
 | `flowName` | string | The name passed to `flow()` |
 | `shutdown()` | async function | Stops the source, drains the emitters, then drains the storage. A sink that cannot deliver in time does not fail the flow's shutdown: the framework logs one classified line naming the sink, the error code, and the exact undelivered count, and the other sinks still drain. The promise rejects only when a drain stage itself fails — for example, a source that refuses to stop. Safe to call more than once: every call returns the same outcome. For programmatic delivery-failure handling, configure `onDeliveryFailure` on the emitter or storage. |
 | `processMessage( msg )` | function | Feed one message yourself, when the flow has no source. Returns nothing on the fast path, and a Promise to await on a yield. See [Headless Flows](../headless-flow.md). |
+| `whenComplete()` | function | Returns a Promise that resolves when a finite source reaches its natural end, or when shutdown is called. On a flow with no source it resolves immediately at `.run()`. See [Finite and infinite sources](#finite-and-infinite-sources). |
+| `getStats()` | function | Returns a fresh snapshot of the flow's routing counters: dropped messages and partition counts. See [Observability → Flow counters](./observability.md#flow-counters). |
 
 **Single flow per process:** When `.run()` starts, it registers shutdown handlers for SIGINT and SIGTERM. This means one running flow per process. For per-asset isolation, use `.assetId()`. For different pipeline shapes, use `.switch()`/`.case()`. For truly independent flows, use separate processes.
 

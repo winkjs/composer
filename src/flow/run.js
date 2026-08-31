@@ -29,7 +29,8 @@ import { logger } from '../core/logger/index.js';
  * @param {Set} importSet - Set of node names used
  * @param {Object} runtime - Runtime configuration
  * @param {Array} [caseOrder] - Order of case keys (only for multi-specialization)
- * @returns {Promise<Object>} Pipeline handle with shutdown method
+ * @returns {Promise<Object>} Pipeline handle: processMessage, shutdown,
+ *   whenComplete, getStats, flowName, composerState
  */
 export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet, runtime, caseOrder ) {
     // Determine if this is multi-specialization mode
@@ -516,6 +517,11 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         composerState,
         shutdown,
         processMessage,
+        // Cold-path counter snapshot (drops, partitions). Allocates one
+        // small object per call; never called by the pipeline itself.
+        getStats: function () {
+            return partitionManager.getStats( composerState );
+        },
         whenComplete: function () {
             return whenCompletePromise;
         }

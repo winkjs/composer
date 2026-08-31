@@ -5,7 +5,7 @@ composer reads its runtime settings from environment variables. Two things hold 
 - **They are validated once, at import, and fail fast.** When composer loads, it checks every variable. If one is malformed, it prints the errors and exits the process with code 1. A bad value stops startup rather than failing deep in a run.
 - **Defaults are built in.** On a normal local stack you set none of these — the defaults already match the ports the services publish. Set a variable only to point at a different host or port, or to change a limit.
 
-You can export these in the shell before a run, or keep them in a `.env` file and load it with `node --env-file=.env yourflow.js` (Node 20.6 or newer).
+You can export these in the shell before a run. Or keep them in a `.env` file and load it with `node --env-file=.env yourflow.js` (Node 20.6 or newer).
 
 Most of these have an equivalent option you can pass directly in a flow — the source, emitter, and storage configs in [Configuration](./nodes/configuration.md). The environment variable is the fallback used when the option is omitted.
 
@@ -38,7 +38,9 @@ redirect plus logrotate anywhere else.
 
 ### The yield threshold: when it matters
 
-A flow processes messages synchronously. Background work — QuestDB flushes, MQTT delivery, console output — runs only when the event loop gets a turn. When a caller feeds messages in a tight loop and waits on each one (a CSV replay at full speed, the [headless driver](./headless-flow.md) over an in-memory array), the flow offers that turn itself: once this many milliseconds have passed, the current message finishes processing and the caller receives a Promise; awaiting it gives the event loop one full turn. The default, 500 ms, keeps those turns frequent enough that storage flush timers never wait long, and costs at most two deferred messages per second.
+A flow processes messages synchronously. Background work — QuestDB flushes, MQTT delivery, console output — runs only when the event loop gets a turn.
+
+Some callers feed messages in a tight loop and wait on each one. Two examples are a CSV replay at full speed and the [headless driver](./headless-flow.md) over an in-memory array. For them, the flow offers that turn itself. Once this many milliseconds have passed, the current message finishes processing and the caller receives a Promise. Awaiting it gives the event loop one full turn. The default, 500 ms, keeps those turns frequent enough that storage flush timers never wait long, and costs at most two deferred messages per second.
 
 Flows fed by the MQTT source do not need this. Each incoming message already arrives through the event loop, so background work runs between messages on its own. For such flows the setting is inert — any value behaves the same. Set it to `Infinity` only where you deliberately want no yielding at all, such as a benchmark measuring raw pipeline speed.
 
@@ -61,7 +63,7 @@ Flows fed by the MQTT source do not need this. Each incoming message already arr
 
 The MQTT emitter keeps every message it has not yet delivered in an in-memory buffer. During a broker outage, messages accumulate in the buffer and are sent when the connection returns. The buffer is process memory: if the process crashes or loses power, whatever is still undelivered is lost. At typical edge rates that is at most one burst, usually 0–2 messages.
 
-The buffer can hold at most 60,000 messages. That ceiling is not a composer choice. Every undelivered MQTT message occupies a packet id, and a packet id is a 16-bit number — one connection can never carry more than 65,535 unacknowledged messages. composer stops at 60,000 to keep working room below the protocol limit. Setting `MQTT_MAX_QUEUE_SIZE` (or the emitter's `maxQueueSize` option) above 60,000 clamps it back to 60,000 and prints a warning.
+The buffer can hold at most 60,000 messages. That ceiling is not a composer choice. Every undelivered MQTT message occupies a packet id. A packet id is a 16-bit number, so one connection can never carry more than 65,535 unacknowledged messages. composer stops at 60,000 to keep working room below the protocol limit. Setting `MQTT_MAX_QUEUE_SIZE` (or the emitter's `maxQueueSize` option) above 60,000 clamps it back to 60,000 and prints a warning.
 
 The cap matters in exactly one situation: the broker is unreachable and messages keep coming. Two numbers decide how long you can ride that out. The **default cap is 10,000** (`MQTT_MAX_QUEUE_SIZE`), raiseable up to the 60,000 ceiling. And new publishes are refused once the buffer reaches **90% of its cap**, so the usable window is 0.9 × cap. How long that lasts depends only on your message rate:
 
@@ -76,7 +78,7 @@ Three knobs when that is too short for your outages. Raise `MQTT_MAX_QUEUE_SIZE`
 
 The ceiling does **not** limit sustained throughput. While the broker is reachable, the number of unacknowledged messages equals your message rate times the broker's response time. Measured against a local broker at about 14,300 messages per second, that number stayed between 312 and 400 — nowhere near the ceiling.
 
-When the buffer reaches 90% of its cap, new publishes are refused on the spot with a `STORAGE_FULL` error, instead of being accepted and dropped later. In a flow, `emitIf` reads that refusal and logs one line for the episode:
+When the buffer reaches 90% of its cap, new publishes are refused on the spot with a `STORAGE_FULL` error. They are never accepted and then dropped later. In a flow, `emitIf` reads that refusal and logs one line for the episode:
 
 ```text
 winkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=STORAGE_FULL): Store at or above pressure limit (0.9) — cannot accept message
@@ -84,13 +86,13 @@ winkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=ST
 
 ### The source's duplicate filter: two knobs
 
-MQTT delivers "at least once": after a connection break, the broker or an upstream emitter may send a message a second time. The MQTT source drops these repeats by remembering the ids of recently seen messages (each message from a composer emitter carries a unique id in its metadata).
+MQTT delivers "at least once": after a connection break, the broker or an upstream emitter may send a message a second time. The MQTT source drops these repeats by remembering the ids of recently seen messages. Each message from a composer emitter carries a unique id in its metadata.
 
 Two limits control that memory, and whichever is reached first wins. `MQTT_SOURCE_DEDUP_WINDOW_MS` is the time limit: an id is remembered for 2 minutes by default, which covers a typical reconnect outage. A repeat arriving later than that is treated as a new message — a broker still retrying after 2 minutes has almost certainly given up. `MQTT_SOURCE_DEDUP_MAX_ENTRIES` is the memory limit: at most 65,536 ids are held, which costs about 8 MB in the worst case (measured 6.7 MB).
 
-Below about 550 messages per second, the time limit is the one that matters. Above that rate the memory cap starts forgetting ids before their 2 minutes are up: the effective look-back becomes the cap divided by the message rate — about 6.5 seconds at 10,000 messages per second. That is still an order of magnitude wider than the burst a reconnect actually re-sends.
+Below about 550 messages per second, the time limit is the one that matters. Above that rate the memory cap starts forgetting ids before their 2 minutes are up. The effective look-back becomes the cap divided by the message rate. At 10,000 messages per second that is about 6.5 seconds. That is still an order of magnitude wider than the burst a reconnect actually re-sends.
 
-Only tagged messages are filtered. Messages from publishers that don't stamp ids pass through untouched — the source never guesses identity from message content, because two identical payloads are often two real readings.
+Only tagged messages are filtered. Messages from publishers that don't stamp ids pass through untouched. The source never guesses identity from message content, because two identical payloads are often two real readings.
 
 ## QuestDB
 

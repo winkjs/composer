@@ -132,7 +132,7 @@ persistent_client_expiration 14d
   example of both. Apply with `docker compose restart mosquitto`.
 - **Check that it took effect**: restart the broker cleanly, then
   look for `mosquitto.db` in the persistence location. If the file
-  is not there, the persistence lines are not being read — the most
+  is not there, the persistence lines are not being read. The most
   common cause is editing a file the broker does not load.
 
 Run the broker under something that restarts it automatically — a
@@ -161,9 +161,9 @@ With the configuration above, and composer connecting under a fixed
   own 14-day backstop never fires first.
 
 Composer's integration suite certifies the first two rows against a
-real broker: stop composer, keep publishing, restart, and every
-message published during the gap arrives exactly once — including
-across a broker restart
+real broker. The test stops composer, keeps publishing, restarts,
+and checks that every message published during the gap arrives
+exactly once — including across a broker restart
 (`src/core/source-manager/mqtt/test/slow-broker-durability.specs.js`).
 
 ## Measure durations from the message, not the device clock
@@ -173,14 +173,16 @@ Two nodes measure how long something lasted: `dwellTimeTracker`
 ("how long was the machine in its previous state?"). Both take the
 time from the device's clock unless told otherwise.
 
-The device clock has two failure cases. First, corrections: a
-device that was offline reconnects with a wrong clock, and NTP —
+The device clock has two failure cases. First, corrections. A
+device that was offline reconnects with a wrong clock. NTP —
 the internet time service — snaps it to true time, forwards or
 backwards, sometimes by minutes. A snap landing inside a
-measurement makes the result wrong. Second, replay: the broker
+measurement makes the result wrong.
+
+Second, replay. The broker
 protections above deliver the saved backlog at compute speed, so an
-hour of readings can rush through in seconds — and on the device
-clock, an hour-long state reads as seconds.
+hour of readings can rush through in seconds. On the device
+clock, an hour-long state then reads as seconds.
 
 The fix is one option on the node: `timestampField`, the name of
 the message field that carries each reading's own time. With it
@@ -193,7 +195,7 @@ negative number — a backward clock step reports 0. And a message
 whose timestamp field is missing or not a number is faulted for
 that one message, while the measurement in progress continues.
 
-One clock is deliberately left on the device: `emitIf`'s alert
+One clock is deliberately left on the device. `emitIf`'s alert
 throttle ("do not re-send this alert within N seconds") runs on
 the device clock, because a rate limit is about real elapsed time.
 That is the correct clock for that job.
@@ -233,9 +235,9 @@ the next. Your `onStatus` handler receives one red report:
 ```
 
 The report tells you which node failed and why. If the flow has
-no `onStatus` handler, the same report goes to the console
-instead. Either way, nothing fails silently. And the other
-forty-nine pumps never notice.
+no `onStatus` handler, the same report is logged instead. Either
+way, nothing fails silently. And the other forty-nine pumps never
+notice.
 
 ### When every message fails
 
@@ -254,7 +256,7 @@ You get
 one final red report with `phase: 'errored'`. Then the flow shuts
 down cleanly: emitters and storage drain their buffers, so
 nothing already computed is lost. Messages arriving after the
-stop are dropped, and one console line records that.
+stop are dropped, and one log line records that.
 
 The threshold is the environment variable
 `COMPOSER_MESSAGE_FAILURE_THRESHOLD`. The default of 5 suits most
@@ -270,7 +272,8 @@ of its messages. After five failed builds in a row, composer
 stops trying: `pump07` is quarantined.
 
 Its messages are dropped,
-one console line reports it, and the other pumps run untouched.
+one log line reports the quarantine, and the other pumps run
+untouched.
 A quarantined pump's drops do not count against the flow-level
 threshold above — one sick pump cannot stop the plant.
 

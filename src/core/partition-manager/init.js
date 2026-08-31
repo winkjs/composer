@@ -18,6 +18,12 @@ const init = function ( flow ) {
     // rejection count. See ADR-016.
     composerState.totalPartitionsCreated = 0;
 
+    // Messages dropped because their specialization field named no
+    // known specialization (the update.js drop site). A lifetime
+    // counter, read through getStats() — operators count drops
+    // instead of scraping log lines.
+    composerState.droppedUnknownSpecialization = 0;
+
     // Per-partition creation-failure ledgers (ADR-018 fault
     // containment): keyed by each partition's specializedGraphs
     // object, holding { failures, quarantined }. A WeakMap on object

@@ -234,8 +234,9 @@ const update = function ( composerState, msg ) {
         const specs = flow.specsBySpecialization[ specializationType ];
 
         if ( !specs ) {
-            // Log error and skip message - no default fallback
+            // Count, log, and skip the message - no default fallback
             // Note: Do NOT create partition entry for unknown specialization
+            composerState.droppedUnknownSpecialization += 1;
             logger.error( `winkComposer/partitionManager: Unknown specialization '${specializationType}' for partition '${partitionId}'. Message dropped.` );
             return null;
         }
