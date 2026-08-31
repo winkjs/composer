@@ -1,6 +1,7 @@
 import nodeTypeToModule from '../wiring/node-type-to-module.js';
 
 import { ENV_VARS } from '../env-vars.js';
+import { logger } from '../logger/index.js';
 
 /**
  * This function transforms trigger specifications that reference nodes by name
@@ -235,7 +236,7 @@ const update = function ( composerState, msg ) {
         if ( !specs ) {
             // Log error and skip message - no default fallback
             // Note: Do NOT create partition entry for unknown specialization
-            console.error( `winkComposer/partitionManager: Unknown specialization '${specializationType}' for partition '${partitionId}'. Message dropped.` );
+            logger.error( `winkComposer/partitionManager: Unknown specialization '${specializationType}' for partition '${partitionId}'. Message dropped.` );
             return null;
         }
 
@@ -248,7 +249,7 @@ const update = function ( composerState, msg ) {
         if ( !specializedGraphs ) {
             composerState.totalPartitionsCreated += 1;
             if ( composerState.totalPartitionsCreated > ENV_VARS.maxPartitionsAllowed ) {
-                console.error(
+                logger.error(
                     `winkComposer/partitionManager: Partition creation for assetId '${partitionId}' ` +
                     `failed — maxPartitionsAllowed (${ENV_VARS.maxPartitionsAllowed}) reached. ` +
                     'Message dropped.'
@@ -287,7 +288,7 @@ const update = function ( composerState, msg ) {
             ledger.failures += 1;
             if ( ledger.failures >= ENV_VARS.messageFailureThreshold ) {
                 ledger.quarantined = true;
-                console.error(
+                logger.error(
                     `winkComposer/partitionManager: Partition '${partitionId}' quarantined after ` +
                     `${ledger.failures} consecutive creation failures ` +
                     `(last: ${creationError.message}). Later messages for it are dropped.`

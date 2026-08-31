@@ -73,6 +73,7 @@ import readline from 'node:readline';
 
 import { isUsableRecord, describeShape } from '../record-shape.js';
 import { wrapCallback, wrapTransform, TRANSFORM_THREW } from '../../utils/callback-guard/index.js';
+import { logger } from '../../logger/index.js';
 
 /**
  * Console channel for the callback guard: one classified line in this
@@ -80,7 +81,7 @@ import { wrapCallback, wrapTransform, TRANSFORM_THREW } from '../../utils/callba
  * raw thrown value.
  */
 const reportCallbackFault = function ( severity, name, detail ) {
-    console.error( `winkComposer/csvSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
+    logger.error( `winkComposer/csvSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
 }; // reportCallbackFault()
 
 /**
@@ -283,7 +284,7 @@ export const start = function ( config ) {
                 error: { code: 'DECODE_ERROR', message }
             } );
         } else {
-            console.error( `winkComposer/csvSource: decode failed [DECODE_ERROR]: ${message}` );
+            logger.error( `winkComposer/csvSource: decode failed [DECODE_ERROR]: ${message}` );
         }
     };
 
@@ -303,7 +304,7 @@ export const start = function ( config ) {
                 error: { code: 'CALLBACK_FAILED', message }
             } );
         } else {
-            console.error( `winkComposer/csvSource: source error [CALLBACK_FAILED]: ${message}` );
+            logger.error( `winkComposer/csvSource: source error [CALLBACK_FAILED]: ${message}` );
         }
     };
 
@@ -474,7 +475,7 @@ export const start = function ( config ) {
                 error: { code, message }
             } );
         } else {
-            console.error( `winkComposer/csvSource: source error [${code}]: ${message}` );
+            logger.error( `winkComposer/csvSource: source error [${code}]: ${message}` );
         }
     } ).finally( () => {
         resolveFinished();

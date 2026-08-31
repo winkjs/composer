@@ -62,6 +62,7 @@ import { generateField } from './field-generator.js';
 import { applyFuzz, FUZZ_PATTERN_NAMES } from './fuzz.js';
 import { validateMessageTemplate, validateAssetClass } from './validate.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
+import { logger } from '../../logger/index.js';
 
 /**
  * Console channel for the callback guard: one classified line in this
@@ -69,7 +70,7 @@ import { wrapCallback } from '../../utils/callback-guard/index.js';
  * raw thrown value.
  */
 const reportCallbackFault = function ( severity, name, detail ) {
-    console.error( `winkComposer/testHarness: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
+    logger.error( `winkComposer/testHarness: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
 }; // reportCallbackFault()
 
 const DEFAULT_MESSAGE_COUNT = 1000;
@@ -222,7 +223,7 @@ export const start = function ( config ) {
                 error: { code: 'GENERATOR_ERROR', message }
             } );
         } else {
-            console.error( `winkComposer/testHarness: generator failed [GENERATOR_ERROR]: ${message}` );
+            logger.error( `winkComposer/testHarness: generator failed [GENERATOR_ERROR]: ${message}` );
         }
     } ).finally( () => {
         resolveFinished();

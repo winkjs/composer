@@ -64,7 +64,7 @@ const safeStringify = function ( value ) {
 const consoleTransport = {
     emit: function ( level, msg, fields ) {
         const line = ( fields === undefined ) ? msg : ( msg + ' ' + safeStringify( fields ) );
-        console[ CONSOLE_METHODS[ level ] ]( line );
+        console[ CONSOLE_METHODS[ level ] ]( line ); // eslint-disable-line no-console -- the console transport IS the console boundary
     }
 };
 
@@ -78,7 +78,7 @@ const jsonTransport = {
         } catch {
             line = JSON.stringify( { level, msg, fields: '[unserializable fields]' } );
         }
-        console[ CONSOLE_METHODS[ level ] ]( line );
+        console[ CONSOLE_METHODS[ level ] ]( line ); // eslint-disable-line no-console -- the json transport IS the console boundary
     }
 };
 
@@ -128,13 +128,13 @@ const createMemoryTransport = function () {
 const buildLogger = function ( transport, levelName ) {
     let safeTransport = transport;
     if ( !transport || typeof transport.emit !== 'function' ) {
-        console.warn( 'winkComposer/logger: transport has no emit function — falling back to console' );
+        console.warn( 'winkComposer/logger: transport has no emit function — falling back to console' ); // eslint-disable-line no-console -- init fallback runs before a working transport exists
         safeTransport = consoleTransport;
     }
 
     let safeLevel = levelName;
     if ( LEVELS[ safeLevel ] === undefined ) {
-        console.warn( 'winkComposer/logger: unknown log level — falling back to info' );
+        console.warn( 'winkComposer/logger: unknown log level — falling back to info' ); // eslint-disable-line no-console -- init fallback runs before a working transport exists
         safeLevel = 'info';
     }
 
@@ -150,7 +150,7 @@ const buildLogger = function ( transport, levelName ) {
             } catch {
                 // Last resort, interpolation-free: a broken
                 // transport must not crash the host process.
-                console.error( 'winkComposer/logger: transport emit failed — record dropped' );
+                console.error( 'winkComposer/logger: transport emit failed — record dropped' ); // eslint-disable-line no-console -- last resort when the transport itself threw
             }
         };
     };

@@ -89,6 +89,7 @@ import {
     DECODE_RING_SIZE
 } from './constants.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
+import { logger } from '../../logger/index.js';
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -236,7 +237,7 @@ const createStatusReporter = function ( options = {} ) {
         name: 'onStatus',
         severity: 'red',
         report: function ( severity, name, detail ) {
-            console.error( `winkComposer/mqttSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
+            logger.error( `winkComposer/mqttSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
         }
     } );
 
@@ -252,7 +253,7 @@ const createStatusReporter = function ( options = {} ) {
         if ( safeOnStatus ) {
             safeOnStatus( payload );
         } else if ( payload.error ) {
-            console.error( `winkComposer/mqttSource: source error [${payload.error.code}]: ${payload.error.message}` );
+            logger.error( `winkComposer/mqttSource: source error [${payload.error.code}]: ${payload.error.message}` );
         }
     };
 
@@ -273,7 +274,7 @@ const createStatusReporter = function ( options = {} ) {
         severity: 'yellow',
         report: function ( severity, name, detail ) {
             const message = `user callback ${name} failed: ${detail}`;
-            console.error( `winkComposer/mqttSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
+            logger.error( `winkComposer/mqttSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
             if ( safeOnStatus ) {
                 emitStatus( {
                     status: severity,

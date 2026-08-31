@@ -207,6 +207,7 @@ import { Sender } from '@questdb/nodejs-client';
 import pg from 'pg';
 
 import { ENV_VARS } from '../../env-vars.js';
+import { logger } from '../../logger/index.js';
 import { validators } from '../../utils/validate/index.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
 import { buildPersistPlans } from './persist-plan.js';
@@ -231,7 +232,7 @@ const RESULT_OK = { ok: true };
  * raw thrown value.
  */
 const reportCallbackFault = function ( severity, name, detail ) {
-    console.error(
+    logger.error(
         `winkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
     );
 }; // reportCallbackFault()
@@ -610,7 +611,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
                 if ( safeOnDeliveryFailure ) {
                     safeOnDeliveryFailure( err, { idleFlush: true, rowsLost: rows } );
                 } else {
-                    console.error(
+                    logger.error(
                         `winkComposer/questdb: idle flush failed; ${rows} buffered row(s) lost: ${err.message}`
                     );
                 }
@@ -686,7 +687,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
             // write() must still return its classified result rather than
             // throw (ADR-018: the hot path never throws), and the
             // failure must be visible.
-            console.error( `winkComposer/questdb: sender recovery failed: ${recoveryErr.message}` );
+            logger.error( `winkComposer/questdb: sender recovery failed: ${recoveryErr.message}` );
         }
     }; // recoverSender()
 
@@ -879,7 +880,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
      */
     const closeQuietly = function () {
         return sender.close().catch( function ( closeErr ) {
-            console.error( `winkComposer/questdb: transport close failed during lossy shutdown: ${closeErr.message}` );
+            logger.error( `winkComposer/questdb: transport close failed during lossy shutdown: ${closeErr.message}` );
         } );
     }; // closeQuietly()
 

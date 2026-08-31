@@ -30,9 +30,11 @@
  *   reduces to "reporting a fault cannot itself fault". The report
  *   closure receives an already-safe detail string, never the raw
  *   thrown value. When the report closure itself fails, the guard
- *   falls back to one bare console line with no user-value
+ *   falls back to one bare log line with no user-value
  *   interpolation.
  */
+
+import { logger } from '../../logger/index.js';
 
 /**
  * Frozen sentinel `wrapTransform` returns when the transform threw.
@@ -67,7 +69,7 @@ const describeFault = function ( err ) {
  * again, and this is the floor the whole guard stands on.
  */
 const reportFallback = function () {
-    console.error( 'winkComposer/callbackGuard: a callback fault report failed [CALLBACK_FAILED]' );
+    logger.error( 'winkComposer/callbackGuard: a callback fault report failed [CALLBACK_FAILED]' );
 }; // reportFallback()
 
 /**

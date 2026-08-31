@@ -8,6 +8,8 @@
  * emit-if/helpers.js — the two output gates share one failure model.
  */
 
+import { logger } from '../../core/logger/index.js';
+
 /**
  * Static fallback error the framework substitutes when an adapter breaks
  * the return contract — no result object at all, or `{ ok: false }` with
@@ -74,7 +76,7 @@ const sweepAnnotateKeys = function ( state, record, msg ) {
     }
 
     if ( invented.length > 0 ) {
-        console.warn(
+        logger.warn(
             `winkComposer/persistIf: annotate for node '${state.name}' ` +
             `(insightType '${state.insightType}') returned keys that are not declared columns: ` +
             `${invented.join( ', ' )}. These values are never stored, because the persist plan ` +
@@ -104,7 +106,7 @@ const recordPersistFailure = function ( state, error ) {
         state.writeErrorLogged = true;
         state.firstPersistError = error.message;
         state.firstPersistErrorCode = error.code;
-        console.error( state.writeErrorLogPrefix + error.code + '): ' + error.message );
+        logger.error( state.writeErrorLogPrefix + error.code + '): ' + error.message );
     }
 }; // recordPersistFailure()
 

@@ -1,6 +1,7 @@
 // nodes/threshold/update.js
 
 import { executeTriggers } from '../../core/utils/node/index.js';
+import { logger } from '../../core/logger/index.js';
 
 const update = function ( state, msg ) {
     if ( state.disable || state.pause ) return state;
@@ -27,7 +28,7 @@ const update = function ( state, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.tunableErrorLogged ) {
             state.tunableErrorLogged = true;
-            console.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
+            logger.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
         }
     }
 

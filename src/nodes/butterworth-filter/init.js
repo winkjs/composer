@@ -10,6 +10,7 @@
 import { validateSpec } from '../../core/utils/node/index.js';
 import * as introspect from './introspect.js';
 import { resolveScalar } from '../../core/utils/options/resolve-field-keyed.js';
+import { logger } from '../../core/logger/index.js';
 
 const init = function ( spec ) {
     validateSpec( spec, introspect );
@@ -81,7 +82,7 @@ const init = function ( spec ) {
     // Warn about potential numerical issues
     const normalizedCutoff = cutoffHz / nyquistHz;
     if ( normalizedCutoff < 0.001 && !state.acceptNumericalRisk ) {
-        console.warn( `winkComposer/butterworthFilter: Very low cutoff (${cutoffHz.toFixed(3)}Hz) may cause numerical instability` );
+        logger.warn( `winkComposer/butterworthFilter: Very low cutoff (${cutoffHz.toFixed(3)}Hz) may cause numerical instability` );
     }
 
     // Store configuration for reference

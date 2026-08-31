@@ -16,6 +16,8 @@
  * @see core/storage-manager/questdb/persist-plan.js for onWarning callback pattern
  */
 
+import { logger } from '../logger/index.js';
+
 // ============================================================================
 // CONSTANTS
 // ============================================================================
@@ -37,7 +39,7 @@ const WARNING_PREFIX = 'winkComposer/semantics';
  * @param {string} message - Warning message describing the issue
  */
 const defaultOnWarning = function ( message ) {
-    console.warn( `${WARNING_PREFIX}: ${message}` );
+    logger.warn( `${WARNING_PREFIX}: ${message}` );
 };
 
 // ============================================================================

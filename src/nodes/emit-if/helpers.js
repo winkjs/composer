@@ -6,6 +6,8 @@
  * and the status-signal path below.
  */
 
+import { logger } from '../../core/logger/index.js';
+
 /**
  * Static fallback error the framework substitutes when an adapter breaks
  * the return contract — no result object at all, or `{ ok: false }` with
@@ -54,7 +56,7 @@ const recordEmissionFailure = function ( state, error ) {
         state.emitErrorLogged = true;
         state.firstEmissionError = error.message;
         state.firstEmissionErrorCode = error.code;
-        console.error( state.emitErrorLogPrefix + error.code + '): ' + error.message );
+        logger.error( state.emitErrorLogPrefix + error.code + '): ' + error.message );
     }
 }; // recordEmissionFailure()
 

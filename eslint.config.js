@@ -25,6 +25,18 @@ export default [
         'security/detect-non-literal-fs-filename': 'error'
     }
   },
+  // Production logging goes through src/core/logger/ (ADR-028). Raw console
+  // is an error in production source; the three exempt surfaces carry inline
+  // disables naming their exemption (logger transports, env-vars bootstrap,
+  // terminal product output). mqtt-store.js is dormant (ADR-021) and
+  // npm-excluded, so it is skipped rather than edited.
+  {
+    files: [ 'src/**/*.js' ],
+    ignores: [ '**/test/**', '**/*.specs.js', '**/demo*.js', '**/mqtt-store.js' ],
+    rules: {
+        'no-console': 'error'
+    }
+  },
   {
   'rules': {
         // Ignore args that start with an underscore, for ignoring controls if not applicable

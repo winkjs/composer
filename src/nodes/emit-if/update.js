@@ -15,6 +15,7 @@
  */
 
 import { assertAnnotateReturn, emitStatusSignal, deliverToEmitter } from './helpers.js';
+import { logger } from '../../core/logger/index.js';
 
 const update = function ( state, msg ) {
     // Always increment pass count for observability
@@ -72,7 +73,7 @@ const update = function ( state, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.predicateErrorLogged ) {
             state.predicateErrorLogged = true;
-            console.error( `winkComposer/emitIf: predicate threw exception: ${error.message}` );
+            logger.error( `winkComposer/emitIf: predicate threw exception: ${error.message}` );
         }
         state.emissionErrors += 1;
         state.lastEmissionError = error.message;

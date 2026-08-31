@@ -66,6 +66,7 @@
 //     https://github.com/weinkauf/Persistence1D
 
 import { push, isNotFull } from '../../windowing/count-sliding/index.js';
+import { logger } from '../../core/logger/index.js';
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -625,7 +626,7 @@ const resolveThreshold = function ( state, msg ) {
         if ( !state.tunableErrorLogged ) {
             state.tunableErrorLogged = true;
             const errMsg = 'winkComposer/' + state.nodeType + ': tunable threw: ' + error.message;
-            console.error( errMsg );
+            logger.error( errMsg );
         }
     }
     const epsBase = state.currentThreshold;

@@ -1,6 +1,7 @@
 // nodes/controller/update.js
 
 import { executeTriggers } from '../../core/utils/node/index.js';
+import { logger } from '../../core/logger/index.js';
 
 const update = function ( state, msg ) {
     // Track whether any predicate threw during this pass
@@ -22,7 +23,7 @@ const update = function ( state, msg ) {
             // Log first error per episode; suppress subsequent until recovery
             if ( !state.predicateErrorLogged ) {
                 state.predicateErrorLogged = true;
-                console.error( `winkComposer/controller: predicate threw exception: ${error.message}` );
+                logger.error( `winkComposer/controller: predicate threw exception: ${error.message}` );
             }
             // Skip to next condition
             continue;  // eslint-disable-line no-continue

@@ -11,6 +11,7 @@
  */
 
 import { assertAnnotateReturn, sweepAnnotateKeys, writeToStorage } from './helpers.js';
+import { logger } from '../../core/logger/index.js';
 
 /**
  * Process incoming message.
@@ -64,7 +65,7 @@ const update = function ( state, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.predicateErrorLogged ) {
             state.predicateErrorLogged = true;
-            console.error( `winkComposer/persistIf: predicate threw exception: ${error.message}` );
+            logger.error( `winkComposer/persistIf: predicate threw exception: ${error.message}` );
         }
         state.persistErrors += 1;
         state.lastPersistError = error.message;

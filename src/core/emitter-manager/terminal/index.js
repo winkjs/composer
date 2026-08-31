@@ -281,15 +281,15 @@ export const createEmitter = function ( config = {} ) {
             const ts = new Date().toLocaleTimeString();
             const header = `${linePrefix}── ${ts} ── ${topic} ──`;
 
-            console.log( header );
+            console.log( header ); // eslint-disable-line no-console -- product output, not diagnostics
 
             if ( verbose ) {
-                console.log( formatVerbose( msg, formatValue ) );
+                console.log( formatVerbose( msg, formatValue ) ); // eslint-disable-line no-console -- product output, not diagnostics
             } else {
-                console.log( formatCompact( msg, formatValue ) );
+                console.log( formatCompact( msg, formatValue ) ); // eslint-disable-line no-console -- product output, not diagnostics
             }
 
-            console.log();  // Blank line for readability
+            console.log();  // eslint-disable-line no-console -- product output: blank line for readability
 
             return RESULT_OK;
         },

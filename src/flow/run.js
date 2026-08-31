@@ -18,6 +18,7 @@ import { wireLinearGraph, emitters, storages, assertModuleDurability } from '../
 import shutdownManager from '../core/shutdown-manager/index.js';
 import { ENV_VARS } from '../core/env-vars.js';
 import { wrapCallback } from '../core/utils/callback-guard/index.js';
+import { logger } from '../core/logger/index.js';
 
 /**
  * Wires and starts the pipeline for direct execution.
@@ -263,7 +264,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
             await stage();
         } catch ( err ) {
             stageErrors.push( err );
-            console.error(
+            logger.error(
                 `winkComposer/flow: ${label} drain stage failed [${( err && err.code ) || 'UNKNOWN'}]: ` +
                 `${( err && err.message ) || String( err )} — later drain stages still ran`
             );
@@ -311,7 +312,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
     // `handle.shutdown()` still receives the memoized rejection.
     const observedShutdown = function () {
         shutdown().catch( function ( err ) {
-            console.error(
+            logger.error(
                 `winkComposer/flow '${flowName}': shutdown failed ` +
                 `[${( err && err.code ) || 'UNKNOWN'}]: ${( err && err.message ) || String( err )}`
             );
@@ -337,7 +338,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         if ( errored ) {
             if ( !erroredDropReported ) {
                 erroredDropReported = true;
-                console.error(
+                logger.error(
                     `winkComposer/flow '${flowName}': flow is in the terminal 'errored' ` +
                     'phase [MESSAGE_HANDLER_FAILED] — dropping this and all further messages'
                 );
@@ -427,7 +428,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
             name: 'onStatus',
             severity: 'red',
             report: function ( severity, name, detail ) {
-                console.error(
+                logger.error(
                     `winkComposer/flow '${flowName}': user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
                 );
             }
@@ -444,7 +445,7 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
                 const code = ( s.error && s.error.code ) || 'UNKNOWN';
                 const message = ( s.error && s.error.message ) ||
                     'source reported status red with no error detail';
-                console.error( `winkComposer/flow '${flowName}': source error [${code}]: ${message}` );
+                logger.error( `winkComposer/flow '${flowName}': source error [${code}]: ${message}` );
             }
             // Completion bookkeeping runs after — and independently of —
             // the user's reporter. A throwing onStatus must never swallow

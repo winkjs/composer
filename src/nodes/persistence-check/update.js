@@ -1,6 +1,7 @@
 // nodes/persistence-check/update.js
 
 import { executeTriggers } from '../../core/utils/node/index.js';
+import { logger } from '../../core/logger/index.js';
 
 const update = function ( state, msg ) {
     if ( state.disable || state.pause ) return state;
@@ -16,7 +17,7 @@ const update = function ( state, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.predicateErrorLogged ) {
             state.predicateErrorLogged = true;
-            console.error( `winkComposer/persistenceCheck: predicate threw exception: ${error.message}` );
+            logger.error( `winkComposer/persistenceCheck: predicate threw exception: ${error.message}` );
         }
     }
 

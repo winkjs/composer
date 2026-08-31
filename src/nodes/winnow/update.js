@@ -22,6 +22,8 @@
 // Extracted helper: set anchor and mark significant.
 // Called from each of the five checks. Zero allocation — scalar
 // assignments only. Reduces update() cyclomatic complexity.
+import { logger } from '../../core/logger/index.js';
+
 const setAnchor = function ( state, xVal, slope ) {
     state.anchor = xVal;
     state.anchorSlope = Number.isFinite( slope ) ? slope : 0;
@@ -80,7 +82,7 @@ const update = function ( state, msg ) {
     } catch ( error ) {
         if ( !state.tunableErrorLogged ) {
             state.tunableErrorLogged = true;
-            console.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
+            logger.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
         }
     }
 

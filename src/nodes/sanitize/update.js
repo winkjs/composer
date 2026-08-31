@@ -1,3 +1,5 @@
+import { logger } from '../../core/logger/index.js';
+
 // Helper: Check value against range
 const checkRange = function ( state, value, rangeSpec ) {
     if ( !state.hasRange || !rangeSpec ) {
@@ -34,7 +36,7 @@ const checkPredicate = function ( state, value, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.predicateErrorLogged ) {
             state.predicateErrorLogged = true;
-            console.error( `winkComposer/sanitize: predicate threw exception: ${error.message}` );
+            logger.error( `winkComposer/sanitize: predicate threw exception: ${error.message}` );
         }
         return false;
     }
@@ -64,7 +66,7 @@ const update = function ( state, msg ) {
         } catch ( error ) {
             if ( !state.tunableErrorLogged ) {
                 state.tunableErrorLogged = true;
-                console.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
+                logger.error( `winkComposer/${state.nodeType}: tunable threw: ${error.message}` );
             }
         }
     }

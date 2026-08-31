@@ -31,6 +31,7 @@ import { getSignaturePattern } from './get-signature-pattern.js';
 import { specBuilder } from './spec-builder.js';
 import { getTargetArray } from './get-target-array.js';
 import { resolvePickByField } from './resolve-pick-by-field.js';
+import { logger } from '../core/logger/index.js';
 
 /**
  * Locate the index of a named argument slot in a signature schema (the source of
@@ -121,7 +122,7 @@ export const makeForEach = function ( api, flowState ) {
                 for ( let i = 0; i < outKeys.length; i += 1 ) {
                     const label = rawOutputs[ outKeys[ i ] ];
                     if ( Object.prototype.hasOwnProperty.call( recorded, label ) ) {
-                        console.warn(
+                        logger.warn(
                             `winkComposer/flow: forEach output label '${label}' written by ` +
                             `more than one step on field '${field}'; each.out will return the last.`
                         );

@@ -48,6 +48,7 @@
 import { assertHandle } from './assert-handle.js';
 import { assertModuleDurability } from './assert-module.js';
 import { applySemanticsRequirement } from './wire-semantics.js';
+import { logger } from '../logger/index.js';
 
 /**
  * Methods the framework calls on a storage handle later, so they have to
@@ -322,7 +323,7 @@ const storages = ( function () {
             if ( result.status === 'rejected' ) {
                 const err = result.reason || {};
                 const dropped = err.dropped ? ` dropped=${describeDropped( err.dropped )}` : '';
-                console.error(
+                logger.error(
                     `winkComposer/wiring: storage '${names[ i ]}' shutdown failed [${err.code || 'UNKNOWN'}]: ${err.message || String( err )}${dropped}`
                 );
             }

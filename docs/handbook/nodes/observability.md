@@ -1,18 +1,53 @@
 # Observability
 
 Observability means being able to see what a flow is doing from the
-outside. This chapter covers the machinery that provides it: the status
-and metrics a source reports, and the two output gates — `emitIf`, which
-publishes results, and `persistIf`, which stores them. The gates live
-here because they are how a flow's results become visible beyond the
-process.
+outside. This chapter covers the machinery that provides it: the log
+lines the framework prints, the status and metrics a source reports,
+and the two output gates. The gates are `emitIf`, which publishes
+results, and `persistIf`, which stores them. They live here because
+they are how a flow's results become visible beyond the process.
+
+## Framework log lines
+
+A framework log line is a diagnostic message composer prints about its
+own operation. Data output — the terminal emitter's rows — is not a
+log line. Every log line follows one grammar:
+
+```text
+winkComposer/<module>: <message>
+winkComposer/<module>: <message> [<CODE>]: <detail>
+```
+
+The prefix names the module that spoke. The bracket, when present,
+echoes a stable error code. One real line, from `emitIf` refusing a
+publish while the emitter's buffer is at its pressure limit:
+
+```text
+winkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=STORAGE_FULL): Store at or above pressure limit (0.9) — cannot accept message
+```
+
+Two rules make these lines safe to build on. Programs match the code
+on `err.code`, never the message text — messages can improve between
+releases, codes cannot. And a wrapped failure reads as a chain: the
+outer module's prefix, then the inner module's prefixed message as the
+detail.
+
+Four levels order the lines: `debug`, `info`, `warn`, and `error`. The
+lowest level that prints comes from `COMPOSER_LOG_LEVEL`, defaulting
+to `info` in production and `debug` everywhere else. A suppressed
+level costs nothing at run time. Where the lines go — readable
+console, JSON for log collectors, or nowhere — is picked once at
+startup by `COMPOSER_LOGGER`. Composer never writes a log file
+itself; your supervisor owns files. Both variables, the transports,
+and the per-platform file routes are documented in
+[Environment Variables](../environment-variables.md#the-logger-settings).
 
 ## Watching a source: status and metrics
 
 A source reports its health through two callbacks you pass in its
 config: `onStatus` and `onMetrics`. Both are optional. Without them the
-source still protects you — a red failure inside a flow is logged by
-the runtime, and error reports fall back to a classified console line.
+source still protects you. A red failure inside a flow is logged by
+the runtime, and error reports fall back to a classified log line.
 
 ### The status channel (`onStatus`)
 

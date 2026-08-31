@@ -66,6 +66,7 @@
 
 import { emitters } from '../wiring/index.js';
 import { ENV_VARS } from '../env-vars.js';
+import { logger } from '../logger/index.js';
 
 /**
  * Factory that produces a fresh shutdown-manager instance with isolated
@@ -186,7 +187,7 @@ const createShutdownManager = function () {
                 const detail = ( reason && reason.message ) || String( reason );
                 const count = reason && reason.dropped && reason.dropped.count;
                 const droppedNote = ( typeof count === 'number' ) ? ` — ${count} message(s) dropped` : '';
-                console.error( `winkComposer/shutdownManager: Flow drain failed [${code}]: ${detail}${droppedNote}` );
+                logger.error( `winkComposer/shutdownManager: Flow drain failed [${code}]: ${detail}${droppedNote}` );
             }
         }
         return { timedOut: false, failedDrains };
@@ -221,19 +222,19 @@ const createShutdownManager = function () {
         isShuttingDown = true;
 
         const timestamp = new Date().toISOString();
-        console.log( `\nwinkComposer/shutdownManager: [${timestamp}] Shutdown initiated` );
+        logger.info( `\nwinkComposer/shutdownManager: [${timestamp}] Shutdown initiated` );
 
         // Phase 1 (modern path): drain registered flow handles, racing
         // against the forced-shutdown timeout.
         const drain = await drainHandles( ENV_VARS.shutdownForceTimeoutMs );
         if ( drain.timedOut ) {
-            console.warn(
+            logger.warn(
                 `winkComposer/shutdownManager: Forced shutdown — flow drain exceeded ${ENV_VARS.shutdownForceTimeoutMs}ms; ` +
                 'some adapters may not have completed cleanly'
             );
         }
         if ( drain.failedDrains > 0 ) {
-            console.warn(
+            logger.warn(
                 `winkComposer/shutdownManager: ${drain.failedDrains} flow drain(s) lost data (lines above) — shutdown is not clean`
             );
         }
@@ -266,9 +267,9 @@ const createShutdownManager = function () {
             const failedEmitters = emitterResults.filter( ( r ) => r.status === 'rejected' );
             if ( emitterResults.length > 0 ) {
                 if ( failedEmitters.length > 0 ) {
-                    console.warn( `winkComposer/shutdownManager: ${failedEmitters.length} legacy emitter(s) failed to shutdown cleanly` );
+                    logger.warn( `winkComposer/shutdownManager: ${failedEmitters.length} legacy emitter(s) failed to shutdown cleanly` );
                 } else {
-                    console.log( 'winkComposer/shutdownManager: Legacy message queues flushed' );
+                    logger.info( 'winkComposer/shutdownManager: Legacy message queues flushed' );
                 }
             }
 
@@ -276,12 +277,12 @@ const createShutdownManager = function () {
             // END LEGACY PATH
             // ================================================================
 
-            console.log( `winkComposer/shutdownManager: [${new Date().toISOString()}] Shutdown complete\n` );
+            logger.info( `winkComposer/shutdownManager: [${new Date().toISOString()}] Shutdown complete\n` );
 
             return graceful;
 
         } catch ( error ) {
-            console.error( 'winkComposer/shutdownManager: Shutdown error:', error );
+            logger.error( 'winkComposer/shutdownManager: Shutdown error: ' + ( ( error && error.stack ) || String( error ) ) );
             process.exitCode = 1;
             return false;
         }
@@ -309,7 +310,7 @@ const createShutdownManager = function () {
         attached = true;
 
         const signalHandler = async function ( signalName ) {
-            console.log( `\nwinkComposer/shutdownManager: Received ${signalName}` );
+            logger.info( `\nwinkComposer/shutdownManager: Received ${signalName}` );
             const graceful = await shutdown();
 
             /* c8 ignore next 2 -- fundamentally untestable: invoking the signal handler from a test would call process.exit and kill the test runner. The graceful/forced exit-code mapping is verified by the shutdown() return-value tests above. */

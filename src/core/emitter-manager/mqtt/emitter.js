@@ -129,6 +129,7 @@ import {
     MQTT_INFLIGHT_ID_LIMIT
 } from './constants.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
+import { logger } from '../../logger/index.js';
 
 /**
  * Pre-flight reject threshold on store pressure.
@@ -321,7 +322,7 @@ export const createEmitter = function ( config ) {
     // exact meaning. That includes the deliberate unhandled-rejection
     // escape hatch for an unhandled delivery failure.
     const reportCallbackFault = function ( severity, name, detail ) {
-        console.error(
+        logger.error(
             `winkComposer/mqttEmitter: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
         );
     };
@@ -378,7 +379,7 @@ export const createEmitter = function ( config ) {
     // (same clamp the LevelDB store applied, kept with the same warning).
     const requestedQueueSize = config.maxQueueSize || DEFAULT_MAX_QUEUE_SIZE;
     if ( requestedQueueSize > MQTT_INFLIGHT_ID_LIMIT ) {
-        console.warn(
+        logger.warn(
             `winkComposer/mqttEmitter: maxQueueSize ${requestedQueueSize} exceeds the MQTT ` +
             `packet-id ceiling — clamped to ${MQTT_INFLIGHT_ID_LIMIT}`
         );
@@ -727,21 +728,21 @@ export const createEmitter = function ( config ) {
         }
         state.hasConnectedOnce = true;
         if ( config.debug ) {
-            console.log( `winkComposer/mqttEmitter: Connected to ${redactedBrokerUrl}` );
+            logger.info( `winkComposer/mqttEmitter: Connected to ${redactedBrokerUrl}` );
         }
     } );
 
     client.on( 'offline', () => {
         state.connected = false;
         if ( config.debug ) {
-            console.log( `winkComposer/mqttEmitter: Offline - ${state.unacked} messages in flight` );
+            logger.info( `winkComposer/mqttEmitter: Offline - ${state.unacked} messages in flight` );
         }
     } );
 
     client.on( 'error', ( err ) => {
         state.stats.errors += 1;
         if ( config.debug ) {
-            console.error( `winkComposer/mqttEmitter: client error: ${err.message}` );
+            logger.error( `winkComposer/mqttEmitter: client error: ${err.message}` );
         }
     } );
 

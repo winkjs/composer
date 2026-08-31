@@ -8,6 +8,8 @@
  * is false. Predicate errors are caught and tracked per-episode.
  */
 
+import { logger } from '../../core/logger/index.js';
+
 const update = function ( state, msg ) {
     if ( state.disable || state.pause ) return state;
 
@@ -26,7 +28,7 @@ const update = function ( state, msg ) {
         // Log first error per episode; suppress subsequent until recovery
         if ( !state.predicateErrorLogged ) {
             state.predicateErrorLogged = true;
-            console.error( `winkComposer/passIf: predicate threw exception: ${error.message}` );
+            logger.error( `winkComposer/passIf: predicate threw exception: ${error.message}` );
         }
     }
 

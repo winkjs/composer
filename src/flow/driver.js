@@ -34,6 +34,7 @@
  */
 
 import { wrapCallback } from '../core/utils/callback-guard/index.js';
+import { logger } from '../core/logger/index.js';
 
 /**
  * Default fault handler. Surfaces every fault so none is silent. Allocates only
@@ -45,7 +46,7 @@ import { wrapCallback } from '../core/utils/callback-guard/index.js';
  * @returns {void}
  */
 const logFault = function ( error ) {
-    console.error( `winkComposer/headlessDriver: a message failed — ${error.message}` );
+    logger.error( `winkComposer/headlessDriver: a message failed — ${error.message}` );
 }; // logFault()
 
 /**
@@ -86,7 +87,7 @@ const headlessDriver = function ( handle, opts = {} ) {
         name: 'onError',
         severity: 'red',
         report: function ( severity, name, detail ) {
-            console.error(
+            logger.error(
                 `winkComposer/headlessDriver: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
             );
         }

@@ -135,6 +135,7 @@ import { createDedupCache } from './dedup.js';
 import { createStatusReporter } from './status.js';
 import { isUsableRecord, describeShape } from '../record-shape.js';
 import { wrapTransform, TRANSFORM_THREW } from '../../utils/callback-guard/index.js';
+import { logger } from '../../logger/index.js';
 
 // ============================================================================
 // CLIENT FACTORY
@@ -241,7 +242,7 @@ const createMQTTSourceClient = function ( config ) {
     // Warn once at startup; the fix is one config line. Setup path
     // only — nothing here touches the message path.
     if ( !clientId && cleanStart !== true ) {
-        console.warn(
+        logger.warn(
             'winkComposer/mqttSource: no clientId configured — this session ' +
             `is persistent under the auto-generated name '${generatedClientId}'. ` +
             'After a restart, composer connects under a NEW name, so messages ' +

@@ -84,6 +84,7 @@ import { SenderBufferV1 } from '@questdb/nodejs-client';
 
 import { QUEST_WRITERS, writeAsString, createFloat64Writer } from './writers.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
+import { logger } from '../../logger/index.js';
 
 /**
  * Console channel for the callback guard: one classified line in this
@@ -91,7 +92,7 @@ import { wrapCallback } from '../../utils/callback-guard/index.js';
  * raw thrown value.
  */
 const reportCallbackFault = function ( severity, name, detail ) {
-    console.error(
+    logger.error(
         `winkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
     );
 }; // reportCallbackFault()
@@ -120,7 +121,7 @@ const reportCallbackFault = function ( severity, name, detail ) {
  * @param {string} message - Warning message describing the issue
  */
 const defaultOnWarning = function ( message ) {
-    console.warn( `winkComposer/questdb: ${message}` );
+    logger.warn( `winkComposer/questdb: ${message}` );
 };
 
 /**

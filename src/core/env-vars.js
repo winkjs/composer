@@ -274,8 +274,8 @@ const validate = function () {
 
     // Fail fast with clear error message
     if ( errors.length > 0 ) {
-        console.error( 'winkComposer/envVars: Environment variable validation failed:' );
-        errors.forEach( ( err ) => console.error( `   - ${err}` ) );
+        console.error( 'winkComposer/envVars: Environment variable validation failed:' ); // eslint-disable-line no-console -- bootstrap failure runs before any logger can exist
+        errors.forEach( ( err ) => console.error( `   - ${err}` ) ); // eslint-disable-line no-console -- bootstrap failure runs before any logger can exist
         process.exit( 1 ); // eslint-disable-line no-process-exit
     }
 }; // validate()
