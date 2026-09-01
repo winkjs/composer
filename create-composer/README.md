@@ -3,7 +3,7 @@
 One command scaffolds a runnable winkComposer project:
 
 ```bash
-npm create @winkjs/composer
+npm create @winkjs/composer@latest
 ```
 
 [winkComposer](https://github.com/winkjs/composer) turns streaming
@@ -15,7 +15,7 @@ The first run succeeds before any editing.
 A run looks like this:
 
 ```text
-$ npm create @winkjs/composer my-flow
+$ npm create @winkjs/composer@latest my-flow
 
 Scaffolded the hello-flow template into my-flow/.
 
@@ -34,10 +34,10 @@ The project README says what to expect.
 The command takes an optional directory name and a few flags:
 
 ```bash
-npm create @winkjs/composer                   # prompts for a directory
-npm create @winkjs/composer my-flow           # scaffolds into my-flow/
-npm create @winkjs/composer my-flow -- --template hello-flow
-npm create @winkjs/composer -- --help
+npm create @winkjs/composer@latest                   # prompts for a directory
+npm create @winkjs/composer@latest my-flow           # scaffolds into my-flow/
+npm create @winkjs/composer@latest my-flow -- --template hello-flow
+npm create @winkjs/composer@latest -- --help
 ```
 
 Requires Node.js 22 or newer. Flags need the `--` separator. npm

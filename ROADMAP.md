@@ -18,7 +18,7 @@ as work and community feedback teach us more.
 |08.|**Real-data showcase**:<br/>A public, anonymised industrial dataset — multi-day paint-shop telemetry contributed by a manufacturing partner — with an SPC example flow built on it.|High|Yet to start|
 |09.|**Soak program on edge hardware**:<br/>Multi-day continuous runs on industrial Raspberry-Pi-class hardware with exact message accounting. The results back the 1.0.0 stability declaration.|High|Yet to start|
 |10.|**TypeScript definitions**:<br/>Ship type definitions for the public API — the flow builder, node options, and helper families.|Medium|Yet to start|
-|11.|**Project scaffolder**:<br/>Shipped as [`@winkjs/create-composer`](create-composer/). One command, `npm create @winkjs/composer`, scaffolds a runnable project from a bundled template. Templates are packed byte-identical from `examples/`; an example under item 01 joins the bundle by declaring its `composer` block (category, featured), so heavy demos stay out of the download.|Simple|Completed|
+|11.|**Project scaffolder**:<br/>Shipped as [`@winkjs/create-composer`](create-composer/). One command, `npm create @winkjs/composer@latest`, scaffolds a runnable project from a bundled template. Templates are packed byte-identical from `examples/`; an example under item 01 joins the bundle by declaring its `composer` block (category, featured), so heavy demos stay out of the download.|Simple|Completed|
 
 The list is a guideline for users and
 [contributors](https://github.com/winkjs/composer/blob/main/CONTRIBUTING.md) —

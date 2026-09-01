@@ -43,7 +43,7 @@ Requires Node.js 22 or newer.
 The Quick Start flow replays a CSV feed of pump motor temperatures. It cleans each reading, flags a hot motor, confirms the heat is not a blip, and prints an alert. One command scaffolds it as a runnable project:
 
 ```bash
-npm create @winkjs/composer
+npm create @winkjs/composer@latest
 ```
 
 Accept the directory prompt, then run the three printed steps. A run takes about eight seconds. Watch for the `overheat` alert. Prefer zero install? [Build this flow interactively](https://composer.winkjs.org/docs/playground/hello-flow) in the browser playground. The same project also lives in the repository, in [`examples/hello-flow`](examples/hello-flow).

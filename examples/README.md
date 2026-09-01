@@ -24,7 +24,7 @@ More examples are planned. The [roadmap](../ROADMAP.md) tracks them.
 
 ## Bundling into the scaffolder
 
-`npm create @winkjs/composer` scaffolds projects from templates
+`npm create @winkjs/composer@latest` scaffolds projects from templates
 packed out of this directory. Bundling is opt-in. An example is
 packed only when its `package.json` declares the block below. An
 example without the block stays a repo example — visible here,
