@@ -32,6 +32,20 @@
   option always names its replacement.
 -->
 
+# [New projects start on composer 0.6.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.1)
+## Version 0.2.1 — September 1, 2026
+
+Bundled templates pin `@winkjs/composer` 0.6.0.
+
+### ⚙️ Updates
+
+- Scaffolded projects now install composer 0.6.0. That release
+  brings one message grammar on every log line, a logging facade,
+  flow counters on `handle.getStats()`, and fault containment. A
+  node throw no longer stops a scaffolded flow's process. The
+  composer 0.6.0 release notes carry the details.
+- The scaffolder's own code is unchanged from 0.2.0.
+
 # [New projects start on composer 0.5.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.0)
 ## Version 0.2.0 — August 15, 2026
 
