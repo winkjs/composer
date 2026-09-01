@@ -1,6 +1,6 @@
 {
     "name": "@winkjs/composer",
-    "version": "0.5.1",
+    "version": "0.6.0",
     "description": "Composable Streaming Intelligence — turn streaming data into actionable insights, from edge to cloud",
     "keywords": [
         "streaming",

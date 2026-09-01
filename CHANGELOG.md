@@ -28,6 +28,72 @@
   always names its replacement.
 -->
 
+# [Routable logs and contained faults](https://github.com/winkjs/composer/releases/tag/0.6.0)
+## Version 0.6.0 — September 1, 2026
+
+### ✨ Features
+
+- Every framework log line and thrown Error message now starts with
+  `winkComposer/<moduleToken>: `, replacing seven mixed prefix
+  styles. One grammar lets you filter and route every Composer line
+  the same way. In code, match `err.code`, never the message string.
+- A logging facade now carries every line, with `debug`, `info`,
+  `warn`, and `error` levels. `COMPOSER_LOGGER` picks the transport:
+  `console` for readable lines, `json` for log collectors, or
+  `silent`. `COMPOSER_LOG_LEVEL` sets the lowest level that prints
+  (default: `info` in production, `debug` elsewhere). There is no
+  file transport, because supervisors such as journald and Docker
+  already own log files.
+- `handle.getStats()` returns the flow's routing counters:
+  `droppedUnknownSpecialization`, `totalPartitionsCreated`, and
+  `activePartitions`. An operator can watch `.switch()` drops from a
+  health check instead of scraping log lines.
+- A node throw no longer stops the process. The flow skips the bad
+  message, reports it as `MESSAGE_HANDLER_FAILED`, and continues.
+  After `COMPOSER_MESSAGE_FAILURE_THRESHOLD` consecutive failures
+  (default 5), the flow drains its sinks and stops in the terminal
+  `errored` phase. A partition whose creation always fails is
+  quarantined the same way, leaving the others untouched.
+- A throw inside a user callback, such as `onStatus` or
+  `onDeliveryFailure`, now becomes one classified `CALLBACK_FAILED`
+  line, and the operation completes normally. QuestDB's strict-mode
+  `onWarning` stays unguarded on purpose. Its throw is how strict
+  mode rejects a row.
+
+### 🐛 Fixes
+
+- A shutdown that loses buffered data now exits with code 1. It used
+  to exit 0, so a supervisor such as systemd or Docker saw a clean
+  stop over a data loss. Each failed drain prints one classified
+  line first. Callers of `handle.shutdown()` are unaffected, because
+  they receive the rejection directly.
+- A JSON payload that is a scalar, `null`, or a bare array no longer
+  crashes the MQTT source. Such a record cannot carry pipeline
+  fields. The source now skips it with a classified `DECODE_ERROR`
+  report.
+- A source `transform` that returns a scalar or an array is now
+  skipped with a `CALLBACK_FAILED` report. Returning `null` or
+  `undefined` stays the documented way to drop a record on purpose.
+- `onStatus` must be a function when provided. CSV, testHarness, and
+  direct `runFlow()` setup now throw `INVALID_CONFIG` instead of
+  treating a bad value as no handler.
+- A rejection returned by a non-native thenable inside a guarded
+  callback no longer becomes an unhandled rejection.
+- An MQTT client error now always prints, even when a broken
+  `onMetrics` handler runs with no `onStatus` listener.
+
+### ⚙️ Updates
+
+- `npm test` now fails below 100% coverage on statements, branches,
+  functions, and lines. Every branch open at arming time got a spec
+  or was restructured away.
+- Three unreachable trees left the npm package: `src/nodes/archive/`,
+  `src/nodes/sse-emitter/`, and the console formatter. No runtime
+  path could load them.
+- The handbook covers each new surface. Grammar and levels sit on
+  the observability page, exit codes on the headless-flow page, and
+  new sections cover node-throw containment and the flow counters.
+
 # [Lighter install](https://github.com/winkjs/composer/releases/tag/0.5.1)
 ## Version 0.5.1 — August 22, 2026
 
