@@ -26,8 +26,10 @@ Two things every report needs:
   questions about it. Submissions that no human can explain are closed.
 
 **Security issues are the exception:** never open a public issue for a
-suspected vulnerability. Report it privately to ContactUs@graype.in so
-it can be fixed before disclosure.
+suspected vulnerability. Report it privately through the
+[Report a vulnerability](https://github.com/winkjs/composer/security/advisories/new)
+form, or by email to ContactUs@graype.in. [SECURITY.md](SECURITY.md)
+has the full policy.
 
 ## How to send a PR
 
@@ -40,8 +42,8 @@ it can be fixed before disclosure.
    standard reference library, a hand calculation), never re-derived
    from the code under test.
 5. Run the full suite: `npm test`.
-6. Keep coverage at or above the current level; the floor is **99.5%**
-   and the aim is 100%.
+6. Keep coverage at **100%** on statements, branches, functions, and
+   lines. `npm test` fails below that on any of the four.
 7. Commit following the commit guidelines below.
 8. Push to your fork.
 9. [Sign the CLA](https://cla-assistant.io/winkjs/composer) if this is
@@ -68,18 +70,19 @@ positioning drives the engineering bar: predictable performance,
 bounded memory, and no silent failures.
 
 Please take some time to understand the structure before attempting
-enhancements. Start with the handbook (`docs/handbook/`) and the
-decision records (`docs/decisions/`) — the latter explain *why* the
-system is shaped the way it is, including the constraints below.
+enhancements. Start with the handbook (`docs/handbook/`). The
+architecture decision records explain *why* the system is shaped the
+way it is, including the constraints below. They are being published
+under `docs/decisions/` ([roadmap](ROADMAP.md) item 07).
 
 ### Code style
 
 - **Functions and closures, never classes.** Functions are assigned as
   `const` expressions.
 - Every node and adapter follows a standard directory shape and
-  lifecycle surface — copy the structure of an existing one rather than
-  inventing a new layout (the node standard is ADR-004; the adapter
-  contract is ADR-018).
+  lifecycle surface. Copy the structure of an existing one rather
+  than inventing a new layout. The node standard is ADR-004 and the
+  adapter contract is ADR-018, both in the decision records.
 - **Hot paths allocate nothing.** `update()` and `publishTo()` run once
   per message: no object or array literals, no spread, no string
   concatenation, no array helpers that allocate. All allocation happens
@@ -95,12 +98,14 @@ We use [Mocha](https://mochajs.org/), [Chai](http://chaijs.com/),
 [Sinon](https://sinonjs.org/), and [c8](https://github.com/bcoe/c8)
 for coverage.
 
-- `npm test` — lint plus the full suite. No services needed.
+- `npm test` — lint plus the full suite, under the 100% coverage
+  gate. Run it with the services up. Without them the `e2e-*` specs
+  skip, and a green run proves less than it looks.
 - The `e2e-*` integration tests need QuestDB and Mosquitto running
   locally: `docker compose up -d` brings both up with the repository's
   pinned configuration.
 - `npm run test:hardening` — the slow tier: sustained-load and
-  recovery tests.
+  recovery tests. It needs the same services.
 
 Tests must be deterministic — no timing dependencies, no flakiness.
 Cover the edges: null, undefined, empty, boundary values, and every
@@ -127,8 +132,10 @@ Our practices are informed by
 6. Review regexes for ReDoS potential (tools like
    [regexploit](https://github.com/doyensec/regexploit) help).
 
-And again: suspected vulnerabilities go to ContactUs@graype.in
-privately, never to the public tracker.
+And again: suspected vulnerabilities go through the private
+[Report a vulnerability](https://github.com/winkjs/composer/security/advisories/new)
+form or to ContactUs@graype.in, never to the public tracker. See
+[SECURITY.md](SECURITY.md).
 
 ### Committing
 
@@ -158,7 +165,14 @@ reference:
 ## Versioning
 
 winkComposer follows [semantic versioning](https://semver.org/) for
-every release.
+every release. While the major version is 0, the rule is:
+
+- A **minor** release (0.5.0 to 0.6.0) carries new features, and may
+  carry breaking changes. Every break is named in `CHANGELOG.md`.
+- A **patch** release (0.6.0 to 0.6.1) carries fixes only, including
+  security fixes.
+- **1.0.0** is the stability declaration. It follows the soak program
+  on edge hardware listed in the [roadmap](ROADMAP.md).
 
 ## Governance
 

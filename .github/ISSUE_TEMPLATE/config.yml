@@ -1,0 +1,11 @@
+# Issue chooser configuration. Blank issues are off, so every report
+# comes through a form. Questions go to Discussions. Security reports
+# go to the private advisory form, never to a public issue.
+blank_issues_enabled: false
+contact_links:
+  - name: Question or help
+    url: https://github.com/winkjs/composer/discussions/categories/q-a
+    about: Ask in Discussions. Usage questions get answers faster there than in the issue tracker.
+  - name: Report a security vulnerability
+    url: https://github.com/winkjs/composer/security/advisories/new
+    about: A private report to the maintainers. Never open a public issue for a suspected vulnerability.

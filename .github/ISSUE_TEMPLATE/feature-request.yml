@@ -1,0 +1,54 @@
+# Feature request form. It appears in the issue chooser at
+# https://github.com/winkjs/composer/issues/new/choose.
+#
+# Ideas usually start in Discussions. Once a direction settles there,
+# an issue from this form tracks the work (CONTRIBUTING.md,
+# "Getting Started").
+name: Feature request
+description: Propose a new node, option, adapter, or behaviour.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas usually start in the [Ideas category of Discussions](https://github.com/winkjs/composer/discussions/categories/ideas). Once a direction settles there, an issue like this one tracks the work.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can you not do today, or what takes too much effort? Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: How would it look in a flow? A sketch of the DSL call or option is ideal.
+      render: javascript
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways you tried or thought about, and why they fall short.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - A node
+        - A source or emitter adapter
+        - The flow language
+        - Documentation
+        - Something else
+    validations:
+      required: true
+  - type: checkboxes
+    id: human
+    attributes:
+      label: Confirmation
+      options:
+        - label: I can discuss this proposal and answer questions about it.
+          required: true
