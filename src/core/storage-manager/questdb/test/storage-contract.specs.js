@@ -21,6 +21,7 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createQuestDBStorage } from '../index.js';
+import { PASSING_PROBE } from './test-helpers.js';
 
 describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function () {
 
@@ -82,7 +83,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             const result = storage.write( 'monitoring', { ts: 1000, temp: 25.5 }, 'p1' );
@@ -97,7 +98,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             const r1 = storage.write( 'monitoring', { ts: 1000, temp: 25.5 }, 'p1' );
@@ -114,7 +115,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             const result = storage.write( 'unknown', { ts: 1000 }, 'p1' );
@@ -134,7 +135,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             const result = storage.write( 'monitoring', { ts: 1000, temp: 25.5 }, 'p1' );
@@ -153,7 +154,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             // Should not throw, returns error in result object
@@ -230,7 +231,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             expect( storage ).to.have.property( 'getPressure' ).that.is.a( 'function' );
@@ -255,7 +256,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                     flushMode: 'manual',
                     autoFlushRows: 100  // explicit, so we can compute exact pressure
                 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             expect( storage.getPressure() ).to.equal( 0 );
@@ -279,7 +280,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                     flushMode: 'manual',
                     autoFlushRows: 100
                 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             storage.write( 'monitoring', { ts: 1000, temp: 25.5 }, 'p1' );
@@ -303,7 +304,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                     flushMode: 'auto',
                     autoFlushRows
                 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             // Write autoFlushRows-1 rows: pressure climbs.
@@ -346,7 +347,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                         idleFlushAfterMs,
                         idleFlushCheckMs
                     },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 // Write a few rows; pressure climbs but is well below the boundary.
@@ -375,7 +376,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             // ADR-018 — sync, no Promise. Two consecutive reads of an
@@ -450,7 +451,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             expect( storage ).to.have.property( 'getHealth' ).that.is.a( 'function' );
@@ -471,7 +472,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             const health = storage.getHealth();
@@ -487,7 +488,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', autoFlushRows: 100 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             storage.write( 'monitoring', { ts: 1000, temp: 25 }, 'p1' );
@@ -506,7 +507,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             const result = storage.write( 'monitoring', { ts: 1000, temp: 25 }, 'p1' );
@@ -527,7 +528,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             // Five consecutive failures push us across the red threshold.
@@ -557,7 +558,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             for ( let i = 0; i < 4; i += 1 ) {
@@ -587,7 +588,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', autoFlushRows },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             // 65 writes: pressure 0.65 → still green.
@@ -611,7 +612,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             expect( storage.getHealth().status ).to.equal( 'green' );
@@ -683,7 +684,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             await storage.shutdown();
@@ -694,7 +695,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             await storage.shutdown( {} );
@@ -705,7 +706,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
-                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             await storage.shutdown( { timeout: 100 } );

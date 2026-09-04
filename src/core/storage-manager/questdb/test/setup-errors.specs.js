@@ -29,6 +29,7 @@ import { describe, it, beforeEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createQuestDBStorage } from '../index.js';
+import { PASSING_PROBE } from './test-helpers.js';
 
 const testAssetClass = {
     name: 'setupErrTest',
@@ -56,7 +57,8 @@ const depsWithConnectRejection = function ( connErr ) {
     };
     return {
         SenderClass: { fromConfig: sinon.stub().resolves( {} ) },
-        PgClientClass: sinon.stub().returns( mockPgClient )
+        PgClientClass: sinon.stub().returns( mockPgClient ),
+        probeFn: PASSING_PROBE
     };
 };
 

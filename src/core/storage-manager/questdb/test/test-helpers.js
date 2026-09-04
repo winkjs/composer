@@ -38,8 +38,27 @@ const makeMockSender = function () {
 }; // makeMockSender()
 
 /**
+ * A setup probe that always passes (ADR-030). The factory probes both
+ * endpoints before it builds a client; a spec that is not about the
+ * probe injects this so no socket is opened and nothing depends on
+ * what is listening on the developer's machine.
+ *
+ * @param {Object} address - The classified address the factory probes
+ * @returns {Promise<Object>} A passing probe outcome for that address
+ */
+const PASSING_PROBE = function ( address ) {
+    return Promise.resolve( {
+        ok: true,
+        host: address.host,
+        port: address.port,
+        attempts: [ { address: address.host, family: address.family, result: 'answers' } ]
+    } );
+}; // PASSING_PROBE()
+
+/**
  * Builds the `_deps` injection bundle around a mock sender: the Sender
- * class whose fromConfig resolves it, and an inert pg client.
+ * class whose fromConfig resolves it, an inert pg client, and the
+ * passing probe.
  *
  * @param {Object} mockSender - The sender fromConfig should resolve
  * @returns {Object} Deps bundle for createQuestDBStorage
@@ -51,8 +70,9 @@ const makeMockDeps = function ( mockSender ) {
             connect: sinon.stub().resolves(),
             query: sinon.stub().resolves(),
             end: sinon.stub().resolves()
-        } )
+        } ),
+        probeFn: PASSING_PROBE
     };
 }; // makeMockDeps()
 
-export { makeMockSender, makeMockDeps, NEVER_SETTLES };
+export { makeMockSender, makeMockDeps, PASSING_PROBE, NEVER_SETTLES };

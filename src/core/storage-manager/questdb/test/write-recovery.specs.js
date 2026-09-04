@@ -39,7 +39,7 @@ import sinon from 'sinon';
 import { Sender } from '@questdb/nodejs-client';
 
 import { createQuestDBStorage } from '../index.js';
-import { makeMockSender, makeMockDeps } from './test-helpers.js';
+import { makeMockSender, makeMockDeps, PASSING_PROBE } from './test-helpers.js';
 
 const TEST_ASSET_CLASS = {
     name: 'pump',
@@ -233,7 +233,10 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
                         connect: sinon.stub().resolves(),
                         query: sinon.stub().resolves(),
                         end: sinon.stub().resolves()
-                    } )
+                    } ),
+                    // The dead address must not be probed: this test is
+                    // about the buffer, and the probe would refuse it.
+                    probeFn: PASSING_PROBE
                 }
             );
 

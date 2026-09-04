@@ -244,14 +244,15 @@ describe( 'QuestDB E2E — setup-time error classification', function () {
     // --------------------------------------------------------------------
 
     it( 'throws TRANSPORT_UNREACHABLE when the pgUrl host port has nothing listening', async function () {
-        // Port 1 is reserved and never listens; the OS rejects fast
-        // with ECONNREFUSED. Per the one split ADR-018's error
-        // vocabulary mandates, an endpoint that does not answer is
+        // Port 1 is reserved and never listens; the OS refuses fast.
+        // The setup probe (ADR-030) tries the address before the pg
+        // client opens, so the refusal is caught there, with a real
+        // socket. Per the one split ADR-018's error vocabulary
+        // mandates, an endpoint that does not answer is
         // TRANSPORT_UNREACHABLE, not INVALID_CONFIG — the connection
         // string may be fine; check the network and whether the
-        // service is running. Operators route on `err.code`, read
-        // the URL from the message, and can drill into `err.cause`
-        // for the underlying error.
+        // service is running. Operators route on `err.code` and read
+        // the address and its result from the message.
         const err = await expectThrowsCode(
             () => createQuestDBStorage(
                 validAssetClass,
@@ -260,8 +261,27 @@ describe( 'QuestDB E2E — setup-time error classification', function () {
             ),
             'TRANSPORT_UNREACHABLE'
         );
-        expect( err.message ).to.contain( '127.0.0.1:1' );
-        expect( err.cause, 'underlying pg error preserved as cause' ).to.be.an( 'error' );
+        expect( err.message ).to.equal(
+            'winkComposer/questdb: pgUrl \'127.0.0.1:1\' is unreachable [TRANSPORT_UNREACHABLE]: 127.0.0.1:1 refused'
+        );
+    } );
+
+    it( 'throws TRANSPORT_UNREACHABLE when the ilpUrl host port has nothing listening', async function () {
+        // The ILP side was never tried at setup before ADR-030: the
+        // first sign of a dead write endpoint was the first flush.
+        // Now the probe runs after the tables step and before the
+        // sender is built, against a real socket.
+        const err = await expectThrowsCode(
+            () => createQuestDBStorage(
+                validAssetClass,
+                'cfgErrTest',
+                { ilpUrl: '127.0.0.1:1', pgUrl: QUESTDB_PG_URL }
+            ),
+            'TRANSPORT_UNREACHABLE'
+        );
+        expect( err.message ).to.equal(
+            'winkComposer/questdb: ilpUrl \'127.0.0.1:1\' is unreachable [TRANSPORT_UNREACHABLE]: 127.0.0.1:1 refused'
+        );
     } );
 
 } );

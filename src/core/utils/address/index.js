@@ -18,8 +18,8 @@
  * adapter address is read, and any other name gets one warning. This
  * module supplies the classification and the two message strings; it
  * never prints and never opens a socket. The setup probe that does open
- * a socket is a separate module in this directory (ADR-030 item 4), so
- * this file stays pure.
+ * a socket lives beside it in `probe.js` (ADR-030 item 4), so this file
+ * stays pure.
  *
  * Classification rules:
  * - An IP literal (`net.isIP` returns 4 or 6) is `ip`.
@@ -258,6 +258,18 @@ const withPort = function ( hostText, port ) {
 }; // withPort()
 
 /**
+ * Writes a host and an optional port the way a config value would:
+ * an IPv6 host in brackets, `host:port` when a port is given.
+ *
+ * @param {string} host - The host text
+ * @param {number|undefined} port - The port, or undefined for none
+ * @returns {string} `host`, `host:port`, or `[v6]:port`
+ */
+const formatHostPort = function ( host, port ) {
+    return withPort( bracketIfIPv6( host ), port );
+}; // formatHostPort()
+
+/**
  * Renders a classified address for a message. Userinfo in a URL is
  * shown as `***@`, never as written.
  *
@@ -265,7 +277,7 @@ const withPort = function ( hostText, port ) {
  * @returns {string} The address as an operator would write it
  */
 const formatAddress = function ( address ) {
-    const hostPort = withPort( bracketIfIPv6( address.host ), address.port );
+    const hostPort = formatHostPort( address.host, address.port );
     if ( address.grammar === 'url' ) {
         const userinfo = address.hasUserinfo ? '***@' : '';
         return `${address.protocol}//${userinfo}${hostPort}`;
@@ -283,7 +295,7 @@ const formatAddress = function ( address ) {
  * @returns {string} The address to set
  */
 const suggestLiteral = function ( address, literalHost = LOOPBACK_LITERAL ) {
-    const hostPort = withPort( bracketIfIPv6( literalHost ), address.port );
+    const hostPort = formatHostPort( literalHost, address.port );
     if ( address.grammar === 'url' ) {
         return `${address.protocol}//${hostPort}`;
     }
@@ -340,6 +352,7 @@ export {
     parseBrokerUrl,
     classifyHost,
     classifyAddress,
+    formatHostPort,
     formatAddress,
     suggestLiteral,
     localhostRefusalMessage,

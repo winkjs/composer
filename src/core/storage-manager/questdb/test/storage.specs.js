@@ -11,6 +11,7 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import questdbAdapterDefault, { createQuestDBStorage, buildSenderConfig, questdbAdapter } from '../index.js';
+import { PASSING_PROBE } from './test-helpers.js';
 
 describe( 'QuestDB Storage Adapter', function () {
 
@@ -200,7 +201,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 expect( storage.write ).to.be.a( 'function' );
@@ -215,7 +216,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 expect( MockPgClientClass.calledOnce ).to.equal( true );
@@ -231,7 +232,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, pgUrl: 'dbhost:5432' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 const pgOptions = MockPgClientClass.firstCall.args[ 0 ];
@@ -251,7 +252,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     {},
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 // Should have used ENV_VARS.questdbIlpUrl for ILP sender
@@ -269,7 +270,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ilpUrl: 'custom:9001', pgUrl: 'custom:8813' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 const configArg = MockSenderClass.fromConfig.firstCall.args[ 0 ];
@@ -288,7 +289,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         testAssetClass,
                         'pump',
                         { ilpUrl: '', pgUrl: '127.0.0.1:8812' },
-                        { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                        { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                     );
                     expect.fail( 'Should have thrown' );
                 } catch ( err ) {
@@ -303,7 +304,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         testAssetClass,
                         'pump',
                         { ilpUrl: '127.0.0.1:9000', pgUrl: '' },
-                        { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                        { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                     );
                     expect.fail( 'Should have thrown' );
                 } catch ( err ) {
@@ -320,7 +321,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         testAssetClass,
                         'pump',
                         defaultOptions,
-                        { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                        { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                     );
                     expect.fail( 'Should have thrown' );
                 } catch ( _err ) { // eslint-disable-line no-unused-vars
@@ -333,7 +334,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 // fromConfig returns already-connected sender
@@ -347,7 +348,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, ilpUrl: 'questdb:9000' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 const configArg = MockSenderClass.fromConfig.firstCall.args[ 0 ];
@@ -361,7 +362,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 /* eslint-disable no-underscore-dangle */
@@ -386,7 +387,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1735500000000, temp: 25.5, pressure: 95.0 }, 'sensor-1' );
@@ -405,7 +406,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 const result = storage.write( 'unknown', { ts: 1000 }, 'p1' );
@@ -422,7 +423,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -448,7 +449,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, flushMode: 'auto' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -465,7 +466,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, flushMode: 'manual' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -481,7 +482,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, flushMode: 'manual' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 // No writes, directly flush
@@ -497,7 +498,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, flushMode: 'manual' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -522,7 +523,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 await storage.shutdown();
@@ -535,7 +536,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, flushMode: 'manual' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -552,7 +553,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     testAssetClass,
                     'pump',
                     { ...defaultOptions, flushMode: 'manual' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -592,7 +593,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         idleFlushAfterMs: 5000,
                         idleFlushCheckMs: 1000
                     },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -618,7 +619,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         idleFlushAfterMs: 5000,
                         idleFlushCheckMs: 1000
                     },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -644,7 +645,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         idleFlushAfterMs: 5000,
                         idleFlushCheckMs: 1000
                     },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -669,7 +670,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         idleFlushAfterMs: 5000,
                         idleFlushCheckMs: 1000
                     },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -704,7 +705,7 @@ describe( 'QuestDB Storage Adapter', function () {
                         idleFlushAfterMs: 5000,
                         idleFlushCheckMs: 1000
                     },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
@@ -740,7 +741,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     emptyAssetClass,
                     'empty',
                     defaultOptions,
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
                 // eslint-disable-next-line no-underscore-dangle
@@ -824,7 +825,7 @@ describe( 'QuestDB Storage Adapter', function () {
                 tablePrefix: 'pump',
                 ilpUrl: '127.0.0.1:9000',
                 pgUrl: '127.0.0.1:8812',
-                _deps: { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                _deps: { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             } );
 
             expect( storage.write ).to.be.a( 'function' );
@@ -839,7 +840,7 @@ describe( 'QuestDB Storage Adapter', function () {
                 assetClass: testAssetClass,
                 ilpUrl: '127.0.0.1:9000',
                 pgUrl: '127.0.0.1:8812',
-                _deps: { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
+                _deps: { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             } );
 
             storage.write( 'monitoring', { ts: 1735500000000, temp: 25.5, pressure: 101.3 }, 'p1' );

@@ -58,7 +58,7 @@
  *
  * Setup-time throws (ADR-018 fail-fast setup):
  * - `INVALID_CONFIG`         — the supplied configuration does not
- *   work. Seven current sub-cases:
+ *   work. Eight current sub-cases:
  *     (a) required transport URL missing (`ilpUrl`, `pgUrl`);
  *     (b) PostgreSQL endpoint answered but rejected the connection
  *         — wrong credentials or a protocol-level refusal;
@@ -81,18 +81,25 @@
  *         literal to set;
  *     (g) `ilpUrl` is an IPv6 literal. The client (4.2.0) splits the
  *         address on its first colon and cannot read one. `pgUrl`
- *         accepts `[::1]:8812`.
+ *         accepts `[::1]:8812`;
+ *     (h) the ILP client rejected the sender configuration for a
+ *         reason that is not a network error (`fromConfig`).
  *   Operator remediation: fix the supplied config or the relevant
- *   `QUESTDB_*` env var. The underlying transport error (sub-case b)
- *   is preserved on `err.cause` for diagnostics.
- * - `TRANSPORT_UNREACHABLE`  — the PostgreSQL endpoint did not answer
- *   at setup: nothing listening on the port, host unresolvable, no
- *   route, or the attempt timed out (a Node syscall code —
- *   `ECONNREFUSED`, `ENOTFOUND`, `ETIMEDOUT`, ...). Distinct from
- *   `INVALID_CONFIG` per the one split the ADR-018 error vocabulary
- *   mandates: the
- *   connection string may be fine — check the network, the firewall,
- *   whether QuestDB is running. Underlying error on `err.cause`.
+ *   `QUESTDB_*` env var. The underlying error (sub-cases b and h) is
+ *   preserved on `err.cause` for diagnostics.
+ * - `TRANSPORT_UNREACHABLE`  — an endpoint did not answer at setup.
+ *   Three sources. (1) The setup probe (ADR-030 item 4): before any
+ *   client is built, `pgUrl` and then `ilpUrl` are probed with one
+ *   TCP connect per address. A name is resolved with Node's default
+ *   lookup and every address it resolves to must answer; the message
+ *   lists each address with its result and names the literal to set.
+ *   (2) The PostgreSQL connect failed with a Node syscall code
+ *   (`ECONNREFUSED`, `ENOTFOUND`, `ETIMEDOUT`, ...). (3) The ILP
+ *   client could not be built for the same class of reason.
+ *   Distinct from `INVALID_CONFIG` per the one split the ADR-018
+ *   error vocabulary mandates: the connection string may be fine —
+ *   check the network, the firewall, whether QuestDB is running.
+ *   Underlying error on `err.cause` for (2) and (3).
  * - `MISSING_ASSET_CLASS`    — `assetClass` not provided to `createStorage`.
  *   Distinct from `INVALID_CONFIG` because operator remediation differs:
  *   they need to add `.assetClass(assetClassDef)` to the flow, not edit env
@@ -232,6 +239,7 @@ import {
     localhostRefusalMessage,
     nameWarningMessage
 } from '../../utils/address/index.js';
+import { probeAddress, describeProbe } from '../../utils/address/probe.js';
 import { buildPersistPlans } from './persist-plan.js';
 import { ensureTables } from './ensure-tables.js';
 import { assertColumnFacts } from './assert-columns.js';
@@ -429,6 +437,34 @@ const warnIfName = function ( field, address ) {
 }; // warnIfName()
 
 /**
+ * Runs the setup probe for one endpoint and fails setup unless every
+ * resolved address answers (ADR-030 item 4). A value the grammar could
+ * not read, or one without a port, is not probed: the client owns
+ * that error.
+ *
+ * @param {string} field - The config key, for the message
+ * @param {Object} address - The classified address
+ * @param {function} probeFn - The probe (injectable; `probeAddress` in production)
+ * @returns {Promise<void>} Resolves when every resolved address answered
+ * @throws {Error} TRANSPORT_UNREACHABLE with the per-address detail
+ */
+const assertReachable = async function ( field, address, probeFn ) {
+    if ( ( address.kind === 'unparsed' ) || ( address.port === undefined ) ) {
+        return;
+    }
+    const outcome = await probeFn( address );
+    if ( outcome.ok ) {
+        return;
+    }
+    const err = new Error(
+        `winkComposer/questdb: ${field} '${formatAddress( address )}' is unreachable [TRANSPORT_UNREACHABLE]: ` +
+        describeProbe( outcome, field, address )
+    );
+    err.code = 'TRANSPORT_UNREACHABLE';
+    throw err;
+}; // assertReachable()
+
+/**
  * The host and port handed to the PostgreSQL client. The parsed
  * address is used when the grammar read it with a port, which is what
  * lets `[::1]:8812` through. Otherwise the previous first-colon split
@@ -519,6 +555,33 @@ const NETWORK_ERROR_CODES = new Set( [
 ] );
 
 /**
+ * Builds the ILP sender and classifies a failure. `fromConfig` may
+ * itself reach the endpoint (a `/settings` fetch for protocol
+ * negotiation), so a network code becomes `TRANSPORT_UNREACHABLE` and
+ * anything else `INVALID_CONFIG`, the same split as the PostgreSQL
+ * connect wrap. The client's error stays on `err.cause`.
+ *
+ * @param {Object} SenderClass - The client's Sender class
+ * @param {string} senderConfig - The sender configuration string
+ * @param {string} ilpUrl - The configured `ilpUrl`, for the message
+ * @returns {Promise<Object>} The connected sender
+ * @throws {Error} TRANSPORT_UNREACHABLE or INVALID_CONFIG, cause attached
+ */
+const buildSender = async function ( SenderClass, senderConfig, ilpUrl ) {
+    try {
+        return await SenderClass.fromConfig( senderConfig );
+    } catch ( buildErr ) {
+        const code = NETWORK_ERROR_CODES.has( buildErr.code ) ? 'TRANSPORT_UNREACHABLE' : 'INVALID_CONFIG';
+        const err = new Error(
+            `winkComposer/questdb: could not build the ILP sender for ilpUrl '${ilpUrl}' [${code}]: ${buildErr.message}`
+        );
+        err.code = code;
+        err.cause = buildErr;
+        throw err;
+    }
+}; // buildSender()
+
+/**
  * Create QuestDB storage adapter.
  *
  * @param {Object} assetClass - Asset class definition with columns and insightTypes
@@ -538,6 +601,7 @@ const NETWORK_ERROR_CODES = new Set( [
  * @param {Object} [deps={}] - Injectable dependencies (for testing)
  * @param {Object} [deps.SenderClass] - QuestDB Sender class (default: @questdb/nodejs-client Sender)
  * @param {Object} [deps.PgClientClass] - PostgreSQL Client class (default: pg.Client)
+ * @param {function} [deps.probeFn] - Setup probe (default: `probeAddress`, ADR-030)
  * @returns {Promise<Object>} Storage adapter with write, flush, close methods
  */
 const createQuestDBStorage = async function ( assetClass, tablePrefix, options, deps = {} ) {
@@ -582,7 +646,8 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // Injectable dependencies with defaults
     const {
         SenderClass = Sender,
-        PgClientClass = pg.Client
+        PgClientClass = pg.Client,
+        probeFn = probeAddress
     } = deps;
 
     // Build persist plans (pre-compiled closures). The callbacks go in
@@ -602,6 +667,11 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     const safeOnDeliveryFailure = wrapCallback( onDeliveryFailure, {
         name: 'onDeliveryFailure', severity: 'red', report: reportCallbackFault
     } );
+
+    // Setup probe, PostgreSQL side (ADR-030 item 4): every address the
+    // endpoint resolves to must answer before the client opens. The
+    // ILP side is probed below, before the sender is built.
+    await assertReachable( 'pgUrl', pgAddress, probeFn );
 
     // Ensure tables exist via PostgreSQL wire protocol
     const { host: pgHost, port: pgPort } = pgConnectionTarget( pgUrl, pgAddress );
@@ -653,8 +723,14 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
         retryTimeout
     } );
 
-    // fromConfig returns a Promise that resolves to a connected sender
-    const sender = await SenderClass.fromConfig( senderConfig );
+    // Setup probe, ILP side (ADR-030 item 4). Before this change the
+    // write path was never opened at setup; the first sign of a dead
+    // endpoint was the first flush.
+    await assertReachable( 'ilpUrl', ilpAddress, probeFn );
+
+    // fromConfig returns a Promise that resolves to a connected sender;
+    // a failure there is classified, cause attached (see buildSender).
+    const sender = await buildSender( SenderClass, senderConfig, ilpUrl );
 
     // Buffer state — `bufferedRows` counts rows awaiting the NEXT flush.
     // The client's flush() copies its rows out of the buffer synchronously
