@@ -32,7 +32,7 @@ describe( 'mqtt emitter — first-connack grace', function () {
 
     const makeConfig = function ( overrides = {} ) {
         return {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             codec: testCodec,
             mqttConnectFn: () => mock.client,
             ...overrides

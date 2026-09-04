@@ -47,7 +47,7 @@ describe( 'mqtt emitter — getHealth()', function () {
 
         beforeEach( function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -102,7 +102,7 @@ describe( 'mqtt emitter — getHealth()', function () {
             // messages: 7 in flight against a window of 10 is 0.7.
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 maxQueueSize: 10,
@@ -127,7 +127,7 @@ describe( 'mqtt emitter — getHealth()', function () {
             // both sides: 32/50 = 0.64 is green, 33/50 = 0.66 is yellow.
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 maxQueueSize: 50,

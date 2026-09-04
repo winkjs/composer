@@ -27,7 +27,7 @@ import { validateWithSchema } from '../../../utils/validate/index.js';
 import { flow } from '../../../../flow/flow.js';
 
 // A minimal config that must validate clean.
-const VALID_MINIMAL = { brokerUrl: 'mqtt://localhost:1883', topics: 'edge/+/enriched' };
+const VALID_MINIMAL = { brokerUrl: 'mqtt://127.0.0.1:1883', topics: 'edge/+/enriched' };
 
 describe( 'MQTT Source — configSchema (ADR-018)', function () {
 
@@ -65,7 +65,7 @@ describe( 'MQTT Source — configSchema (ADR-018)', function () {
 
         it( 'full config with every optional field', function () {
             const result = validateWithSchema( configSchema, {
-                brokerUrl: 'mqtt://localhost:1883',
+                brokerUrl: 'mqtt://127.0.0.1:1883',
                 topics: [ 'topic/one', 'topic/two' ],
                 codec: { unpack: () => ( {} ) },
                 transform: ( msg ) => msg,

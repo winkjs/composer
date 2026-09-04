@@ -58,7 +58,7 @@ describe( 'mqtt emitter shutdown drain', function () {
 
     const makeEmitter = function ( config = {} ) {
         return createEmitter( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             connectGraceMs: 0,
             codec: testCodec,
             mqttConnectFn: ( url, opts ) => {

@@ -27,8 +27,8 @@ import { createQuestDBStorage } from '../src/core/storage-manager/questdb/index.
 // CONFIGURATION
 // ============================================================================
 
-const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || 'localhost:9000'; // eslint-disable-line no-process-env
-const QUESTDB_PG_URL = process.env.QUESTDB_PG_URL || 'localhost:8812'; // eslint-disable-line no-process-env
+const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || '127.0.0.1:9000'; // eslint-disable-line no-process-env
+const QUESTDB_PG_URL = process.env.QUESTDB_PG_URL || '127.0.0.1:8812'; // eslint-disable-line no-process-env
 
 const MESSAGE_COUNT = parseInt( process.argv[ 2 ], 10 ) || 100000;
 const FLUSH_MODE = process.argv[ 3 ] || 'manual';

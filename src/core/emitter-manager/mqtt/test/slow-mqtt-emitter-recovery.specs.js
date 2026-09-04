@@ -67,9 +67,9 @@ import { jsonCodec } from '../../../codec/index.js';
 import { createEmitter } from '../emitter.js';
 import { startProxy, stopProxy } from '../../../test-utils/tcp-proxy.js';
 
-const MQTT_BROKER_DIRECT = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+const MQTT_BROKER_DIRECT = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const PROXY_PORT         = 11883;
-const PROXY_BROKER_URL   = `mqtt://localhost:${PROXY_PORT}`;
+const PROXY_BROKER_URL   = `mqtt://127.0.0.1:${PROXY_PORT}`;
 const BROKER_REAL_PORT   = parseInt( MQTT_BROKER_DIRECT.split( ':' ).pop(), 10 );
 
 // ============================================================================
@@ -112,7 +112,7 @@ const subscribeAndCollect = async function ( topic, codec, idCapacity ) {
     } );
     // Bounded connect — without a timeout, an unreachable broker or
     // session-state mismatch would hang the test for the full mocha
-    // budget. 10 s is generous for localhost.
+    // budget. 10 s is generous for a broker on the same machine.
     await new Promise( function ( resolve, reject ) {
         const timer = setTimeout( function () {
             reject( new Error( 'subscriber connect timed out after 10 s' ) );

@@ -87,7 +87,7 @@ describe( 'wire-emitters', function () {
                 target: target
             } ];
 
-            const targetConfigs = { [ target ]: { url: 'test://localhost' } };
+            const targetConfigs = { [ target ]: { url: 'test://127.0.0.1' } };
             const emitterModules = { [ target ]: mockModule };
 
             await emitters.wire( specs, targetConfigs, emitterModules );

@@ -38,7 +38,7 @@ describe( 'MQTT Source — Message Handling', function () {
 
     it( 'decodes JSON payload and delivers to onMessage', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -55,7 +55,7 @@ describe( 'MQTT Source — Message Handling', function () {
 
     it( 'attaches topic as _topic', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'edge/+/enriched',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -71,7 +71,7 @@ describe( 'MQTT Source — Message Handling', function () {
 
     it( 'attaches dedupId as _dedupId', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -97,7 +97,7 @@ describe( 'MQTT Source — Message Handling', function () {
         };
 
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             codec: customCodec,
             onMessage: ( msg ) => receivedMessages.push( msg ),
@@ -115,7 +115,7 @@ describe( 'MQTT Source — Message Handling', function () {
 
     it( 'falls back to JSON.parse when codec not provided', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -133,7 +133,7 @@ describe( 'MQTT Source — Message Handling', function () {
         const statusLog = [];
 
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             onStatus: ( s ) => statusLog.push( s ),
@@ -162,7 +162,7 @@ describe( 'MQTT Source — Message Handling', function () {
 
     it( 'applies transform function when provided', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             transform: ( msg ) => ( { ...msg, transformed: true } ),
             onMessage: ( msg ) => receivedMessages.push( msg ),
@@ -180,7 +180,7 @@ describe( 'MQTT Source — Message Handling', function () {
 
     it( 'does not deliver if transform returns null', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             transform: () => null,
             onMessage: ( msg ) => receivedMessages.push( msg ),
@@ -197,7 +197,7 @@ describe( 'MQTT Source — Message Handling', function () {
 
     it( 'does not deliver if transform returns undefined', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             transform: () => undefined,
             onMessage: ( msg ) => receivedMessages.push( msg ),

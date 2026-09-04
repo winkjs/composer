@@ -100,7 +100,12 @@
  * - `SHUTTING_DOWN`    — emitter is mid-shutdown; new publishes are dropped.
  * - `INVALID_CONFIG`   — setup-time; missing or malformed config field
  *   (brokerUrl, codec.pack, callback type, connectGraceMs). On the
- *   thrown TypeError per ADR-018's fail-fast setup rule.
+ *   thrown TypeError per ADR-018's fail-fast setup rule. Includes a
+ *   `brokerUrl` whose host is `localhost` (ADR-030): the name can
+ *   resolve to two addresses and the broker may listen on only one.
+ *   The message names the literal to set. Refused before the client
+ *   is created, at the schema (flow definition) and here (the
+ *   `MQTT_BROKER_URL` fallback and direct callers).
  * - `SHUTDOWN_TIMEOUT` — shutdown closed with unacknowledged messages;
  *   carries `dropped: { count }` (the exact counter value). Fires whether
  *   connected or not: with no disk store, nothing survives the process,
@@ -112,6 +117,15 @@
  *   shared callback guard contains the fault (ADR-018): the emitter
  *   keeps publishing and each fault becomes one classified console
  *   line. Fix the callback; the line names it and carries the detail.
+ *
+ * Console classification (a token on a log line, not an `err.code`):
+ * - `ADDRESS_IS_NAME`  — the `brokerUrl` host is a name other than
+ *   `localhost`. One `logger.warn` line at setup, before the client is
+ *   created (ADR-030). A name is allowed and the emitter proceeds; the
+ *   line tells the operator that only a literal address is immune to a
+ *   resolver that changes its answer under a running process. This
+ *   emitter refuses and warns; it does not probe, because its posture
+ *   is recovering (ADR-018 §5).
  *
  * @module mqtt-emitter
  */
@@ -130,6 +144,7 @@ import {
 } from './constants.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
 import { logger } from '../../logger/index.js';
+import { classifyAddress, localhostRefusalMessage, nameWarningMessage } from '../../utils/address/index.js';
 
 /**
  * Pre-flight reject threshold on store pressure.
@@ -196,6 +211,37 @@ const invalidConfig = function ( message ) {
     err.code = 'INVALID_CONFIG';
     return err;
 };
+
+/**
+ * Classifies the broker address and refuses `localhost` (ADR-030).
+ * The schema already refused it at flow definition; this call covers
+ * the `MQTT_BROKER_URL` fallback and direct callers, and carries the
+ * classified code.
+ *
+ * @param {string} brokerUrl - The broker URL, config or env fallback
+ * @returns {Object} The classified address
+ * @throws {TypeError} INVALID_CONFIG when the host is `localhost`
+ */
+const assertBrokerNotLocalhost = function ( brokerUrl ) {
+    const address = classifyAddress( brokerUrl, 'url' );
+    if ( address.kind === 'localhost' ) {
+        throw invalidConfig( localhostRefusalMessage( { field: 'brokerUrl', address, envVar: 'MQTT_BROKER_URL' } ) );
+    }
+    return address;
+}; // assertBrokerNotLocalhost()
+
+/**
+ * Prints the one ADDRESS_IS_NAME line when the broker host is a name.
+ *
+ * @param {Object} address - The classified broker address
+ */
+const warnIfBrokerIsName = function ( address ) {
+    if ( address.kind === 'name' ) {
+        logger.warn(
+            `winkComposer/mqttEmitter: ${nameWarningMessage( { field: 'brokerUrl', host: address.host } )}`
+        );
+    }
+}; // warnIfBrokerIsName()
 
 /**
  * Throw classified when an optional callback option is set to a non-function.
@@ -303,6 +349,9 @@ export const createEmitter = function ( config ) {
     if ( !brokerUrl ) {
         throw invalidConfig( 'brokerUrl required — set a non-empty string in .emitter() config or MQTT_BROKER_URL env var' );
     }
+    // Address policy (ADR-030): `localhost` is refused before the
+    // client is created; a name is warned about just before connect.
+    const brokerAddress = assertBrokerNotLocalhost( brokerUrl );
     if ( !config.codec ) {
         throw invalidConfig( 'config.codec is required' );
     }
@@ -420,6 +469,9 @@ export const createEmitter = function ( config ) {
     // other setup failure. The error text uses the redacted url — a
     // malformed url can still carry credentials.
     const connect = config.mqttConnectFn || mqtt.connect;
+    // The name warning goes first, so it prints before any socket
+    // opens (ADR-030).
+    warnIfBrokerIsName( brokerAddress );
     let client;
     try {
         client = connect( brokerUrl, mqttOptions );

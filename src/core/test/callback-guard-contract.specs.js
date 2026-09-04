@@ -109,7 +109,7 @@ const QDB_ASSET_CLASS = {
     }
 };
 const QDB_MSG = { ts: 1735500000000, temp: 25.5 };
-const QDB_OPTS = { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', flushMode: 'auto' };
+const QDB_OPTS = { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'auto' };
 
 const HARNESS_TEMPLATE = {
     seed: 7,
@@ -299,7 +299,7 @@ const SITES = [
         run: async function ( badCallback ) {
             const manual = makeMockClient( { manualAcks: true } );
             const emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 maxQueueSize: 20,
@@ -334,7 +334,7 @@ const SITES = [
         run: async function ( badCallback ) {
             const manual = makeMockClient( { manualAcks: true } );
             const emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onBackpressure: badCallback,
@@ -362,7 +362,7 @@ const SITES = [
         run: async function ( badCallback ) {
             const manual = makeMockClient( { manualAcks: true } );
             const emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onDeliveryFailure: badCallback,

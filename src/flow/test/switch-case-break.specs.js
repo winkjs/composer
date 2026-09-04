@@ -470,7 +470,7 @@ describe( 'flow — switch/case/break: config ordering', function () {
     it( 'allows all config methods before switch', function () {
         const info = flow( 'configFirst' )
             .source( mockSourceAdapter, { path: './data.csv' } )
-            .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://localhost' } )
+            .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://127.0.0.1' } )
             .assetId( 'machineId' )
             .switch( 'type' )
             .case( 'temp' )

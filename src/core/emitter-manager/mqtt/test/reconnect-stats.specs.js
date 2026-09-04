@@ -36,7 +36,7 @@ describe( 'mqtt emitter — reconnects counter', function () {
 
     it( 'counts reconnects — the first connect is not a reconnect', function () {
         emitter = createEmitter( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             connectGraceMs: 0,
             codec: testCodec,
             mqttConnectFn: sinon.stub().returns( mock.client )
@@ -62,7 +62,7 @@ describe( 'mqtt emitter — reconnects counter', function () {
         // (fast broker restart). The counter keys on connacks after the
         // first, not on offline transitions.
         emitter = createEmitter( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             connectGraceMs: 0,
             codec: testCodec,
             mqttConnectFn: sinon.stub().returns( mock.client )

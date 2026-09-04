@@ -38,7 +38,7 @@ describe( 'MQTT Source — Shutdown', function () {
 
     it( 'stop() returns a Promise', function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -50,7 +50,7 @@ describe( 'MQTT Source — Shutdown', function () {
 
     it( 'stop() calls client.end', async function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -63,7 +63,7 @@ describe( 'MQTT Source — Shutdown', function () {
 
     it( 'stop() emits green phase stopped with connected false', async function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -81,7 +81,7 @@ describe( 'MQTT Source — Shutdown', function () {
 
     it( 'exposes client for testing', function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -96,7 +96,7 @@ describe( 'MQTT Source — Shutdown', function () {
     // (graceful) so the flow's drain cannot hang.
     it( 'stop() accepts { timeout } and uses graceful close (force=false) by default', async function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -126,7 +126,7 @@ describe( 'MQTT Source — Shutdown', function () {
         const slowConnect = sinon.stub().returns( slowClient );
 
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -171,7 +171,7 @@ describe( 'MQTT Source — Shutdown', function () {
         const racyConnect = sinon.stub().returns( racyClient );
 
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),

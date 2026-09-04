@@ -63,7 +63,7 @@ describe( 'flow — chainable configuration methods', function () {
     describe( '.emitter()', function () {
         it( 'accepts adapter and config, returns api for chaining', function () {
             const api = flow( 'test' )
-                .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://localhost:1883' } );
+                .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://127.0.0.1:1883' } );
 
             expect( api ).to.have.property( 'build' );
         } );
@@ -108,7 +108,7 @@ describe( 'flow — chainable configuration methods', function () {
                 }
             };
 
-            const api = flow( 'test' ).emitter( adapterWithSchema, { brokerUrl: 'mqtt://localhost:1883' } );
+            const api = flow( 'test' ).emitter( adapterWithSchema, { brokerUrl: 'mqtt://127.0.0.1:1883' } );
             expect( api ).to.have.property( 'build' );
         } );
 
@@ -420,7 +420,7 @@ describe( 'flow — terminal methods', function () {
         it( 'reflects source and emitter configuration', function () {
             const info = flow( 'runtimeTest' )
                 .source( mockSourceAdapter, { path: './data.csv' } )
-                .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://localhost' } )
+                .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://127.0.0.1' } )
                 .sanitize( 'sanitize', [ 'pump_in_p' ],
                     { failureReason: 'bad_val_reason' },
                     { ranges: GAUGE_RANGES } )
@@ -483,7 +483,7 @@ describe( 'flow — method chaining', function () {
         // Note: config methods must come BEFORE nodes (config-first convention)
         const api = flow( 'fullChain' )
             .source( mockSourceAdapter, { path: './data.csv' } )
-            .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://localhost' } )
+            .emitter( mockEmitterAdapter, { brokerUrl: 'mqtt://127.0.0.1' } )
             .assetId( 'partitionId' )
             .sanitize( 'sanitize', [ 'pump_in_p', 'pump_out_p' ],
                 { failureReason: 'bad_val_reason', failedValue: 'bad_val' },

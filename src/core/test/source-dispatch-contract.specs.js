@@ -192,7 +192,7 @@ describe( 'source dispatch-failure contract (cross-source)', function () {
 
         handle = await flow( 'mqttDispatchContract' )
             .source( mqttSource, {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 topics: 'contract/dispatch',
                 transform: freezeWhen( 'poison' ),
                 mqttConnectFn: () => mockClient,

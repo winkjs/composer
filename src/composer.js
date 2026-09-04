@@ -13,7 +13,7 @@
  *     .sanitize(...)
  *     .threshold(...)
  *     .source(csv, { path: './data.csv' })
- *     .emitter(mqttEmitter, { brokerUrl: 'mqtt://localhost' })
+ *     .emitter(mqttEmitter, { brokerUrl: 'mqtt://127.0.0.1' })
  *     .run();
  */
 

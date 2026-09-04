@@ -39,7 +39,7 @@ describe( 'MQTT Source — client identity advisory', function () {
 
     const startClient = function ( overrides = {} ) {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect,

@@ -34,10 +34,10 @@ import { createMQTTSourceClient } from '../client.js';
 import { WINK_NAMESPACE } from '../constants.js';
 import { startProxy, stopProxy } from '../../../test-utils/tcp-proxy.js';
 
-const MQTT_BROKER_DIRECT = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+const MQTT_BROKER_DIRECT = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const BROKER_REAL_PORT = 1883;
 const PROXY_PORT = 11884;                    // distinct from the emitter spec's 11883
-const PROXY_URL = `mqtt://localhost:${PROXY_PORT}`;
+const PROXY_URL = `mqtt://127.0.0.1:${PROXY_PORT}`;
 
 // ============================================================================
 // HELPERS

@@ -43,14 +43,14 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
     it( 'throws if topics is missing', function () {
         expect( () => createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             onMessage: () => {}
         } ) ).to.throw( 'topics is required' );
     } );
 
     it( 'throws if topics is empty array', function () {
         expect( () => createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: [],
             onMessage: () => {}
         } ) ).to.throw( 'topics is required' );
@@ -58,14 +58,14 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
     it( 'throws if onMessage is missing', function () {
         expect( () => createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic'
         } ) ).to.throw( 'onMessage must be a function' );
     } );
 
     it( 'throws if onMessage is not a function', function () {
         expect( () => createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: 'not-a-function'
         } ) ).to.throw( 'onMessage must be a function' );
@@ -94,7 +94,7 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
     it( 'creates client with valid config', function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -111,7 +111,7 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
         // with the library default clean=true and NO session survived
         // a reconnect. Caught by the ADR-022 dedup soak's chaos test.
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -128,7 +128,7 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
         // The user-facing key keeps the MQTT 5 term (cleanStart); the
         // client maps it to the option name the library reads.
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             cleanStart: true,
@@ -143,7 +143,7 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
     it( 'generates clientId if not provided', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -155,7 +155,7 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
     it( 'uses provided clientId', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             clientId: 'my-custom-source',
             onMessage: () => {},
@@ -168,7 +168,7 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
     it( 'normalizes single topic to array', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'single/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -186,7 +186,7 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
     it( 'accepts array of topics', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: [ 'topic/one', 'topic/two' ],
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -214,7 +214,7 @@ describe( 'MQTT Source — start()', function () {
         const mockConnect = sinon.stub().returns( mockClient );
 
         const stop = mqttSource.start( {
-            brokerUrl: 'mqtt://localhost:1883',
+            brokerUrl: 'mqtt://127.0.0.1:1883',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect

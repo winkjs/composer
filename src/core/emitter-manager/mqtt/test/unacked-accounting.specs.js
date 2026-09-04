@@ -43,7 +43,7 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
 
     const makeEmitter = function ( overrides = {} ) {
         return createEmitter( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             connectGraceMs: 0,
             codec: testCodec,
             maxQueueSize: 10,

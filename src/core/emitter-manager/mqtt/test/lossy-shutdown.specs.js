@@ -48,7 +48,7 @@ describe( 'MQTT emitter lossy-shutdown reporting', function () {
     } );
 
     const makeEmitter = () => createEmitter( {
-        brokerUrl: 'mqtt://localhost',
+        brokerUrl: 'mqtt://127.0.0.1',
         connectGraceMs: 0,
         codec: testCodec,
         mqttConnectFn: () => mock.client

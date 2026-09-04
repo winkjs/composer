@@ -39,7 +39,7 @@ describe( 'MQTT Source — Connection and Subscription', function () {
 
     it( 'emits the structured starting status at creation', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost:1883',
+            brokerUrl: 'mqtt://127.0.0.1:1883',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -54,7 +54,7 @@ describe( 'MQTT Source — Connection and Subscription', function () {
 
     it( 'subscribes with QoS 1 on connect', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -71,7 +71,7 @@ describe( 'MQTT Source — Connection and Subscription', function () {
 
     it( 'emits green phase running once the subscription is acknowledged', function ( done ) {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: [ 'topic/one', 'topic/two' ],
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -97,7 +97,7 @@ describe( 'MQTT Source — Connection and Subscription', function () {
         } );
 
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -118,7 +118,7 @@ describe( 'MQTT Source — Connection and Subscription', function () {
 
     it( 'tracks subscription state', function ( done ) {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -136,7 +136,7 @@ describe( 'MQTT Source — Connection and Subscription', function () {
 
     it( 'resets subscription state on offline', function ( done ) {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect
@@ -173,7 +173,7 @@ describe( 'MQTT Source — Reconnection', function () {
 
     it( 'emits yellow phase offline with connected false on disconnect', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -190,7 +190,7 @@ describe( 'MQTT Source — Reconnection', function () {
 
     it( 'emits yellow phase reconnecting on a reconnect attempt', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -206,7 +206,7 @@ describe( 'MQTT Source — Reconnection', function () {
 
     it( 'attaches CONNECT_FAILED when the transport reports an error', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onStatus: ( s ) => statusLog.push( s ),
@@ -247,7 +247,7 @@ describe( 'MQTT Source — health/metrics cadence timer', function () {
     it( 'emits onMetrics once per METRICS_INTERVAL_MS', function () {
         const metrics = [];
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onMetrics: ( m ) => metrics.push( m ),
@@ -269,7 +269,7 @@ describe( 'MQTT Source — health/metrics cadence timer', function () {
     it( 'stop() clears the cadence timer', async function () {
         const metrics = [];
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             onMetrics: ( m ) => metrics.push( m ),
@@ -286,7 +286,7 @@ describe( 'MQTT Source — health/metrics cadence timer', function () {
 
     it( 'exposes the counter snapshot via stop._metrics for tests and soaks', function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect

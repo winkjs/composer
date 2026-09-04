@@ -159,7 +159,7 @@ const runMqttCase = async function ( transform, { withStatus = true } = {} ) {
     const mockClient = createMockClient();
 
     const config = {
-        brokerUrl: 'mqtt://localhost',
+        brokerUrl: 'mqtt://127.0.0.1',
         topics: 'contract/test',
         transform,
         onMessage: ( msg ) => {

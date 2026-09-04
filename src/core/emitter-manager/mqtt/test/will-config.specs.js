@@ -25,7 +25,7 @@ describe( 'mqtt emitter — will configuration', function () {
 
     const makeEmitter = function ( will ) {
         return createEmitter( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             connectGraceMs: 0,
             codec: testCodec,
             will,
@@ -143,7 +143,7 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
 
         it( 'does not set will if not configured', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -155,7 +155,7 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
 
         it( 'sets will message when configured', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 will: {
@@ -173,7 +173,7 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
 
         it( 'respects will retain=false', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 will: {
@@ -190,7 +190,7 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
 
         it( 'sets payloadFormatIndicator when codec specifies it', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: {
                     ...testCodec,

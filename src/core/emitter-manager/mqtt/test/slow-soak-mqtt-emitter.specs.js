@@ -51,9 +51,9 @@
  *                       OK — `SOAK_MINUTES=0.5` runs 30 seconds).
  *                       0 or unset → test skips.
  *
- *   MQTT_BROKER_URL     defaults to `mqtt://localhost:1883`. Override
+ *   MQTT_BROKER_URL     defaults to `mqtt://127.0.0.1:1883`. Override
  *                       to point at a different broker (e.g., remote
- *                       Mosquitto, AWS IoT). For non-localhost, sized
+ *                       Mosquitto, AWS IoT). For a remote broker, sized
  *                       expectations below may need adjustment.
  *
  * --------------------------------------------------------------------
@@ -246,7 +246,7 @@ import { jsonCodec } from '../../../codec/index.js';
 import { createEmitter } from '../emitter.js';
 import { evaluateSoakOutcome } from '../../../test-utils/soak-signature.js';
 
-const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const SOAK_MINUTES    = parseFloat( process.env.SOAK_MINUTES || '0' );
 
 const SOAK_MS              = SOAK_MINUTES * 60_000;

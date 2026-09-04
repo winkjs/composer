@@ -127,7 +127,7 @@ describe( 'wire-semantics', function () {
                     assetClass: { required: true, fields: [ 'name', 'columns', 'insightTypes' ] }
                 }
             };
-            const effectiveConfig = { ilpUrl: 'localhost:9000' };
+            const effectiveConfig = { ilpUrl: '127.0.0.1:9000' };
 
             const handled = applySemanticsRequirement( 'questdb', adapter, sampleAssetClass, effectiveConfig );
 
@@ -138,7 +138,7 @@ describe( 'wire-semantics', function () {
             expect( effectiveConfig.assetClass.insightTypes ).to.equal( sampleAssetClass.insightTypes );
             expect( effectiveConfig.assetClass ).to.not.have.property( 'description' );
             // Pre-existing user config preserved
-            expect( effectiveConfig.ilpUrl ).to.equal( 'localhost:9000' );
+            expect( effectiveConfig.ilpUrl ).to.equal( '127.0.0.1:9000' );
         } );
 
         it( 'injects sliced assetClass when declared (not required) and runtime supplies it', function () {

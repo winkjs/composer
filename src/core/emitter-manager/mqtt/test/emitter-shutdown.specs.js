@@ -47,7 +47,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
 
         it( 'returns a promise', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -59,7 +59,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
 
         it( 'calls client.end with force=true when not connected', async function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -72,7 +72,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
 
         it( 'calls client.end with force=false when connected (graceful)', async function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -87,7 +87,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
 
         it( 'is idempotent - second call returns immediately', async function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -111,7 +111,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             } );
 
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -131,7 +131,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             // value's actual effect is exercised by the "forces shutdown after
             // timeout" test above; this test is purely about call-shape acceptance.
             const e1 = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -139,7 +139,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             await e1.shutdown();
 
             const e2 = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -147,7 +147,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             await e2.shutdown( {} );
 
             const e3 = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect

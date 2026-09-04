@@ -98,7 +98,7 @@ describe( 'mqtt emitter — debug event logs', function () {
 
             try {
                 emitter = createEmitter( {
-                    brokerUrl: 'mqtt://localhost',
+                    brokerUrl: 'mqtt://127.0.0.1',
                     connectGraceMs: 0,
                     codec: testCodec,
                     debug: true,
@@ -123,7 +123,7 @@ describe( 'mqtt emitter — debug event logs', function () {
 
             try {
                 emitter = createEmitter( {
-                    brokerUrl: 'mqtt://localhost',
+                    brokerUrl: 'mqtt://127.0.0.1',
                     connectGraceMs: 0,
                     codec: testCodec,
                     debug: true,
@@ -149,7 +149,7 @@ describe( 'mqtt emitter — debug event logs', function () {
 
             try {
                 emitter = createEmitter( {
-                    brokerUrl: 'mqtt://localhost',
+                    brokerUrl: 'mqtt://127.0.0.1',
                     connectGraceMs: 0,
                     codec: testCodec,
                     debug: true,

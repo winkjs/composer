@@ -64,7 +64,7 @@ describe( 'mqtt emitter — session flags', function () {
         const mock = makeMockClient();
         mockConnect = sinon.stub().returns( mock.client );
         emitter = createEmitter( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             // Grace disabled: this beforeEach is synchronous, and the
             // mock client never fires connect.
             connectGraceMs: 0,

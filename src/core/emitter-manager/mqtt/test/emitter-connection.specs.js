@@ -51,7 +51,7 @@ describe( 'mqtt emitter — connection state', function () {
             // before any connack could arrive. connect-grace.specs.js
             // pins the same invariant after a full grace expiry.
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -62,7 +62,7 @@ describe( 'mqtt emitter — connection state', function () {
 
         it( 'becomes connected on connect event', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -76,7 +76,7 @@ describe( 'mqtt emitter — connection state', function () {
 
         it( 'becomes disconnected on offline event', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -91,7 +91,7 @@ describe( 'mqtt emitter — connection state', function () {
 
         it( 'tracks errors in stats', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect

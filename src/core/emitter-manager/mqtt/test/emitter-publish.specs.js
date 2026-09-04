@@ -45,7 +45,7 @@ describe( 'mqtt emitter — publishNow()', function () {
 
         beforeEach( function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -103,7 +103,7 @@ describe( 'mqtt emitter — publishNow()', function () {
 
         it( 'sets payloadFormatIndicator when codec specifies it', async function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: {
                     ...testCodec,
@@ -139,7 +139,7 @@ describe( 'mqtt emitter — publishNow()', function () {
 
             const failures = [];
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onDeliveryFailure: ( err, ctx ) => failures.push( { err, ctx } ),
@@ -188,7 +188,7 @@ describe( 'mqtt emitter — publishNow()', function () {
 
         it( 'accepts publish when pressure is below STORAGE_PRESSURE_LIMIT', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -206,7 +206,7 @@ describe( 'mqtt emitter — publishNow()', function () {
         it( 'reuses the same STORAGE_FULL singleton across rejects', function () {
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 maxQueueSize: 10,

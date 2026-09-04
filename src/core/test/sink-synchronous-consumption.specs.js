@@ -70,7 +70,7 @@ const SINKS = [
             const storage = await createQuestDBStorage(
                 ASSET_CLASS,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', flushMode: 'auto' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'auto' },
                 makeMockDeps( makeMockSender() )
             );
             const result = storage.write( 'monitoring', record, 'asset1' );
@@ -82,7 +82,7 @@ const SINKS = [
         drive: function ( record ) {
             const mock = makeMockClient();
             const emitter = createMqttEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 // Grace disabled: drive() must get the handle in the
                 // same tick — the ADR-023 seal happens at the call
                 // boundary.

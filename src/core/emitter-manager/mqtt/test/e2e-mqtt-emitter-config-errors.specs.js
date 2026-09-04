@@ -87,7 +87,7 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
 
     it( 'throws INVALID_CONFIG when codec missing', function () {
         const err = expectThrowsCode(
-            () => createEmitter( { brokerUrl: 'mqtt://localhost:1883' } ),
+            () => createEmitter( { brokerUrl: 'mqtt://127.0.0.1:1883' } ),
             'INVALID_CONFIG'
         );
         expect( err.message ).to.contain( 'codec' );
@@ -149,7 +149,7 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
         // `!config.codec` catches both `undefined` and `null`.
         const err = expectThrowsCode(
             () => createEmitter( {
-                brokerUrl: 'mqtt://localhost:1883',
+                brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: null
             } ),
             'INVALID_CONFIG'
@@ -186,7 +186,7 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     it( 'throws INVALID_CONFIG when codec lacks a pack() function', function () {
         const err = expectThrowsCode(
             () => createEmitter( {
-                brokerUrl: 'mqtt://localhost:1883',
+                brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: { contentType: 'application/json' }  // no pack
             } ),
             'INVALID_CONFIG'
@@ -197,7 +197,7 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     it( 'throws INVALID_CONFIG when onDeliveryFailure is not a function', function () {
         const err = expectThrowsCode(
             () => createEmitter( {
-                brokerUrl: 'mqtt://localhost:1883',
+                brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: validCodec,
                 onDeliveryFailure: 'not a function',
                 mqttConnectFn: stubMqttClient
@@ -210,7 +210,7 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     it( 'throws INVALID_CONFIG when onCritical is not a function', function () {
         const err = expectThrowsCode(
             () => createEmitter( {
-                brokerUrl: 'mqtt://localhost:1883',
+                brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: validCodec,
                 onCritical: 42,
                 mqttConnectFn: stubMqttClient
@@ -223,7 +223,7 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     it( 'throws INVALID_CONFIG when onBackpressure is not a function', function () {
         const err = expectThrowsCode(
             () => createEmitter( {
-                brokerUrl: 'mqtt://localhost:1883',
+                brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: validCodec,
                 onBackpressure: {},
                 mqttConnectFn: stubMqttClient

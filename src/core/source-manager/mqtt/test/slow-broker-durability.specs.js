@@ -46,7 +46,7 @@ import mqtt from 'mqtt';
 import { createMQTTSourceClient } from '../client.js';
 import { WINK_NAMESPACE } from '../constants.js';
 
-const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const RUN_ID = `${process.pid}-${Date.now()}`;
 const REPO_ROOT = path.resolve(
     path.dirname( fileURLToPath( import.meta.url ) ),

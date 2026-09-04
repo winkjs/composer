@@ -58,7 +58,7 @@ describe( 'mqtt emitter — backpressure', function () {
             let pressureValue = null;
 
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onBackpressure: ( pressure ) => {
@@ -92,7 +92,7 @@ describe( 'mqtt emitter — backpressure', function () {
             } );
 
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onCritical: () => {
@@ -124,7 +124,7 @@ describe( 'mqtt emitter — backpressure', function () {
             // Promise.reject → unhandledRejection. Listener catches it
             // for assertion; settled flag guards against re-entry.
             const localEmitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -157,7 +157,7 @@ describe( 'mqtt emitter — backpressure', function () {
 
         it( 'getPressure returns a number in [0, 1]', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -173,7 +173,7 @@ describe( 'mqtt emitter — backpressure', function () {
             // Coverage for the truthy leg of
             // `MESSAGE_EXPIRY[ messageType ] || MESSAGE_EXPIRY.default`.
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -190,7 +190,7 @@ describe( 'mqtt emitter — backpressure', function () {
             // `MESSAGE_EXPIRY[ messageType ] || MESSAGE_EXPIRY.default`,
             // i.e., the user passed a type that isn't a configured key.
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -215,7 +215,7 @@ describe( 'mqtt emitter — backpressure', function () {
                 setImmediate( () => cb( err ) );
             } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onDeliveryFailure: ( err, ctx ) => failures.push( { err, ctx } ),
@@ -239,7 +239,7 @@ describe( 'mqtt emitter — backpressure', function () {
                 setImmediate( () => cb( err ) );
             } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onDeliveryFailure: ( err, ctx ) => failures.push( { err, ctx } ),
@@ -262,7 +262,7 @@ describe( 'mqtt emitter — backpressure', function () {
             const calls = [];
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 maxQueueSize: 20,
@@ -292,7 +292,7 @@ describe( 'mqtt emitter — backpressure', function () {
             const onCritical = sinon.stub();
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 maxQueueSize: 10,
@@ -351,7 +351,7 @@ describe( 'mqtt emitter — backpressure', function () {
             const pressures = [];
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 maxQueueSize: 20,
@@ -395,7 +395,7 @@ describe( 'mqtt emitter — backpressure', function () {
         it( 'contains a throwing onBackpressure; the ack accounting stays truthful', function () {
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onBackpressure: function () {
@@ -424,7 +424,7 @@ describe( 'mqtt emitter — backpressure', function () {
             const pressures = [];
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onDeliveryFailure: function () {
@@ -456,7 +456,7 @@ describe( 'mqtt emitter — backpressure', function () {
         it( 'an async onDeliveryFailure that rejects never becomes an unhandled rejection', async function () {
             const manual = makeMockClient( { manualAcks: true } );
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 onDeliveryFailure: () => Promise.reject( new Error( 'late handler down' ) ),

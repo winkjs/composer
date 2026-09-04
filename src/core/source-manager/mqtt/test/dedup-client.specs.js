@@ -42,7 +42,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'skips duplicate messages with same dedupId', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             onStatus: ( msg ) => statusLog.push( msg ),
@@ -70,7 +70,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'counts a duplicate skip in the metrics — it is normal operation, not a status event', function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             onStatus: ( s ) => statusLog.push( s ),
@@ -101,7 +101,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'counts messages without a dedup id as bypassed', function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -117,7 +117,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'processes messages without dedupId', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -135,7 +135,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'handles missing userProperties', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -151,7 +151,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'processes different dedupIds', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             mqttConnectFn: mockConnect
@@ -175,7 +175,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'respects custom dedupMaxEntries (ADR-022 count bound through the client)', function () {
         createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             dedupMaxEntries: 3,
             onMessage: ( msg ) => receivedMessages.push( msg ),
@@ -211,7 +211,7 @@ describe( 'MQTT Source — Deduplication', function () {
 
     it( 'exposes dedup cache for testing', function () {
         const stop = createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: () => {},
             mqttConnectFn: mockConnect

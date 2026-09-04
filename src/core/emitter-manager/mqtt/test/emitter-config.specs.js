@@ -82,7 +82,7 @@ describe( 'mqtt emitter — configuration', function () {
 
         it( 'throws if codec is missing', function () {
             expect( () => createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 mqttConnectFn: mockConnect
             } ) ).to.throw( TypeError, 'codec is required' );
@@ -100,7 +100,7 @@ describe( 'mqtt emitter — configuration', function () {
                     stubEnv: true
                 },
                 {
-                    config: { brokerUrl: 'mqtt://localhost', mqttConnectFn: mockConnect },
+                    config: { brokerUrl: 'mqtt://127.0.0.1', mqttConnectFn: mockConnect },
                     what: 'missing codec'
                 }
             ];
@@ -127,7 +127,7 @@ describe( 'mqtt emitter — configuration', function () {
 
         it( 'creates emitter with valid config', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -144,7 +144,7 @@ describe( 'mqtt emitter — configuration', function () {
 
         it( 'generates clientId if not provided', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: mockConnect
@@ -157,7 +157,7 @@ describe( 'mqtt emitter — configuration', function () {
 
         it( 'uses provided clientId', function () {
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 clientId: 'my-custom-client',
@@ -180,7 +180,7 @@ describe( 'mqtt emitter — configuration', function () {
             const clientId = `test-client-${Date.now()}`;
 
             emitter = createEmitter( {
-                brokerUrl: 'mqtt://localhost',
+                brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
                 clientId: clientId,

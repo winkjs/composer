@@ -65,7 +65,23 @@
  */
 
 import { validators } from '../../utils/validate/index.js';
+import { classifyAddress } from '../../utils/address/index.js';
 import { createMQTTSourceClient } from './client.js';
+
+/**
+ * Schema validator for `brokerUrl`: non-empty and never `localhost`
+ * (ADR-030). A value the URL grammar cannot read passes; the MQTT
+ * library reports its own error for it.
+ *
+ * @param {*} value - The configured value
+ * @returns {boolean} Whether the value is allowed
+ */
+const isAllowedBrokerUrl = function ( value ) {
+    if ( !validators.nonEmptyString( value ) ) {
+        return false;
+    }
+    return classifyAddress( value, 'url' ).kind !== 'localhost';
+}; // isAllowedBrokerUrl()
 
 // ============================================================================
 // SOURCE ADAPTER
@@ -163,8 +179,9 @@ const configSchema = {
     brokerUrl: {
         type: 'string',
         required: true,
-        validator: validators.nonEmptyString,
-        error: 'brokerUrl must be a non-empty string (e.g., mqtt://broker.local:1883)'
+        validator: isAllowedBrokerUrl,
+        error: 'brokerUrl must be a non-empty broker URL with a literal address or a name, never ' +
+            'localhost; e.g., mqtt://127.0.0.1:1883'
     },
     topics: {
         required: true,

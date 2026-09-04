@@ -64,7 +64,7 @@ describe( 'MQTT Source — payload shape guard', function () {
     // Fresh client per test; returns the stop fn for metrics access.
     const makeClient = function ( extra = {} ) {
         return createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             onMessage: ( msg ) => receivedMessages.push( msg ),
             onStatus: ( s ) => statusLog.push( s ),
@@ -209,7 +209,7 @@ describe( 'MQTT Source — transform return boundary', function () {
 
     const makeClient = function ( transform ) {
         return createMQTTSourceClient( {
-            brokerUrl: 'mqtt://localhost',
+            brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
             transform,
             onMessage: ( msg ) => receivedMessages.push( msg ),

@@ -33,7 +33,11 @@
  * `err.code` vocabulary (per-adapter, documented here per ADR-018):
  * - `INVALID_CONFIG`         — setup-time; missing or malformed config
  *   field. Thrown synchronously from the factory (ADR-018 fail-fast
- *   setup), never emitted.
+ *   setup), never emitted. Includes a `brokerUrl` whose host is
+ *   `localhost` (ADR-030): the name can resolve to two addresses and
+ *   the broker may listen on only one. The message names the literal
+ *   to set. Refused before the client is created, at the schema (flow
+ *   definition) and here (direct callers).
  * - `DECODE_ERROR`           — runtime, yellow. Two faces: a per-record
  *   report for every payload that does not yield a usable record, and
  *   a health flip when the decode-error ratio over the last 1,000
@@ -68,6 +72,15 @@
  *   30 s (strictly greater) while the library keeps retrying.
  * - `QUIET_PERIOD_EXCEEDED`  — runtime, yellow, opt-in. No packet for
  *   longer than the configured `expectedQuietPeriodMs`.
+ *
+ * Console classification (a token on a log line, not an `err.code`):
+ * - `ADDRESS_IS_NAME`        — the `brokerUrl` host is a name other
+ *   than `localhost`. One `logger.warn` line at setup, before the
+ *   client is created (ADR-030). A name is allowed and the source
+ *   proceeds; the line tells the operator that only a literal address
+ *   is immune to a resolver that changes its answer under a running
+ *   process. This source refuses and warns; it does not probe, because
+ *   its posture is recovering (ADR-018 §5).
  *
  * Metrics (optional `onMetrics`, ~1 Hz + on transitions): monotonic
  * counters `{delivered, skipped, decodeErrors, reconnects, dedupHits,
@@ -136,6 +149,46 @@ import { createStatusReporter } from './status.js';
 import { isUsableRecord, describeShape } from '../record-shape.js';
 import { wrapTransform, TRANSFORM_THREW } from '../../utils/callback-guard/index.js';
 import { logger } from '../../logger/index.js';
+import { classifyAddress, localhostRefusalMessage, nameWarningMessage } from '../../utils/address/index.js';
+
+// ============================================================================
+// ADDRESS POLICY (ADR-030)
+// ============================================================================
+
+/**
+ * Classifies the broker address and refuses `localhost`. The schema
+ * already refused it at flow definition; this call covers direct
+ * callers and carries the classified code. The source has no
+ * environment fallback for `brokerUrl`, so no env var is named.
+ *
+ * @param {string} brokerUrl - The broker URL as configured
+ * @returns {Object} The classified address
+ * @throws {Error} INVALID_CONFIG when the host is `localhost`
+ */
+const assertBrokerNotLocalhost = function ( brokerUrl ) {
+    const address = classifyAddress( brokerUrl, 'url' );
+    if ( address.kind === 'localhost' ) {
+        const err = new Error(
+            `winkComposer/mqttSource: ${localhostRefusalMessage( { field: 'brokerUrl', address } )}`
+        );
+        err.code = 'INVALID_CONFIG';
+        throw err;
+    }
+    return address;
+}; // assertBrokerNotLocalhost()
+
+/**
+ * Prints the one ADDRESS_IS_NAME line when the broker host is a name.
+ *
+ * @param {Object} address - The classified broker address
+ */
+const warnIfBrokerIsName = function ( address ) {
+    if ( address.kind === 'name' ) {
+        logger.warn(
+            `winkComposer/mqttSource: ${nameWarningMessage( { field: 'brokerUrl', host: address.host } )}`
+        );
+    }
+}; // warnIfBrokerIsName()
 
 // ============================================================================
 // CLIENT FACTORY
@@ -146,7 +199,7 @@ import { logger } from '../../logger/index.js';
  * health/metrics reporting.
  *
  * @param {Object} config - Client configuration
- * @param {string} config.brokerUrl - MQTT broker URL (e.g., 'mqtt://localhost:1883')
+ * @param {string} config.brokerUrl - MQTT broker URL (e.g., 'mqtt://127.0.0.1:1883'; never localhost)
  * @param {string|string[]} config.topics - Topic(s) to subscribe to (supports wildcards)
  * @param {function} config.onMessage - Message handler: (message) => void
  * @param {Object} [config.codec] - Codec for payload decoding (default: JSON.parse)
@@ -192,6 +245,9 @@ const createMQTTSourceClient = function ( config ) {
         err.code = 'INVALID_CONFIG';
         throw err;
     }
+    // Address policy (ADR-030): `localhost` is refused before the
+    // client is created; a name is warned about just before connect.
+    const brokerAddress = assertBrokerNotLocalhost( brokerUrl );
     if ( !topics || ( Array.isArray( topics ) && topics.length === 0 ) ) {
         const err = new Error( 'winkComposer/mqttSource: topics is required' );
         err.code = 'INVALID_CONFIG';
@@ -264,7 +320,9 @@ const createMQTTSourceClient = function ( config ) {
         mqttOptions.clean = cleanStart;
     }
 
-    // Create MQTT client
+    // Create MQTT client. The name warning goes first, so it prints
+    // before any socket opens (ADR-030).
+    warnIfBrokerIsName( brokerAddress );
     const client = mqttConnectFn( brokerUrl, mqttOptions );
 
     // One heartbeat per second: re-evaluates the time-based health

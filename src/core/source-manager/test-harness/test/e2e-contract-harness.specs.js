@@ -30,8 +30,8 @@ import questdbAdapter from '../../../storage-manager/questdb/index.js';
 import { compareCaptures } from '../comparator.js';
 
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
-const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || 'localhost:9000';
-const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || 'localhost:8812';
+const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || '127.0.0.1:9000';
+const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || '127.0.0.1:8812';
 
 // One unique table prefix per test run so reruns do not collide.
 const TEST_PREFIX = `harness_${Date.now()}`;

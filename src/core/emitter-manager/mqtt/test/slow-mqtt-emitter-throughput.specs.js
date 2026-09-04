@@ -52,7 +52,7 @@ import * as testHarness from '../../../source-manager/test-harness/index.js';
 import * as mqttEmitter from '../index.js';
 import { emitters as wireEmitters } from '../../../wiring/index.js';
 
-const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
+const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const RUN_PREFIX      = `tput_${Date.now()}_${Math.random().toString( 36 ).slice( 2, 6 )}`;
 
 // Asset class shape — one float column keeps payloads small and
@@ -295,7 +295,7 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
 
         // After shutdown completes, every accepted publish has been
         // ACKed by the broker; subscriber should have received them
-        // all (broker is in-process for localhost). Brief grace for
+        // all (the broker is on the same machine). Brief grace for
         // the subscriber's own delivery loop to catch up.
         const finalCount = await waitForIdSet( captured.ids, messageCount, 10000 );
 
@@ -334,7 +334,7 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
 
         // Duplicates are allowed under QoS 1 — log a warning above a
         // soft threshold (would suggest a retry storm), but do not fail.
-        // On a clean localhost run we typically see zero; under packet
+        // On a clean same-machine run we typically see zero; under packet
         // loss or broker hiccups, a handful is normal.
         const duplicateRatio = captured.duplicates.length / messageCount;
         expect( duplicateRatio, 'duplicate ratio under 5% (sanity bound on retry storms)' )
@@ -499,7 +499,7 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
         //   - Pressure resets to ~0 after the broker drains.
         //
         // Sizing: very small `maxQueueSize` (10) so each in-flight
-        // message moves pressure by 0.1. Otherwise localhost Mosquitto
+        // message moves pressure by 0.1. Otherwise a same-machine Mosquitto
         // drains so fast that pressure stays sub-0.01 — meaningful
         // accumulation requires either tiny queue or a stalled broker
         // (the latter is slow-mqtt-emitter-recovery.specs.js's outage
