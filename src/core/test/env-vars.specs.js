@@ -105,7 +105,7 @@ describe( 'env-vars', function () {
                 EDGE_DEVICE_ID: 'my-device-01',
                 MQTT_MSG_EXPIRY: '7200',
                 MQTT_KEEPALIVE: '30',
-                QUESTDB_ILP_URL: 'localhost:9000'
+                QUESTDB_ILP_URL: '127.0.0.1:9000'
             } );
 
             expect( result.code ).to.equal( 0 );
@@ -432,10 +432,109 @@ describe( 'env-vars', function () {
         it( 'rejects MQTT_BROKER_URL with wrong protocol', async function () {
             const result = await runWithEnv( {
                 NODE_ENV: 'test',
-                MQTT_BROKER_URL: 'http://localhost:1883'
+                MQTT_BROKER_URL: 'http://127.0.0.1:1883'
             } );
             expect( result.code ).to.equal( 1 );
             expect( result.stderr ).to.include( 'mqtt://' );
+        } );
+
+    } );
+
+    // ========================================================================
+    // ADAPTER ADDRESSES (ADR-030)
+    // ========================================================================
+    // `localhost` is a name that can resolve to two addresses, and the
+    // service may listen on only one. Every adapter address variable
+    // refuses it at import, before any flow exists. The defaults are
+    // literals. A bracketed IPv6 literal is accepted here; the QuestDB
+    // adapter refuses it for `ilpUrl` at wire time, because the client
+    // cannot parse one. A name other than localhost is accepted here and
+    // warned about at wire time by the adapter, not by this layer.
+
+    describe( 'adapter addresses refuse localhost (ADR-030)', function () {
+
+        /**
+         * Runs env-vars.js in a child with the three address variables
+         * removed from the inherited environment, and returns the
+         * exported ENV_VARS as parsed JSON. Removing them pins the
+         * defaults regardless of the developer's shell.
+         */
+        const readDefaults = function () {
+            const env = { ...process.env };
+            delete env.QUESTDB_ILP_URL;
+            delete env.QUESTDB_PG_URL;
+            delete env.MQTT_BROKER_URL;
+            return new Promise( ( resolve ) => {
+                const child = spawn( 'node', [
+                    '--input-type=module',
+                    '-e',
+                    `import( '${envVarsPath}' ).then( ( m ) => process.stdout.write( JSON.stringify( m.ENV_VARS ) ) )`
+                ], { env, stdio: [ 'pipe', 'pipe', 'pipe' ] } );
+                let stdout = '';
+                child.stdout.on( 'data', ( data ) => {
+                    stdout += data.toString();
+                } );
+                child.on( 'close', () => resolve( JSON.parse( stdout ) ) );
+            } );
+        };
+
+        it( 'defaults every adapter address to a loopback literal, never a name', async function () {
+            const envVars = await readDefaults();
+            expect( envVars.questdbIlpUrl ).to.equal( '127.0.0.1:9000' );
+            expect( envVars.questdbPgUrl ).to.equal( '127.0.0.1:8812' );
+            expect( envVars.mqttBrokerUrl ).to.equal( 'mqtt://127.0.0.1:1883' );
+        } );
+
+        it( 'refuses QUESTDB_ILP_URL=localhost:9000 at import, naming the literal to use', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', QUESTDB_ILP_URL: 'localhost:9000' } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'QUESTDB_ILP_URL: \'localhost\' can resolve to more than one address' );
+            expect( result.stderr ).to.include( 'use 127.0.0.1:9000' );
+        } );
+
+        it( 'refuses QUESTDB_PG_URL with localhost in any letter case and with a trailing dot', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', QUESTDB_PG_URL: 'LocalHost.:8812' } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'QUESTDB_PG_URL:' );
+            expect( result.stderr ).to.include( 'use 127.0.0.1:8812' );
+        } );
+
+        it( 'refuses a name under the reserved .localhost domain', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', QUESTDB_ILP_URL: 'db.localhost:9000' } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'use 127.0.0.1:9000' );
+        } );
+
+        it( 'refuses MQTT_BROKER_URL=mqtt://localhost:1883 at import', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', MQTT_BROKER_URL: 'mqtt://localhost:1883' } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'MQTT_BROKER_URL: \'localhost\' can resolve to more than one address' );
+            expect( result.stderr ).to.include( 'use mqtt://127.0.0.1:1883' );
+        } );
+
+        it( 'never prints broker credentials in the refusal', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', MQTT_BROKER_URL: 'mqtts://user:pw-secret@localhost:8883' } );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'use mqtts://127.0.0.1:8883' );
+            expect( result.stderr ).to.not.include( 'pw-secret' );
+        } );
+
+        it( 'accepts a bracketed IPv6 literal for both QuestDB addresses', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', QUESTDB_ILP_URL: '[::1]:9000', QUESTDB_PG_URL: '[::1]:8812' } );
+            expect( result.code ).to.equal( 0 );
+            expect( result.stderr ).to.equal( '' );
+        } );
+
+        it( 'accepts a bracketed IPv6 literal in the broker URL', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', MQTT_BROKER_URL: 'mqtt://[::1]:1883' } );
+            expect( result.code ).to.equal( 0 );
+            expect( result.stderr ).to.equal( '' );
+        } );
+
+        it( 'accepts a name other than localhost without a warning (the adapter warns at wire time)', async function () {
+            const result = await runWithEnv( { NODE_ENV: 'test', QUESTDB_ILP_URL: 'db.plant.local:9000' } );
+            expect( result.code ).to.equal( 0 );
+            expect( result.stderr ).to.equal( '' );
         } );
 
         it( 'accepts valid MQTT_KEEPALIVE', async function () {
@@ -738,7 +837,22 @@ describe( 'env-vars', function () {
 
         // mqttUrl
         it( 'mqttUrl: returns null for mqtt://', function () {
-            expect( v.mqttUrl( 'mqtt://localhost:1883' ) ).to.equal( null );
+            expect( v.mqttUrl( 'mqtt://127.0.0.1:1883' ) ).to.equal( null );
+        } );
+
+        it( 'mqttUrl: refuses a localhost host with the literal to use', function () {
+            expect( v.mqttUrl( 'mqtt://localhost:1883' ) ).to.equal(
+                '\'localhost\' can resolve to more than one address, and the service may answer on only one; ' +
+                'use mqtt://127.0.0.1:1883'
+            );
+        } );
+
+        it( 'mqttUrl: accepts a bracketed IPv6 literal', function () {
+            expect( v.mqttUrl( 'mqtt://[::1]:1883' ) ).to.equal( null );
+        } );
+
+        it( 'mqttUrl: leaves a URL it cannot parse to the transport library', function () {
+            expect( v.mqttUrl( 'mqtt://' ) ).to.equal( null );
         } );
 
         it( 'mqttUrl: returns null for mqtts://', function () {
@@ -750,7 +864,7 @@ describe( 'env-vars', function () {
         } );
 
         it( 'mqttUrl: rejects wrong protocol', function () {
-            expect( v.mqttUrl( 'http://localhost' ) ).to.include( 'mqtt://' );
+            expect( v.mqttUrl( 'http://127.0.0.1' ) ).to.include( 'mqtt://' );
         } );
 
         // nonNegativeNumberOrInfinity (ADR-024)
@@ -793,7 +907,27 @@ describe( 'env-vars', function () {
 
         // hostPort
         it( 'hostPort: returns null for valid host:port', function () {
-            expect( v.hostPort( 'localhost:9000' ) ).to.equal( null );
+            expect( v.hostPort( '127.0.0.1:9000' ) ).to.equal( null );
+            expect( v.hostPort( 'db.plant.local:9000' ) ).to.equal( null );
+        } );
+
+        it( 'hostPort: refuses a localhost host with the literal to use', function () {
+            expect( v.hostPort( 'localhost:9000' ) ).to.equal(
+                '\'localhost\' can resolve to more than one address, and the service may answer on only one; ' +
+                'use 127.0.0.1:9000'
+            );
+        } );
+
+        it( 'hostPort: accepts a bracketed IPv6 literal with a port', function () {
+            expect( v.hostPort( '[::1]:8812' ) ).to.equal( null );
+        } );
+
+        it( 'hostPort: requires the port even for a bracketed IPv6 literal', function () {
+            expect( v.hostPort( '[::1]' ) ).to.include( 'Must be host:port' );
+        } );
+
+        it( 'hostPort: rejects a second colon outside brackets', function () {
+            expect( v.hostPort( 'a:1:2' ) ).to.include( 'Must be host:port' );
         } );
 
         it( 'hostPort: rejects empty', function () {

@@ -4,6 +4,8 @@
 
 import os from 'os';
 
+import { classifyAddress, localhostRefusalDetail } from './utils/address/index.js';
+
 // ============================================================================
 // ENVIRONMENT VARIABLE DEFINITIONS
 // ============================================================================
@@ -89,9 +91,14 @@ const ENV_VARS = {
     mqttSourceDedupWindowMs: parseInt( process.env.MQTT_SOURCE_DEDUP_WINDOW_MS ?? '120000', 10 ),
     mqttSourceDedupMaxEntries: parseInt( process.env.MQTT_SOURCE_DEDUP_MAX_ENTRIES ?? '65536', 10 ),
 
-    // QuestDB Configuration
-    questdbIlpUrl: ( process.env.QUESTDB_ILP_URL ?? 'localhost:9000' ).trim(),
-    questdbPgUrl: ( process.env.QUESTDB_PG_URL ?? 'localhost:8812' ).trim(),
+    // QuestDB Configuration. The address defaults are loopback literals,
+    // never the name `localhost` (ADR-030). A name can resolve to two
+    // addresses, `::1` and `127.0.0.1`, and QuestDB may listen on only
+    // one; the run-5 soak lost its write path for four hours that way.
+    // The `hostPort` and `mqttUrl` validators below refuse `localhost`
+    // outright, so a deployment that sets it stops here, at import.
+    questdbIlpUrl: ( process.env.QUESTDB_ILP_URL ?? '127.0.0.1:9000' ).trim(),
+    questdbPgUrl: ( process.env.QUESTDB_PG_URL ?? '127.0.0.1:8812' ).trim(),
     questdbFlushMode: ( process.env.QUESTDB_FLUSH_MODE ?? 'auto' ).trim(),
     questdbIdleFlushAfterMs: parseInt( process.env.QUESTDB_IDLE_FLUSH_AFTER_MS ?? '5000', 10 ),
     questdbIdleFlushCheckMs: parseInt( process.env.QUESTDB_IDLE_FLUSH_CHECK_MS ?? '1000', 10 ),
@@ -161,12 +168,18 @@ const validators = {
         return null;
     },
 
+    // host:port, with the port required. Accepts a name, an IPv4
+    // literal, or a bracketed IPv6 literal (`[::1]:8812`). Refuses
+    // `localhost` in every spelling (ADR-030); the shared helper is the
+    // one check the adapter schema and factory layers use too.
     hostPort: function ( value ) {
         if ( !value ) return 'Cannot be empty';
-        // Match host:port pattern (host can be hostname or IP)
-        const hostPortRegex = /^[\w.\-]+:\d+$/;
-        if ( !hostPortRegex.test( value ) ) {
+        const address = classifyAddress( value, 'hostPort' );
+        if ( ( address.kind === 'unparsed' ) || ( address.port === undefined ) ) {
             return `Must be host:port format, got: "${value}"`;
+        }
+        if ( address.kind === 'localhost' ) {
+            return localhostRefusalDetail( address );
         }
         return null;
     },
@@ -208,10 +221,17 @@ const validators = {
         return null;
     },
 
+    // A broker URL. The scheme check comes first; then `localhost` is
+    // refused (ADR-030). A URL the parser cannot read is left to the
+    // MQTT library, which reports its own error.
     mqttUrl: function ( value ) {
         if ( !value ) return 'Cannot be empty';
         if ( !value.startsWith( 'mqtt://' ) && !value.startsWith( 'mqtts://' ) ) {
             return `Must start with 'mqtt://' or 'mqtts://', got: "${value}"`;
+        }
+        const address = classifyAddress( value, 'url' );
+        if ( address.kind === 'localhost' ) {
+            return localhostRefusalDetail( address );
         }
         return null;
     }
