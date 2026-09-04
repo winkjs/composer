@@ -24,8 +24,8 @@ import { ensureTables } from '../ensure-tables.js';
 // TEST CONFIGURATION
 // ============================================================================
 
-const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || 'localhost:9000';
-const QUESTDB_PG_URL = process.env.QUESTDB_PG_URL || 'localhost:8812';
+const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || '127.0.0.1:9000';
+const QUESTDB_PG_URL = process.env.QUESTDB_PG_URL || '127.0.0.1:8812';
 
 // Test table prefix - unique per test run to avoid conflicts
 const TEST_PREFIX = `test_${Date.now()}`;

@@ -66,8 +66,8 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
         TEST_ASSET_CLASS,
         'pump',
         {
-            ilpUrl: 'localhost:9000',
-            pgUrl: 'localhost:8812',
+            ilpUrl: '127.0.0.1:9000',
+            pgUrl: '127.0.0.1:8812',
             flushMode: 'manual',
             autoFlushRows: 10,
             ...options

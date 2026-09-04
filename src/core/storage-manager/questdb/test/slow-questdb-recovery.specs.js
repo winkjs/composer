@@ -10,7 +10,7 @@
  * `npm test` ignores `slow-*.specs.js`.
  *
  * Concern: a mid-stream QuestDB outage. We use a tiny TCP proxy
- * that forwards localhost:19000 → localhost:9000 (where the real
+ * that forwards 127.0.0.1:19000 → 127.0.0.1:9000 (where the real
  * docker-compose QDB is listening). The flow's storage points at
  * the proxy. Mid-run we close the proxy server, simulating QDB
  * becoming unreachable. After a defined outage we reopen it.
@@ -56,13 +56,13 @@ import * as testHarness from '../../../source-manager/test-harness/index.js';
 import { startProxy, stopProxy } from '../../../test-utils/tcp-proxy.js';
 import questdbAdapter, { createQuestDBStorage } from '../index.js';
 
-const QUESTDB_PG_URL    = process.env.QUESTDB_PG_URL  || 'localhost:8812';
+const QUESTDB_PG_URL    = process.env.QUESTDB_PG_URL  || '127.0.0.1:8812';
 const QUESTDB_REAL_PORT = parseInt(
-    ( process.env.QUESTDB_ILP_URL || 'localhost:9000' ).split( ':' )[ 1 ],
+    ( process.env.QUESTDB_ILP_URL || '127.0.0.1:9000' ).split( ':' )[ 1 ],
     10
 );
 const PROXY_PORT        = 19000;
-const PROXY_ILP_URL     = `localhost:${PROXY_PORT}`;
+const PROXY_ILP_URL     = `127.0.0.1:${PROXY_PORT}`;
 const RUN_PREFIX        = `recov_${Date.now()}`;
 
 const assetClass = {
@@ -370,7 +370,7 @@ describe( 'QuestDB Hardening — mid-row fault replay (2026-06-10 incident shape
 
         const pgClient = await createPgClient();
         const storage = await createQuestDBStorage( replayAssetClass, tablePrefix, {
-            ilpUrl: process.env.QUESTDB_ILP_URL || 'localhost:9000',
+            ilpUrl: process.env.QUESTDB_ILP_URL || '127.0.0.1:9000',
             pgUrl: QUESTDB_PG_URL,
             flushMode: 'manual'
         } );

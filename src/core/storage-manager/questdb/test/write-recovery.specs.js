@@ -89,7 +89,7 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
         const makeStorage = ( options = {} ) => createQuestDBStorage(
             TEST_ASSET_CLASS,
             'pump',
-            { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', flushMode: 'auto', ...options },
+            { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'auto', ...options },
             deps
         );
 
@@ -219,7 +219,7 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
                     // the client retries a connect error forever (see the
                     // teardown note at the end of this test).
                     ilpUrl: '127.0.0.1:1',
-                    pgUrl: 'localhost:8812',
+                    pgUrl: '127.0.0.1:8812',
                     flushMode: 'manual',
                     retryTimeout: 1
                 },

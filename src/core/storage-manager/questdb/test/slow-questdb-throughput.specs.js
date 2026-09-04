@@ -40,8 +40,8 @@ import * as testHarness from '../../../source-manager/test-harness/index.js';
 import { storages as wireStorages } from '../../../wiring/index.js';
 import questdbAdapter from '../index.js';
 
-const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || 'localhost:9000';
-const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || 'localhost:8812';
+const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || '127.0.0.1:9000';
+const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || '127.0.0.1:8812';
 const RUN_PREFIX      = `tput_${Date.now()}`;
 
 const assetClass = {

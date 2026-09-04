@@ -22,16 +22,16 @@ describe( 'QuestDB Storage Adapter', function () {
 
         it( 'should build base HTTP config with address', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'auto'
             } );
 
-            expect( config ).to.include( 'http::addr=localhost:9000;' );
+            expect( config ).to.include( 'http::addr=127.0.0.1:9000;' );
         } );
 
         it( 'should not add auto_flush=off in auto mode', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'auto'
             } );
 
@@ -40,7 +40,7 @@ describe( 'QuestDB Storage Adapter', function () {
 
         it( 'should add auto_flush=off in manual mode', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'manual'
             } );
 
@@ -49,7 +49,7 @@ describe( 'QuestDB Storage Adapter', function () {
 
         it( 'should add auto_flush_rows when provided in auto mode', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'auto',
                 autoFlushRows: 5000
             } );
@@ -59,7 +59,7 @@ describe( 'QuestDB Storage Adapter', function () {
 
         it( 'should add auto_flush_interval when provided in auto mode', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'auto',
                 autoFlushIntervalMs: 2000
             } );
@@ -69,7 +69,7 @@ describe( 'QuestDB Storage Adapter', function () {
 
         it( 'should not add auto_flush_rows in manual mode', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'manual',
                 autoFlushRows: 5000
             } );
@@ -79,7 +79,7 @@ describe( 'QuestDB Storage Adapter', function () {
 
         it( 'should add init_buf_size when maxBufSize provided', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'auto',
                 maxBufSize: 1048576
             } );
@@ -89,7 +89,7 @@ describe( 'QuestDB Storage Adapter', function () {
 
         it( 'should add retry_timeout when retryTimeout provided', function () {
             const config = buildSenderConfig( {
-                ilpUrl: 'localhost:9000',
+                ilpUrl: '127.0.0.1:9000',
                 flushMode: 'auto',
                 retryTimeout: 30000
             } );
@@ -144,8 +144,8 @@ describe( 'QuestDB Storage Adapter', function () {
         };
 
         const defaultOptions = {
-            ilpUrl: 'localhost:9000',
-            pgUrl: 'localhost:8812',
+            ilpUrl: '127.0.0.1:9000',
+            pgUrl: '127.0.0.1:8812',
             flushMode: 'auto'
         };
 
@@ -287,7 +287,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     await createQuestDBStorage(
                         testAssetClass,
                         'pump',
-                        { ilpUrl: '', pgUrl: 'localhost:8812' },
+                        { ilpUrl: '', pgUrl: '127.0.0.1:8812' },
                         { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
                     );
                     expect.fail( 'Should have thrown' );
@@ -302,7 +302,7 @@ describe( 'QuestDB Storage Adapter', function () {
                     await createQuestDBStorage(
                         testAssetClass,
                         'pump',
-                        { ilpUrl: 'localhost:9000', pgUrl: '' },
+                        { ilpUrl: '127.0.0.1:9000', pgUrl: '' },
                         { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
                     );
                     expect.fail( 'Should have thrown' );
@@ -822,8 +822,8 @@ describe( 'QuestDB Storage Adapter', function () {
             const storage = await questdbAdapter.createStorage( {
                 assetClass: testAssetClass,
                 tablePrefix: 'pump',
-                ilpUrl: 'localhost:9000',
-                pgUrl: 'localhost:8812',
+                ilpUrl: '127.0.0.1:9000',
+                pgUrl: '127.0.0.1:8812',
                 _deps: { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             } );
 
@@ -837,8 +837,8 @@ describe( 'QuestDB Storage Adapter', function () {
         it( 'defaults tablePrefix to assetClass.name when omitted', async function () {
             const storage = await questdbAdapter.createStorage( {
                 assetClass: testAssetClass,
-                ilpUrl: 'localhost:9000',
-                pgUrl: 'localhost:8812',
+                ilpUrl: '127.0.0.1:9000',
+                pgUrl: '127.0.0.1:8812',
                 _deps: { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             } );
 
@@ -854,8 +854,8 @@ describe( 'QuestDB Storage Adapter', function () {
             try {
                 questdbAdapter.createStorage( {
                     tablePrefix: 'pump',
-                    ilpUrl: 'localhost:9000',
-                    pgUrl: 'localhost:8812'
+                    ilpUrl: '127.0.0.1:9000',
+                    pgUrl: '127.0.0.1:8812'
                 } );
                 expect.fail( 'Should have thrown' );
             } catch ( err ) {
@@ -869,8 +869,8 @@ describe( 'QuestDB Storage Adapter', function () {
                 questdbAdapter.createStorage( {
                     assetClass: null,
                     tablePrefix: 'pump',
-                    ilpUrl: 'localhost:9000',
-                    pgUrl: 'localhost:8812'
+                    ilpUrl: '127.0.0.1:9000',
+                    pgUrl: '127.0.0.1:8812'
                 } );
                 expect.fail( 'Should have thrown' );
             } catch ( err ) {

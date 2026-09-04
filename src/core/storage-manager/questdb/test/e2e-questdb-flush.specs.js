@@ -32,8 +32,8 @@ import { flow } from '../../../../composer.js';
 import * as testHarness from '../../../source-manager/test-harness/index.js';
 import questdbAdapter from '../index.js';
 
-const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || 'localhost:9000';
-const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || 'localhost:8812';
+const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || '127.0.0.1:9000';
+const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || '127.0.0.1:8812';
 const RUN_PREFIX      = `flush_${Date.now()}`;
 
 // Asset class shared by all three tests. Same shape; each test uses

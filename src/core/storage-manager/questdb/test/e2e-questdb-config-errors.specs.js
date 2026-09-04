@@ -31,8 +31,8 @@ import pg from 'pg';
 
 import questdbAdapter, { createQuestDBStorage } from '../index.js';
 
-const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || 'localhost:9000';
-const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || 'localhost:8812';
+const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || '127.0.0.1:9000';
+const QUESTDB_PG_URL  = process.env.QUESTDB_PG_URL  || '127.0.0.1:8812';
 
 // A simple, structurally-valid asset class. Tests that need a bad
 // asset class build their own.
@@ -256,11 +256,11 @@ describe( 'QuestDB E2E — setup-time error classification', function () {
             () => createQuestDBStorage(
                 validAssetClass,
                 'cfgErrTest',
-                { ilpUrl: QUESTDB_ILP_URL, pgUrl: 'localhost:1' }
+                { ilpUrl: QUESTDB_ILP_URL, pgUrl: '127.0.0.1:1' }
             ),
             'TRANSPORT_UNREACHABLE'
         );
-        expect( err.message ).to.contain( 'localhost:1' );
+        expect( err.message ).to.contain( '127.0.0.1:1' );
         expect( err.cause, 'underlying pg error preserved as cause' ).to.be.an( 'error' );
     } );
 

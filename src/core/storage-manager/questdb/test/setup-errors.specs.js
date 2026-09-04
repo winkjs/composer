@@ -44,7 +44,7 @@ const testAssetClass = {
     }
 };
 
-const OPTIONS = { ilpUrl: 'localhost:9000', pgUrl: 'somehost:8812' };
+const OPTIONS = { ilpUrl: '127.0.0.1:9000', pgUrl: '192.0.2.10:8812' };
 
 // Builds the deps object for createQuestDBStorage with a pg client
 // whose connect() rejects with the given error.
@@ -112,7 +112,7 @@ describe( 'QuestDB setup — pg connect classification', function () {
                     'TRANSPORT_UNREACHABLE'
                 );
                 // Operator-facing: names the endpoint; underlying error preserved.
-                expect( err.message ).to.contain( 'somehost:8812' );
+                expect( err.message ).to.contain( '192.0.2.10:8812' );
                 expect( err.cause ).to.equal( connErr );
             } );
         } );

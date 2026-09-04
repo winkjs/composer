@@ -61,8 +61,8 @@ describe( 'QuestDB persist-plan acceptance domain', function () {
         TEST_ASSET_CLASS,
         'pump',
         {
-            ilpUrl: 'localhost:9000',
-            pgUrl: 'localhost:8812',
+            ilpUrl: '127.0.0.1:9000',
+            pgUrl: '127.0.0.1:8812',
             flushMode: 'manual',
             autoFlushRows: 10,
             onWarning: ( msg ) => warnings.push( msg ),

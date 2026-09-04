@@ -31,8 +31,8 @@ import { flow } from '../../../../flow/flow.js';
 // ============================================================================
 
 const minimalValidConfig = {
-    ilpUrl: 'localhost:9000',
-    pgUrl: 'localhost:8812'
+    ilpUrl: '127.0.0.1:9000',
+    pgUrl: '127.0.0.1:8812'
 };
 
 // ============================================================================
@@ -95,13 +95,13 @@ describe( 'QuestDB Storage — Optional URL Fields (ENV_VARS fallback)', functio
     } );
 
     it( 'accepts config with only ilpUrl — pgUrl defaults from ENV_VARS', function () {
-        const result = validate( { ilpUrl: 'localhost:9000' } );
+        const result = validate( { ilpUrl: '127.0.0.1:9000' } );
 
         expect( result.valid ).to.equal( true );
     } );
 
     it( 'accepts config with only pgUrl — ilpUrl defaults from ENV_VARS', function () {
-        const result = validate( { pgUrl: 'localhost:8812' } );
+        const result = validate( { pgUrl: '127.0.0.1:8812' } );
 
         expect( result.valid ).to.equal( true );
     } );
@@ -486,14 +486,14 @@ describe( 'QuestDB Storage — Unknown-Key Rejection', function () {
     } );
 
     it( 'flags \'illpUrl\' (typo) as an unknown property', function () {
-        const result = validate( { ...minimalValidConfig, illpUrl: 'localhost:9000' } );
+        const result = validate( { ...minimalValidConfig, illpUrl: '127.0.0.1:9000' } );
 
         expect( result.valid ).to.equal( false );
         expect( result.errors.some( ( e ) => e.includes( 'Unknown property \'illpUrl\'' ) ) ).to.equal( true );
     } );
 
     it( 'flags \'pgURL\' (case typo) as an unknown property', function () {
-        const result = validate( { ...minimalValidConfig, pgURL: 'localhost:8812' } );
+        const result = validate( { ...minimalValidConfig, pgURL: '127.0.0.1:8812' } );
 
         expect( result.valid ).to.equal( false );
         expect( result.errors.some( ( e ) => e.includes( 'Unknown property \'pgURL\'' ) ) ).to.equal( true );
@@ -515,8 +515,8 @@ describe( 'QuestDB Storage — Unknown-Key Rejection', function () {
 
     it( 'accepts a config using every advertised key', function () {
         const result = validate( {
-            ilpUrl: 'localhost:9000',
-            pgUrl: 'localhost:8812',
+            ilpUrl: '127.0.0.1:9000',
+            pgUrl: '127.0.0.1:8812',
             tablePrefix: 'plantA',
             flushMode: 'manual',
             idleFlushAfterMs: 5000,
@@ -568,7 +568,7 @@ describe( 'QuestDB Storage — DSL-Time Enforcement (flow.storage hook)', functi
     it( 'flow.storage() rejects an unknown config key', function () {
         expect( () => flow( 'questdb-unknown-key-test' ).storage( questdbAdapter, {
             ...minimalValidConfig,
-            illpUrl: 'localhost:9000'
+            illpUrl: '127.0.0.1:9000'
         } ) ).to.throw( /Unknown property 'illpUrl'/ );
     } );
 

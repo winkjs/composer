@@ -61,7 +61,7 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
     const makeStorage = ( options = {} ) => createQuestDBStorage(
         TEST_ASSET_CLASS,
         'pump',
-        { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', flushMode: 'manual', ...options },
+        { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', ...options },
         deps
     );
 

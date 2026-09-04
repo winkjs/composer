@@ -58,7 +58,7 @@
  *
  * Setup-time throws (ADR-018 fail-fast setup):
  * - `INVALID_CONFIG`         — the supplied configuration does not
- *   work. Five current sub-cases:
+ *   work. Seven current sub-cases:
  *     (a) required transport URL missing (`ilpUrl`, `pgUrl`);
  *     (b) PostgreSQL endpoint answered but rejected the connection
  *         — wrong credentials or a protocol-level refusal;
@@ -72,7 +72,16 @@
  *         of wedging the sender mid-row at runtime;
  *     (e) an insightType uses the reserved column name `assetId`.
  *         Composer writes that column itself, from the partition id.
- *         Checked at plan build in `persist-plan.js`.
+ *         Checked at plan build in `persist-plan.js`;
+ *     (f) `ilpUrl` or `pgUrl` names `localhost` (ADR-030). The name
+ *         can resolve to two addresses, `::1` and `127.0.0.1`, and
+ *         QuestDB may listen on only one. Refused before any socket
+ *         opens, at the schema (flow definition) and here (the env
+ *         fallback and direct callers). The message names the
+ *         literal to set;
+ *     (g) `ilpUrl` is an IPv6 literal. The client (4.2.0) splits the
+ *         address on its first colon and cannot read one. `pgUrl`
+ *         accepts `[::1]:8812`.
  *   Operator remediation: fix the supplied config or the relevant
  *   `QUESTDB_*` env var. The underlying transport error (sub-case b)
  *   is preserved on `err.cause` for diagnostics.
@@ -111,6 +120,12 @@
  *   see the mid-row recovery section below).
  *
  * Runtime console classification:
+ * - `ADDRESS_IS_NAME`  — `ilpUrl` or `pgUrl` is a name other than
+ *   `localhost`. One `logger.warn` line per field at setup, before any
+ *   socket opens (ADR-030). A console token, not an `err.code`: a name
+ *   is allowed and the adapter proceeds. The line tells the operator
+ *   that only a literal address is immune to a resolver that changes
+ *   its answer under a running process.
  * - `CALLBACK_FAILED`  — the user's `onDeliveryFailure` itself threw or
  *   rejected. The shared callback guard contains the fault (ADR-018).
  *   The adapter keeps writing and flushing, and each fault becomes one
@@ -210,6 +225,13 @@ import { ENV_VARS } from '../../env-vars.js';
 import { logger } from '../../logger/index.js';
 import { validators } from '../../utils/validate/index.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
+import {
+    classifyAddress,
+    formatAddress,
+    suggestLiteral,
+    localhostRefusalMessage,
+    nameWarningMessage
+} from '../../utils/address/index.js';
 import { buildPersistPlans } from './persist-plan.js';
 import { ensureTables } from './ensure-tables.js';
 import { assertColumnFacts } from './assert-columns.js';
@@ -310,6 +332,119 @@ const buildSenderConfig = function ( options ) {
 
     return config;
 };
+
+// ============================================================================
+// ADDRESS POLICY (ADR-030)
+// ============================================================================
+
+/**
+ * Builds a setup-time INVALID_CONFIG error in this adapter's message
+ * family.
+ *
+ * @param {string} message - The message clause, already in ADR-028 form
+ * @returns {Error} The classified error
+ */
+const invalidConfig = function ( message ) {
+    const err = new Error( `winkComposer/questdb: ${message}` );
+    err.code = 'INVALID_CONFIG';
+    return err;
+}; // invalidConfig()
+
+/**
+ * Schema validator for `ilpUrl`: non-empty, never `localhost`, and
+ * never an IPv6 literal, because the client (4.2.0) splits the address
+ * on its first colon and cannot read one. A value the grammar cannot
+ * read passes; the client reports its own error for it.
+ *
+ * @param {*} value - The configured value
+ * @returns {boolean} Whether the value is allowed
+ */
+const isAllowedIlpUrl = function ( value ) {
+    if ( !validators.nonEmptyString( value ) ) {
+        return false;
+    }
+    const address = classifyAddress( value, 'hostPort' );
+    return ( address.kind !== 'localhost' ) && ( address.family !== 6 );
+}; // isAllowedIlpUrl()
+
+/**
+ * Schema validator for `pgUrl`: non-empty and never `localhost`. An
+ * IPv6 literal is fine here; the PostgreSQL client takes a bare host.
+ *
+ * @param {*} value - The configured value
+ * @returns {boolean} Whether the value is allowed
+ */
+const isAllowedPgUrl = function ( value ) {
+    if ( !validators.nonEmptyString( value ) ) {
+        return false;
+    }
+    return classifyAddress( value, 'hostPort' ).kind !== 'localhost';
+}; // isAllowedPgUrl()
+
+/**
+ * Classifies one address and refuses `localhost`. The schema already
+ * refused it at flow definition; this call covers the environment
+ * fallback and direct callers, and carries the classified code.
+ *
+ * @param {string} field - The config key, for the message
+ * @param {string} value - The address as configured
+ * @param {string} envVar - The environment variable that also sets it
+ * @returns {Object} The classified address
+ * @throws {Error} INVALID_CONFIG when the host is `localhost`
+ */
+const assertNotLocalhost = function ( field, value, envVar ) {
+    const address = classifyAddress( value, 'hostPort' );
+    if ( address.kind === 'localhost' ) {
+        throw invalidConfig( localhostRefusalMessage( { field, address, envVar } ) );
+    }
+    return address;
+}; // assertNotLocalhost()
+
+/**
+ * Refuses an IPv6 literal for `ilpUrl`, naming the client limitation.
+ *
+ * @param {Object} address - The classified `ilpUrl`
+ * @throws {Error} INVALID_CONFIG when the host is an IPv6 literal
+ */
+const assertIlpNotIPv6 = function ( address ) {
+    if ( address.family === 6 ) {
+        throw invalidConfig(
+            `ilpUrl '${formatAddress( address )}' is refused [INVALID_CONFIG]: the QuestDB client (4.2.0) ` +
+            'splits the address on its first colon and cannot read an IPv6 literal; use an IPv4 ' +
+            `literal such as ${suggestLiteral( address )}`
+        );
+    }
+}; // assertIlpNotIPv6()
+
+/**
+ * Prints the one ADDRESS_IS_NAME line for a host that is a name.
+ *
+ * @param {string} field - The config key, for the message
+ * @param {Object} address - The classified address
+ */
+const warnIfName = function ( field, address ) {
+    if ( address.kind === 'name' ) {
+        logger.warn( `winkComposer/questdb: ${nameWarningMessage( { field, host: address.host } )}` );
+    }
+}; // warnIfName()
+
+/**
+ * The host and port handed to the PostgreSQL client. The parsed
+ * address is used when the grammar read it with a port, which is what
+ * lets `[::1]:8812` through. Otherwise the previous first-colon split
+ * stays, so pg reports its own error for a value composer cannot read.
+ *
+ * @param {string} pgUrl - The address as configured
+ * @param {Object} address - Its classification
+ * @returns {{host: string, port: number}} The connection target
+ */
+const pgConnectionTarget = function ( pgUrl, address ) {
+    if ( ( address.kind !== 'unparsed' ) && ( address.port !== undefined ) ) {
+        return { host: address.host, port: address.port };
+    }
+    const [ host, port ] = pgUrl.split( ':' );
+    return { host, port: parseInt( port, 10 ) };
+}; // pgConnectionTarget()
 
 // ============================================================================
 // STORAGE FACTORY
@@ -434,6 +569,16 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
         throw err;
     }
 
+    // Address policy (ADR-030), before any socket opens: `localhost`
+    // is refused, an IPv6 literal is refused for the ILP path, and a
+    // name gets one warning per field. See header sub-cases (f), (g)
+    // and the ADDRESS_IS_NAME console token.
+    const ilpAddress = assertNotLocalhost( 'ilpUrl', ilpUrl, 'QUESTDB_ILP_URL' );
+    const pgAddress = assertNotLocalhost( 'pgUrl', pgUrl, 'QUESTDB_PG_URL' );
+    assertIlpNotIPv6( ilpAddress );
+    warnIfName( 'ilpUrl', ilpAddress );
+    warnIfName( 'pgUrl', pgAddress );
+
     // Injectable dependencies with defaults
     const {
         SenderClass = Sender,
@@ -459,10 +604,10 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     } );
 
     // Ensure tables exist via PostgreSQL wire protocol
-    const [ pgHost, pgPort ] = pgUrl.split( ':' );
+    const { host: pgHost, port: pgPort } = pgConnectionTarget( pgUrl, pgAddress );
     const pgClient = new PgClientClass( {
         host: pgHost,
-        port: parseInt( pgPort, 10 ),
+        port: pgPort,
         database: ENV_VARS.questdbDatabase,
         user: ENV_VARS.questdbUser,
         password: ENV_VARS.questdbPassword
@@ -1066,17 +1211,21 @@ const configSchema = {
         'onWarning',
         'onDeliveryFailure'
     ],
+    // Both addresses refuse `localhost` at flow definition (ADR-030).
+    // The non-empty rule lives inside the validator, so one static
+    // error string covers every refusal.
     ilpUrl: {
         type: 'string',
         required: false,
-        minLength: 1,
-        error: 'ilpUrl must be a non-empty string (e.g., localhost:9000)'
+        validator: isAllowedIlpUrl,
+        error: 'ilpUrl must be host:port with a literal address or a name, never localhost and never ' +
+            'an IPv6 literal (the QuestDB client cannot read one); e.g., 127.0.0.1:9000'
     },
     pgUrl: {
         type: 'string',
         required: false,
-        minLength: 1,
-        error: 'pgUrl must be a non-empty string (e.g., localhost:8812)'
+        validator: isAllowedPgUrl,
+        error: 'pgUrl must be host:port with a literal address or a name, never localhost; e.g., 127.0.0.1:8812'
     },
     tablePrefix: {
         type: 'string',
@@ -1264,8 +1413,8 @@ const createStorage = function ( config ) {
  *       .assetClass( assetClassDef )   // wire-storages injects the slice
  *       .storage( questdbAdapter, {
  *           tablePrefix: 'myPrefix',
- *           ilpUrl: 'localhost:9000',
- *           pgUrl: 'localhost:8812'
+ *           ilpUrl: '127.0.0.1:9000',
+ *           pgUrl: '127.0.0.1:8812'
  *       } )
  *
  * @type {Object}

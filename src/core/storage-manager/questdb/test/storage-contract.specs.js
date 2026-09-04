@@ -81,7 +81,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -96,7 +96,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -113,7 +113,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -133,7 +133,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -152,7 +152,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -229,7 +229,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -250,8 +250,8 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 {
-                    ilpUrl: 'localhost:9000',
-                    pgUrl: 'localhost:8812',
+                    ilpUrl: '127.0.0.1:9000',
+                    pgUrl: '127.0.0.1:8812',
                     flushMode: 'manual',
                     autoFlushRows: 100  // explicit, so we can compute exact pressure
                 },
@@ -274,8 +274,8 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 {
-                    ilpUrl: 'localhost:9000',
-                    pgUrl: 'localhost:8812',
+                    ilpUrl: '127.0.0.1:9000',
+                    pgUrl: '127.0.0.1:8812',
                     flushMode: 'manual',
                     autoFlushRows: 100
                 },
@@ -298,8 +298,8 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                 testAssetClass,
                 'pump',
                 {
-                    ilpUrl: 'localhost:9000',
-                    pgUrl: 'localhost:8812',
+                    ilpUrl: '127.0.0.1:9000',
+                    pgUrl: '127.0.0.1:8812',
                     flushMode: 'auto',
                     autoFlushRows
                 },
@@ -339,8 +339,8 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
                     testAssetClass,
                     'pump',
                     {
-                        ilpUrl: 'localhost:9000',
-                        pgUrl: 'localhost:8812',
+                        ilpUrl: '127.0.0.1:9000',
+                        pgUrl: '127.0.0.1:8812',
                         flushMode: 'auto',
                         autoFlushRows,
                         idleFlushAfterMs,
@@ -374,7 +374,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -449,7 +449,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -470,7 +470,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -486,7 +486,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', flushMode: 'manual', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', autoFlushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -505,7 +505,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -526,7 +526,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -556,7 +556,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -586,7 +586,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', flushMode: 'manual', autoFlushRows },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', autoFlushRows },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -610,7 +610,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -682,7 +682,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -693,7 +693,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
@@ -704,7 +704,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: 'localhost:9000', pgUrl: 'localhost:8812' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass }
             );
 
