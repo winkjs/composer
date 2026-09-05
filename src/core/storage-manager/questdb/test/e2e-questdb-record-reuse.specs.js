@@ -190,8 +190,7 @@ describe( 'QuestDB E2E — record-reuse pattern through a real flow', function (
             .storage( questdbAdapter, {
                 ilpUrl: QUESTDB_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
-                tablePrefix: TABLE_PREFIX,
-                flushMode: 'auto'
+                tablePrefix: TABLE_PREFIX
             } )
             .assetId( 'partitionId' )
             .persistIf( 'persistEvents', ( _msg ) => true, {

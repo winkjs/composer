@@ -246,46 +246,39 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             await storage.shutdown();
         } );
 
-        it( 'increments after a successful write in manual mode', async function () {
+        // Pressure is the fill against the buffer ceiling (ADR-029). With
+        // flushRows 100 the ceiling is 1000, so one row reads 0.001.
+
+        it( 'climbs by one over the ceiling per accepted row', async function () {
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                {
-                    ilpUrl: '127.0.0.1:9000',
-                    pgUrl: '127.0.0.1:8812',
-                    flushMode: 'manual',
-                    autoFlushRows: 100  // explicit, so we can compute exact pressure
-                },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             expect( storage.getPressure() ).to.equal( 0 );
 
             storage.write( 'monitoring', { ts: 1000, temp: 25.5 }, 'p1' );
-            expect( storage.getPressure() ).to.equal( 0.01 );
+            expect( storage.getPressure() ).to.equal( 0.001 );
 
             storage.write( 'monitoring', { ts: 2000, temp: 26.0 }, 'p1' );
-            expect( storage.getPressure() ).to.equal( 0.02 );
+            expect( storage.getPressure() ).to.equal( 0.002 );
 
             await storage.shutdown();
         } );
 
-        it( 'resets to 0 after flush() in manual mode', async function () {
+        it( 'resets to 0 after flush()', async function () {
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                {
-                    ilpUrl: '127.0.0.1:9000',
-                    pgUrl: '127.0.0.1:8812',
-                    flushMode: 'manual',
-                    autoFlushRows: 100
-                },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
             storage.write( 'monitoring', { ts: 1000, temp: 25.5 }, 'p1' );
             storage.write( 'monitoring', { ts: 2000, temp: 26.0 }, 'p1' );
-            expect( storage.getPressure() ).to.equal( 0.02 );
+            expect( storage.getPressure() ).to.equal( 0.002 );
 
             await storage.flush();
             expect( storage.getPressure() ).to.equal( 0 );
@@ -293,77 +286,59 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             await storage.shutdown();
         } );
 
-        it( 'auto mode: counter resets at the autoFlushRows boundary (mirrors QuestDB internal flush)', async function () {
-            const autoFlushRows = 5;
+        it( 'the row trigger moves the rows out of the buffer: pressure falls once the flush settles', async function () {
+            // flushRows 5 gives a ceiling of 50.
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                {
-                    ilpUrl: '127.0.0.1:9000',
-                    pgUrl: '127.0.0.1:8812',
-                    flushMode: 'auto',
-                    autoFlushRows
-                },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 5 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
-            // Write autoFlushRows-1 rows: pressure climbs.
-            for ( let i = 0; i < autoFlushRows - 1; i += 1 ) {
+            // Four rows: pressure climbs.
+            for ( let i = 0; i < 4; i += 1 ) {
                 storage.write( 'monitoring', { ts: 1000 + i, temp: 25 + i }, 'p1' );
             }
-            expect( storage.getPressure() ).to.equal( ( autoFlushRows - 1 ) / autoFlushRows );
+            expect( storage.getPressure() ).to.equal( 0.08 );
 
-            // The autoFlushRows-th row crosses the boundary — counter resets.
+            // The fifth row starts a flush. Its rows are in flight, so they
+            // still read as pressure until the mock flush settles.
             storage.write( 'monitoring', { ts: 9000, temp: 30 }, 'p1' );
+            expect( mockSender.flush.calledOnce ).to.equal( true );
+            expect( storage.getPressure() ).to.equal( 0.1 );
+
+            await new Promise( ( resolve ) => setImmediate( resolve ) );
             expect( storage.getPressure() ).to.equal( 0 );
 
-            // Next row begins a fresh accumulation cycle.
+            // The next row begins a fresh accumulation.
             storage.write( 'monitoring', { ts: 10000, temp: 31 }, 'p1' );
-            expect( storage.getPressure() ).to.equal( 1 / autoFlushRows );
+            expect( storage.getPressure() ).to.equal( 0.02 );
 
             await storage.shutdown();
         } );
 
-        it( 'auto mode: counter self-heals via checkIdleFlush after idleFlushAfterMs of write-idle', async function () {
-            // This is the path where QuestDB's auto_flush_interval has silently
-            // flushed (we don't observe it) and our counter has drifted
-            // upward. The checkIdleFlush safety-net timer fires sender.flush()
-            // and resets bufferedRows to 0 — bounding the worst-case lag.
-            // (The autoFlushRows boundary case is covered separately above.)
-            const idleFlushAfterMs = 200;
-            const idleFlushCheckMs = 50;
-            const autoFlushRows = 100;  // large, so the boundary heuristic does not fire
-
+        it( 'the timer moves the rows out of the buffer on its own', async function () {
             const clock = sinon.useFakeTimers();
             try {
                 const storage = await createQuestDBStorage(
                     testAssetClass,
                     'pump',
-                    {
-                        ilpUrl: '127.0.0.1:9000',
-                        pgUrl: '127.0.0.1:8812',
-                        flushMode: 'auto',
-                        autoFlushRows,
-                        idleFlushAfterMs,
-                        idleFlushCheckMs
-                    },
+                    { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100, flushIntervalMs: 50 },
                     { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
-                // Write a few rows; pressure climbs but is well below the boundary.
                 storage.write( 'monitoring', { ts: 1000, temp: 25 }, 'p1' );
                 storage.write( 'monitoring', { ts: 2000, temp: 26 }, 'p1' );
-                expect( storage.getPressure() ).to.equal( 0.02 );
+                expect( storage.getPressure() ).to.equal( 0.002 );
 
-                // Advance past idleFlushAfterMs so the next checkIdleFlush tick fires sender.flush().
-                await clock.tickAsync( idleFlushAfterMs + idleFlushCheckMs );
+                await clock.tickAsync( 50 );
 
-                expect( mockSender.flush.called ).to.equal( true );
+                expect( mockSender.flush.calledOnce ).to.equal( true );
                 expect( storage.getPressure() ).to.equal( 0 );
 
-                // Subsequent writes start a fresh accumulation cycle.
+                // The next row begins a fresh accumulation.
                 storage.write( 'monitoring', { ts: 3000, temp: 27 }, 'p1' );
-                expect( storage.getPressure() ).to.equal( 0.01 );
+                expect( storage.getPressure() ).to.equal( 0.001 );
 
                 await storage.shutdown();
             } finally {
@@ -450,7 +425,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
@@ -471,7 +446,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
@@ -487,7 +462,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
@@ -506,7 +481,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
@@ -527,7 +502,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
@@ -557,7 +532,7 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
@@ -583,35 +558,39 @@ describe( 'QuestDB Storage Adapter — ADR-018 Contract Conformance', function (
         } );
 
         it( 'flips to yellow when pressure crosses HEALTH_PRESSURE_YELLOW_THRESHOLD (0.66)', async function () {
-            const autoFlushRows = 100;
+            // flushRows 100 gives a ceiling of 1000. The first flush hangs,
+            // so its 100 rows stay in flight and the single-flight guard
+            // holds every later engine flush. Rows collect until the
+            // pressure crosses 0.66.
+            mockSender.flush.returns( new Promise( () => undefined ) );
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', autoFlushRows },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 
-            // 65 writes: pressure 0.65 → still green.
-            for ( let i = 0; i < 65; i += 1 ) {
+            // 659 rows: pressure 0.659, still green.
+            for ( let i = 0; i < 659; i += 1 ) {
                 storage.write( 'monitoring', { ts: 1000 + i, temp: 25 + i }, 'p1' );
             }
             expect( storage.getHealth().status ).to.equal( 'green' );
 
-            // 66th write: pressure 0.66 → yellow (boundary inclusive).
+            // The 660th row: pressure 0.66, yellow (boundary inclusive).
             storage.write( 'monitoring', { ts: 9000, temp: 99 }, 'p1' );
             const health = storage.getHealth();
             expect( health.status ).to.equal( 'yellow' );
             expect( health.connected ).to.equal( true );
             expect( health.pressure ).to.equal( 0.66 );
 
-            await storage.shutdown();
+            await storage.shutdown( { timeout: 10 } ).catch( () => undefined );
         } );
 
         it( 'flips to red after shutdown (transport gone)', async function () {
             const storage = await createQuestDBStorage(
                 testAssetClass,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', autoFlushRows: 100 },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushRows: 100 },
                 { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
             );
 

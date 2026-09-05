@@ -8,8 +8,8 @@
  * cost only its own output, never the adapter. Without the guard, a
  * throw inside the callback surfaces as an unhandled rejection from
  * the flush chain, and Node 15+ ends the process on that. The specs
- * here drive the three trigger paths — the at-flush site inside the
- * persist plan, the idle-flush timer, and the mid-row recovery
+ * here drive the three trigger paths — the row-append site inside the
+ * persist plan, the flush timer, and the mid-row recovery
  * flush — with a throwing and an async-rejecting handler each.
  *
  * The final pin guards ADR-027's exclusion: a throwing `onWarning`
@@ -48,8 +48,8 @@ const settle = function () {
     return new Promise( ( resolve ) => setImmediate( resolve ) );
 }; // settle()
 
-// Poll until `condition()` is true or ~500ms elapse; the idle-flush
-// timer in these tests fires within a few ticks.
+// Poll until `condition()` is true or ~500ms elapse; the flush timer
+// in these tests fires within a few ticks.
 const waitFor = async function ( condition ) {
     for ( let i = 0; i < 50 && !condition(); i += 1 ) {
         // eslint-disable-next-line no-await-in-loop -- wait-for-condition poll
@@ -68,15 +68,14 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
         {
             ilpUrl: '127.0.0.1:9000',
             pgUrl: '127.0.0.1:8812',
-            flushMode: 'manual',
-            autoFlushRows: 10,
+            flushRows: 10,
             ...options
         },
         deps
     );
 
-    // Idle-flush timings for the tests that need the timer to fire.
-    const IDLE_OPTS = { idleFlushAfterMs: 1, idleFlushCheckMs: 10 };
+    // A short flush timer for the tests that need it to fire.
+    const TIMER_OPTS = { flushIntervalMs: 10 };
 
     // Every fault the guard contains must ALSO not leak as an
     // unhandled rejection — that leak is the process-killing failure
@@ -109,7 +108,7 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
         sinon.restore();
     } );
 
-    describe( 'at-flush site (persist plan)', function () {
+    describe( 'row-append site (persist plan)', function () {
 
         it( 'contains a throwing handler; writes keep succeeding', async function () {
             // resetBehavior first: the mock's default `returnsThis()` takes
@@ -160,13 +159,13 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
 
     } );
 
-    describe( 'idle-flush site', function () {
+    describe( 'timer flush site', function () {
 
         it( 'contains a throwing handler; the timer and later writes survive', async function () {
             const idleError = new Error( 'idle boom' );
             mockSender.flush.onFirstCall().rejects( idleError );
             const onDeliveryFailure = sinon.stub().throws( new Error( 'handler down' ) );
-            const storage = await makeStorage( { ...IDLE_OPTS, onDeliveryFailure } );
+            const storage = await makeStorage( { ...TIMER_OPTS, onDeliveryFailure } );
             const spy = sinon.spy( console, 'error' );
 
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
@@ -174,9 +173,9 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             await settle();
 
             // Two-argument passthrough at this site: the raw error and
-            // the idle-flush context reach the handler unchanged.
+            // the timer flush context reach the handler unchanged.
             expect( onDeliveryFailure.firstCall.args[ 0 ] ).to.equal( idleError );
-            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { idleFlush: true, rowsLost: 1 } );
+            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { trigger: 'timer', rowsLost: 1, abandoned: false } );
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 1 );
             expect( lines[ 0 ] ).to.contain( 'handler down' );
@@ -192,7 +191,7 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             const onDeliveryFailure = sinon.stub().callsFake(
                 () => Promise.reject( new Error( 'async handler down' ) )
             );
-            const storage = await makeStorage( { ...IDLE_OPTS, onDeliveryFailure } );
+            const storage = await makeStorage( { ...TIMER_OPTS, onDeliveryFailure } );
             const spy = sinon.spy( console, 'error' );
 
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
@@ -214,7 +213,7 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
                 fired = true;
                 throw null;
             };
-            const storage = await makeStorage( { ...IDLE_OPTS, onDeliveryFailure } );
+            const storage = await makeStorage( { ...TIMER_OPTS, onDeliveryFailure } );
             const spy = sinon.spy( console, 'error' );
 
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
@@ -249,7 +248,9 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             // context to the handler exactly as the unguarded call did.
             expect( onDeliveryFailure.calledOnce ).to.equal( true );
             expect( onDeliveryFailure.firstCall.args[ 0 ] ).to.equal( flushError );
-            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { recovery: true } );
+            // The first write failed mid-row with nothing buffered, so the
+            // recovery flush carried no completed rows.
+            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { trigger: 'recovery', rowsLost: 0, abandoned: false } );
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 1 );
             expect( lines[ 0 ] ).to.contain( 'handler down' );

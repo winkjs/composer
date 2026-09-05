@@ -109,7 +109,7 @@ const QDB_ASSET_CLASS = {
     }
 };
 const QDB_MSG = { ts: 1735500000000, temp: 25.5 };
-const QDB_OPTS = { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'auto' };
+const QDB_OPTS = { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' };
 
 const HARNESS_TEMPLATE = {
     seed: 7,
@@ -422,7 +422,7 @@ const SITES = [
     },
 
     {
-        key: 'questdb storage — onDeliveryFailure (idle-flush site)',
+        key: 'questdb storage — onDeliveryFailure (timer flush site)',
         callbackName: 'onDeliveryFailure',
         run: async function ( badCallback ) {
             const mockSender = makeMockSender();
@@ -431,9 +431,7 @@ const SITES = [
                 QDB_ASSET_CLASS, 'pump',
                 {
                     ...QDB_OPTS,
-                    flushMode: 'manual',
-                    idleFlushAfterMs: 1,
-                    idleFlushCheckMs: 10,
+                    flushIntervalMs: 10,
                     onDeliveryFailure: badCallback
                 },
                 makeMockDeps( mockSender )

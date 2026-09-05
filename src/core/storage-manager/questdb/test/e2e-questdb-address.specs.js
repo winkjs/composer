@@ -163,8 +163,7 @@ describe( 'QuestDB E2E — address family (ADR-030)', function () {
         // the IPv4 literal (the client cannot read an IPv6 one).
         const storage = await createQuestDBStorage( ASSET_CLASS, tablePrefix, {
             ilpUrl: QUESTDB_ILP_URL,
-            pgUrl: `[::1]:${PG_PORT}`,
-            flushMode: 'manual'
+            pgUrl: `[::1]:${PG_PORT}`
         } );
         expect( storage.write( 'samples', { ts: Date.now(), value: 1.5 }, 'p1' ) ).to.deep.equal( { ok: true } );
         await storage.shutdown();

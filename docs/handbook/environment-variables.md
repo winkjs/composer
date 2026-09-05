@@ -100,11 +100,11 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 |----------|---------|--------------|
 | `QUESTDB_ILP_URL` | `127.0.0.1:9000` | Write path — ILP over HTTP; `host:port`, a literal address or a name, never `localhost`, no IPv6 literal |
 | `QUESTDB_PG_URL` | `127.0.0.1:8812` | Read and table-creation path — Postgres wire; `host:port`, a literal address or a name, never `localhost` |
-| `QUESTDB_FLUSH_MODE` | `auto` | `auto` or `manual` |
-| `QUESTDB_IDLE_FLUSH_AFTER_MS` | `5000` | Idle time before a manual-mode flush |
-| `QUESTDB_IDLE_FLUSH_CHECK_MS` | `1000` | How often the idle timer checks |
-| `QUESTDB_AUTO_FLUSH_ROWS` | unset | Rows buffered before an auto-flush (client default when unset) |
-| `QUESTDB_AUTO_FLUSH_INTERVAL_MS` | unset | Time before an auto-flush (client default when unset) |
+| `QUESTDB_FLUSH_MODE` | unset | Deprecated, removed in 0.8.0. Accepted and ignored: composer owns every flush |
+| `QUESTDB_IDLE_FLUSH_AFTER_MS` | unset | Deprecated, removed in 0.8.0. Accepted and ignored |
+| `QUESTDB_IDLE_FLUSH_CHECK_MS` | unset | Deprecated, removed in 0.8.0. Maps to `QUESTDB_FLUSH_INTERVAL_MS` |
+| `QUESTDB_AUTO_FLUSH_ROWS` | unset | Deprecated, removed in 0.8.0. Maps to `QUESTDB_FLUSH_ROWS` |
+| `QUESTDB_AUTO_FLUSH_INTERVAL_MS` | unset | Deprecated, removed in 0.8.0. Accepted and ignored |
 | `QUESTDB_MAX_BUF_SIZE` | unset | ILP send-buffer size, bytes (client default when unset) |
 | `QUESTDB_RETRY_TIMEOUT` | unset | Write-retry timeout (client default when unset) |
 | `QUESTDB_FLUSH_ROWS` | unset | Rows that start a send; the adapter uses 5000 when unset |

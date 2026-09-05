@@ -75,21 +75,10 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
         let mockSender;
         let deps;
 
-        // The unhandledRejection listener removes itself when the expected
-        // rejection arrives; when a test fails by timeout instead, it must
-        // not stay installed for the rest of the run (m9).
-        let strayRejectionListener = null;
-        afterEach( function () {
-            if ( strayRejectionListener ) {
-                process.removeListener( 'unhandledRejection', strayRejectionListener );
-                strayRejectionListener = null;
-            }
-        } );
-
         const makeStorage = ( options = {} ) => createQuestDBStorage(
             TEST_ASSET_CLASS,
             'pump',
-            { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'auto', ...options },
+            { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', ...options },
             deps
         );
 
@@ -117,10 +106,11 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
         } );
 
         it( 'keeps the recovery flush\'s rows visible as pressure until it settles', async function () {
-            const storage = await makeStorage( { autoFlushRows: 10 } );
+            // flushRows 10 gives a ceiling of 100, so one row reads 0.01.
+            const storage = await makeStorage( { flushRows: 10 } );
 
             expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).ok ).to.equal( true );
-            expect( storage.getPressure() ).to.equal( 0.1 );
+            expect( storage.getPressure() ).to.equal( 0.01 );
 
             // Throw only for the poison value, so the good write above is untouched.
             mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'boom' ) );
@@ -130,7 +120,7 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
             // in-flight recovery flush. Until that flush settles, the row
             // is undelivered and must still read as pressure — making it
             // vanish here is what hid recovery rows from shutdown.
-            expect( storage.getPressure() ).to.equal( 0.1 );
+            expect( storage.getPressure() ).to.equal( 0.01 );
 
             // The mock flush resolves on the next microtask: delivered,
             // and only then does pressure drop.
@@ -144,45 +134,38 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
             const storage = await makeStorage( {
                 onDeliveryFailure: ( err, ctx ) => failures.push( { err, ctx } )
             } );
+            // One good row is buffered, then a poison value throws mid-row.
+            // The recovery flush carries that one good row and fails.
+            expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).ok ).to.equal( true );
             mockSender.flush.rejects( flushError );
-            mockSender.floatColumn.onFirstCall().throws( new Error( 'boom' ) );
+            mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'boom' ) );
 
-            storage.write( 'monitoring', GOOD_MSG, 'p1' );
+            storage.write( 'monitoring', { ...GOOD_MSG, temp: 99 }, 'p1' );
             // The rejection is delivered asynchronously.
             await new Promise( ( resolve ) => setImmediate( resolve ) );
 
             expect( failures ).to.have.lengthOf( 1 );
             expect( failures[ 0 ].err ).to.equal( flushError );
-            expect( failures[ 0 ].ctx ).to.deep.equal( { recovery: true } );
+            expect( failures[ 0 ].ctx ).to.deep.equal( { trigger: 'recovery', rowsLost: 1, abandoned: false } );
         } );
 
-        it( 'throws DELIVERY_FAILED as an unhandled rejection when the recovery flush fails with no onDeliveryFailure', function ( done ) {
-            // Same capture pattern as persist-plan.specs.js: the throw inside
-            // the Promise chain surfaces as an unhandled rejection; the settled
-            // flag guards against unrelated stray rejections.
-            const flushError = new Error( 'ECONNREFUSED' );
-            let settled = false;
-            const onUnhandledRejection = ( err ) => {
-                if ( settled ) return;
-                if ( !err || err.code !== 'DELIVERY_FAILED' ) return;
-                settled = true;
-                process.removeListener( 'unhandledRejection', onUnhandledRejection );
-                try {
-                    expect( err.message ).to.contain( 'recovery flush failed' );
-                    expect( err.cause ).to.equal( flushError );
-                    done();
-                } catch ( assertErr ) {
-                    done( assertErr );
-                }
-            };
-            process.on( 'unhandledRejection', onUnhandledRejection );
-            strayRejectionListener = onUnhandledRejection;
+        it( 'prints one DELIVERY_FAILED line when the recovery flush fails with no onDeliveryFailure', async function () {
+            // The process keeps running: an unattended deployment reports
+            // a lost batch, it does not stop on it (ADR-029).
+            const storage = await makeStorage();
+            const errorSpy = sinon.spy( console, 'error' );
+            expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).ok ).to.equal( true );
+            mockSender.flush.rejects( new Error( 'ECONNREFUSED' ) );
+            mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'boom' ) );
 
-            makeStorage().then( ( storage ) => {
-                mockSender.flush.rejects( flushError );
-                mockSender.floatColumn.onFirstCall().throws( new Error( 'boom' ) );
-                storage.write( 'monitoring', GOOD_MSG, 'p1' );
-            } );
+            storage.write( 'monitoring', { ...GOOD_MSG, temp: 99 }, 'p1' );
+            await new Promise( ( resolve ) => setImmediate( resolve ) );
+
+            const lines = errorSpy.getCalls()
+                .map( ( call ) => String( call.args[ 0 ] ) )
+                .filter( ( line ) => line.includes( '[DELIVERY_FAILED]' ) );
+            expect( lines ).to.have.lengthOf( 1 );
+            expect( lines[ 0 ] ).to.include( 'flush failed, 1 row(s) lost [DELIVERY_FAILED]: ECONNREFUSED' );
         } );
 
         it( 'never throws from write() even when recovery itself fails (defensive wrap)', async function () {
@@ -220,7 +203,6 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
                     // teardown note at the end of this test).
                     ilpUrl: '127.0.0.1:1',
                     pgUrl: '127.0.0.1:8812',
-                    flushMode: 'manual',
                     retryTimeout: 1
                 },
                 {
@@ -246,8 +228,8 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
 
             // The body runs inside try/finally (B2): if any assertion below
             // fails, the teardown MUST still run — a skipped teardown leaves
-            // a buffered row for the idle-flush timer to send against the
-            // dead address ~5s later, and its infinite retries hold the
+            // a buffered row for the flush timer to send against the dead
+            // address within a second, and its infinite retries hold the
             // whole mocha process open forever (reproduced in a standalone
             // script during the incident). A failing test must fail loudly,
             // not hang CI.
@@ -277,13 +259,13 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
                 // cause). storage.shutdown() would flush the buffered row
                 // against the dead address and hang: the client's retry loop
                 // never settles. Skipping shutdown alone is not enough either
-                // — the adapter's idle-flush timer stays alive and fires the
-                // SAME send ~5s later, from inside whatever test is then
-                // running. So: empty the client buffer first (public reset())
-                // — the idle flush then finds nothing to send, settles as a
-                // no-op, and zeroes the adapter's counter — then close the
-                // transport. Real shutdown() becomes safe against a dead
-                // transport only when it is time-bounded (the Kind-4 work).
+                // — the adapter's flush timer stays alive and fires the
+                // SAME send within a second, from inside whatever test is
+                // then running. So: empty the client buffer first (public
+                // reset()) — the timer flush then finds nothing to send,
+                // settles as a no-op, and zeroes the adapter's counter — then
+                // close the transport. Real shutdown() becomes safe against a
+                // dead transport only when it is time-bounded (the Kind-4 work).
                 rawSender.reset();
                 await rawSender.close();
             }

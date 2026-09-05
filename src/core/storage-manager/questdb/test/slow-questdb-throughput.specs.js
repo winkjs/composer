@@ -24,7 +24,7 @@
  *      harness drives load; assert the counter rises (proving the
  *      buffer fills under load), never exceeds 1.0 (the contract
  *      bound), and resets at least once (proving auto-flush at the
- *      `autoFlushRows` boundary cleared the counter).
+ *      `flushRows` boundary cleared the counter).
  *
  * Requires QuestDB and Mosquitto running via the repo's
  * `docker-compose.yml`. Tests skip cleanly if QuestDB is not
@@ -239,9 +239,8 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
                 ilpUrl: QUESTDB_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix,
-                flushMode: 'auto',
-                autoFlushRows: 5000,
-                autoFlushIntervalMs: 600000,
+                flushRows: 5000,
+                flushIntervalMs: 600000,
                 onWarning: function ( msg ) {
                     warnings.push( msg );
                 },
@@ -325,7 +324,7 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
         // 1 ms ask is clamped to ~4 ms by Node's timer floor; with
         // 2 000 messages that's an ~8 s run, plenty of sampling
         // headroom and far below the 180 s test budget.
-        const autoFlushRows = 100;
+        const flushRows = 100;
         const messageCount = 2000;     // 20 boundaries crossed
         const intervalMs = 1;
         const tablePrefix = `${RUN_PREFIX}_pressure`;
@@ -343,9 +342,8 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
                 ilpUrl: QUESTDB_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix,
-                flushMode: 'auto',
-                autoFlushRows,
-                autoFlushIntervalMs: 600000
+                flushRows,
+                flushIntervalMs: 600000
             } )
             .assetId( 'partitionId' )
             .persistIf( 'persist', ( _msg ) => true,
@@ -380,7 +378,7 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
         console.log( `    samples taken:      ${samples.length}` );
         console.log( `    pressure min:       ${minPressure.toFixed( 3 )}` );
         console.log( `    pressure max:       ${maxPressure.toFixed( 3 )} (sample #${sampleAtMax})` );
-        console.log( `    autoFlushRows:      ${autoFlushRows}` );
+        console.log( `    flushRows:          ${flushRows}` );
 
         // Hard assertions:
         // 1. Pressure rose under load (proving the counter actually
@@ -388,12 +386,12 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
         expect( maxPressure, 'pressure must rise under load' ).to.be.greaterThan( 0 );
 
         // 2. Pressure never exceeded 1.0 — the documented bound
-        //    (`getPressure()` is `bufferedRows / autoFlushRows`,
+        //    (`getPressure()` is the fill against the buffer ceiling,
         //    clamped to 1.0 in the adapter).
         expect( maxPressure, 'pressure must not exceed 1.0' ).to.be.at.most( 1.0 );
 
-        // 3. Pressure reset at least once during the run (auto-flush
-        //    at the boundary cleared the buffered counter). With
+        // 3. Pressure reset at least once during the run (the row
+        //    trigger at the boundary cleared the buffered counter). With
         //    50 k messages and a 1 k boundary, we expect ~50 resets.
         //    A near-zero minimum proves at least one was sampled.
         expect( minPressure, 'pressure must reset after auto-flush' ).to.be.at.most( 0.1 );

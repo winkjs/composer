@@ -268,8 +268,7 @@ describe( 'QuestDB E2E Tests', function () {
                 currentPrefix,
                 {
                     ilpUrl: QUESTDB_ILP_URL,
-                    pgUrl: QUESTDB_PG_URL,
-                    flushMode: 'manual'
+                    pgUrl: QUESTDB_PG_URL
                 }
             );
 
@@ -313,8 +312,7 @@ describe( 'QuestDB E2E Tests', function () {
                 currentPrefix,
                 {
                     ilpUrl: QUESTDB_ILP_URL,
-                    pgUrl: QUESTDB_PG_URL,
-                    flushMode: 'manual'
+                    pgUrl: QUESTDB_PG_URL
                 }
             );
 
@@ -374,8 +372,7 @@ describe( 'QuestDB E2E Tests', function () {
                 currentPrefix,
                 {
                     ilpUrl: QUESTDB_ILP_URL,
-                    pgUrl: QUESTDB_PG_URL,
-                    flushMode: 'manual'
+                    pgUrl: QUESTDB_PG_URL
                 }
             );
 
@@ -417,7 +414,6 @@ describe( 'QuestDB E2E Tests', function () {
                 {
                     ilpUrl: QUESTDB_ILP_URL,
                     pgUrl: QUESTDB_PG_URL,
-                    flushMode: 'manual',
                     onWarning
                 }
             );
@@ -480,9 +476,7 @@ describe( 'QuestDB E2E Tests', function () {
                 {
                     ilpUrl: QUESTDB_ILP_URL,
                     pgUrl: QUESTDB_PG_URL,
-                    flushMode: 'auto',
-                    autoFlushRows: 1,  // Flush after every row for testing
-                    autoFlushIntervalMs: 100
+                    flushRows: 1  // every row starts a flush
                 }
             );
 
@@ -497,8 +491,8 @@ describe( 'QuestDB E2E Tests', function () {
                 mode: 'auto-test'
             }, 'auto-sensor' );
 
-            // Don't call flush - let auto-flush handle it
-            // Wait a bit longer for auto-flush to trigger
+            // No flush() call: the row trigger starts the send.
+            // Wait for the row to land.
             const found = await waitForRows( pgClient, `${autoPrefix}_monitoring`, 1, 10000 );
             expect( found ).to.equal( true );
         } );

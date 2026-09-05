@@ -70,7 +70,7 @@ const SINKS = [
             const storage = await createQuestDBStorage(
                 ASSET_CLASS,
                 'pump',
-                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'auto' },
+                { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' },
                 makeMockDeps( makeMockSender() )
             );
             const result = storage.write( 'monitoring', record, 'asset1' );

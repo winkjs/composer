@@ -21,98 +21,37 @@ describe( 'QuestDB Storage Adapter', function () {
 
     describe( 'buildSenderConfig', function () {
 
-        it( 'should build base HTTP config with address', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'auto'
-            } );
+        // The client's own flush trigger is always off (ADR-029): composer
+        // starts every flush itself.
 
-            expect( config ).to.include( 'http::addr=127.0.0.1:9000;' );
+        it( 'builds the HTTP address and turns the client flush trigger off', function () {
+            const config = buildSenderConfig( { ilpUrl: '127.0.0.1:9000' } );
+
+            expect( config ).to.equal( 'http::addr=127.0.0.1:9000;auto_flush=off;' );
         } );
 
-        it( 'should not add auto_flush=off in auto mode', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'auto'
-            } );
-
-            expect( config ).to.not.include( 'auto_flush=off' );
-        } );
-
-        it( 'should add auto_flush=off in manual mode', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'manual'
-            } );
-
-            expect( config ).to.include( 'auto_flush=off;' );
-        } );
-
-        it( 'should add auto_flush_rows when provided in auto mode', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'auto',
-                autoFlushRows: 5000
-            } );
-
-            expect( config ).to.include( 'auto_flush_rows=5000;' );
-        } );
-
-        it( 'should add auto_flush_interval when provided in auto mode', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'auto',
-                autoFlushIntervalMs: 2000
-            } );
-
-            expect( config ).to.include( 'auto_flush_interval=2000;' );
-        } );
-
-        it( 'should not add auto_flush_rows in manual mode', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'manual',
-                autoFlushRows: 5000
-            } );
-
-            expect( config ).to.not.include( 'auto_flush_rows' );
-        } );
-
-        it( 'should add init_buf_size when maxBufSize provided', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'auto',
-                maxBufSize: 1048576
-            } );
+        it( 'adds init_buf_size when maxBufSize is given', function () {
+            const config = buildSenderConfig( { ilpUrl: '127.0.0.1:9000', maxBufSize: 1048576 } );
 
             expect( config ).to.include( 'init_buf_size=1048576;' );
         } );
 
-        it( 'should add retry_timeout when retryTimeout provided', function () {
-            const config = buildSenderConfig( {
-                ilpUrl: '127.0.0.1:9000',
-                flushMode: 'auto',
-                retryTimeout: 30000
-            } );
+        it( 'adds retry_timeout when retryTimeout is given', function () {
+            const config = buildSenderConfig( { ilpUrl: '127.0.0.1:9000', retryTimeout: 30000 } );
 
             expect( config ).to.include( 'retry_timeout=30000;' );
         } );
 
-        it( 'should combine all options correctly', function () {
+        it( 'combines every setting in a fixed order', function () {
             const config = buildSenderConfig( {
                 ilpUrl: 'questdb.example.com:9000',
-                flushMode: 'auto',
-                autoFlushRows: 10000,
-                autoFlushIntervalMs: 5000,
                 maxBufSize: 2097152,
                 retryTimeout: 60000
             } );
 
-            expect( config ).to.include( 'http::addr=questdb.example.com:9000;' );
-            expect( config ).to.include( 'auto_flush_rows=10000;' );
-            expect( config ).to.include( 'auto_flush_interval=5000;' );
-            expect( config ).to.include( 'init_buf_size=2097152;' );
-            expect( config ).to.include( 'retry_timeout=60000;' );
+            expect( config ).to.equal(
+                'http::addr=questdb.example.com:9000;auto_flush=off;init_buf_size=2097152;retry_timeout=60000;'
+            );
         } );
 
     } );
@@ -127,7 +66,6 @@ describe( 'QuestDB Storage Adapter', function () {
         let mockPgClient;
         let MockSenderClass;
         let MockPgClientClass;
-        let clock;
 
         const testAssetClass = {
             name: 'pump',
@@ -146,8 +84,7 @@ describe( 'QuestDB Storage Adapter', function () {
 
         const defaultOptions = {
             ilpUrl: '127.0.0.1:9000',
-            pgUrl: '127.0.0.1:8812',
-            flushMode: 'auto'
+            pgUrl: '127.0.0.1:8812'
         };
 
         beforeEach( function () {
@@ -183,10 +120,6 @@ describe( 'QuestDB Storage Adapter', function () {
         } );
 
         afterEach( function () {
-            if ( clock ) {
-                clock.restore();
-                clock = null;
-            }
             sinon.restore();
         } );
 
@@ -247,7 +180,7 @@ describe( 'QuestDB Storage Adapter', function () {
             } );
 
             it( 'should use ENV_VARS defaults when config fields omitted', async function () {
-                // Pass only assetClass-related config, omit ilpUrl/pgUrl/flushMode
+                // Pass an empty config: ilpUrl and pgUrl come from ENV_VARS
                 const storage = await createQuestDBStorage(
                     testAssetClass,
                     'pump',
@@ -444,28 +377,11 @@ describe( 'QuestDB Storage Adapter', function () {
 
         describe( 'flush()', function () {
 
-            it( 'should be no-op in auto mode', async function () {
+            it( 'should flush when there are pending rows', async function () {
                 const storage = await createQuestDBStorage(
                     testAssetClass,
                     'pump',
-                    { ...defaultOptions, flushMode: 'auto' },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
-                );
-
-                storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
-                await storage.flush();
-
-                // flush() should not call sender.flush() in auto mode
-                expect( mockSender.flush.called ).to.equal( false );
-
-                await storage.shutdown();
-            } );
-
-            it( 'should flush in manual mode when there are pending rows', async function () {
-                const storage = await createQuestDBStorage(
-                    testAssetClass,
-                    'pump',
-                    { ...defaultOptions, flushMode: 'manual' },
+                    defaultOptions,
                     { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
@@ -477,11 +393,11 @@ describe( 'QuestDB Storage Adapter', function () {
                 await storage.shutdown();
             } );
 
-            it( 'should not flush in manual mode when no pending rows', async function () {
+            it( 'should not flush when no pending rows', async function () {
                 const storage = await createQuestDBStorage(
                     testAssetClass,
                     'pump',
-                    { ...defaultOptions, flushMode: 'manual' },
+                    defaultOptions,
                     { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
@@ -497,7 +413,7 @@ describe( 'QuestDB Storage Adapter', function () {
                 const storage = await createQuestDBStorage(
                     testAssetClass,
                     'pump',
-                    { ...defaultOptions, flushMode: 'manual' },
+                    defaultOptions,
                     { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
@@ -535,7 +451,7 @@ describe( 'QuestDB Storage Adapter', function () {
                 const storage = await createQuestDBStorage(
                     testAssetClass,
                     'pump',
-                    { ...defaultOptions, flushMode: 'manual' },
+                    defaultOptions,
                     { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
@@ -552,7 +468,7 @@ describe( 'QuestDB Storage Adapter', function () {
                 const storage = await createQuestDBStorage(
                     testAssetClass,
                     'pump',
-                    { ...defaultOptions, flushMode: 'manual' },
+                    defaultOptions,
                     { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
                 );
 
@@ -572,158 +488,8 @@ describe( 'QuestDB Storage Adapter', function () {
 
         } );
 
-        // --------------------------------------------------------------------
-        // Manual flush mode with idle timer
-        // --------------------------------------------------------------------
-
-        describe( 'manual flush mode', function () {
-
-            it( 'should start idle timer in auto mode as safety net', async function () {
-                // QuestDB's auto_flush_interval only checks elapsed time when NEW data is added.
-                // If no more data arrives, the buffer sits indefinitely. Our idle timer provides
-                // a safety net for the "data stopped flowing" case in both auto and manual modes.
-                clock = sinon.useFakeTimers();
-
-                const storage = await createQuestDBStorage(
-                    testAssetClass,
-                    'pump',
-                    {
-                        ...defaultOptions,
-                        flushMode: 'auto',
-                        idleFlushAfterMs: 5000,
-                        idleFlushCheckMs: 1000
-                    },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
-                );
-
-                storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
-
-                // Advance time past idle threshold (async to handle async interval callback)
-                await clock.tickAsync( 6000 );
-
-                // Idle flush should have been triggered even in auto mode
-                expect( mockSender.flush.calledOnce ).to.equal( true );
-
-                await storage.shutdown();
-            } );
-
-            it( 'should flush after idle timeout in manual mode', async function () {
-                clock = sinon.useFakeTimers();
-
-                const storage = await createQuestDBStorage(
-                    testAssetClass,
-                    'pump',
-                    {
-                        ...defaultOptions,
-                        flushMode: 'manual',
-                        idleFlushAfterMs: 5000,
-                        idleFlushCheckMs: 1000
-                    },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
-                );
-
-                storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
-
-                // Advance time past idle threshold (async to handle async interval callback)
-                await clock.tickAsync( 6000 );
-
-                // Idle flush should have been triggered
-                expect( mockSender.flush.calledOnce ).to.equal( true );
-
-                await storage.shutdown();
-            } );
-
-            it( 'should not flush if not idle long enough', async function () {
-                clock = sinon.useFakeTimers();
-
-                const storage = await createQuestDBStorage(
-                    testAssetClass,
-                    'pump',
-                    {
-                        ...defaultOptions,
-                        flushMode: 'manual',
-                        idleFlushAfterMs: 5000,
-                        idleFlushCheckMs: 1000
-                    },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
-                );
-
-                storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
-
-                // Advance time but not past idle threshold
-                clock.tick( 3000 );
-
-                expect( mockSender.flush.called ).to.equal( false );
-
-                await storage.shutdown();
-            } );
-
-            it( 'should reset idle timer on each write', async function () {
-                clock = sinon.useFakeTimers();
-
-                const storage = await createQuestDBStorage(
-                    testAssetClass,
-                    'pump',
-                    {
-                        ...defaultOptions,
-                        flushMode: 'manual',
-                        idleFlushAfterMs: 5000,
-                        idleFlushCheckMs: 1000
-                    },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
-                );
-
-                storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
-                await clock.tickAsync( 3000 );
-
-                storage.write( 'monitoring', { ts: 2000, temp: 21.0, pressure: 91.0 }, 'p1' );
-                await clock.tickAsync( 3000 );
-
-                // Should not have flushed yet (each write resets the idle time)
-                expect( mockSender.flush.called ).to.equal( false );
-
-                // Now wait for full idle period
-                await clock.tickAsync( 3000 );
-
-                expect( mockSender.flush.calledOnce ).to.equal( true );
-
-                await storage.shutdown();
-            } );
-
-            it( 'should handle idle flush failure gracefully', async function () {
-                clock = sinon.useFakeTimers();
-
-                // Make flush fail
-                mockSender.flush.rejects( new Error( 'Network error' ) );
-
-                const storage = await createQuestDBStorage(
-                    testAssetClass,
-                    'pump',
-                    {
-                        ...defaultOptions,
-                        flushMode: 'manual',
-                        idleFlushAfterMs: 5000,
-                        idleFlushCheckMs: 1000
-                    },
-                    { SenderClass: MockSenderClass, PgClientClass: MockPgClientClass, probeFn: PASSING_PROBE }
-                );
-
-                storage.write( 'monitoring', { ts: 1000, temp: 20.0, pressure: 90.0 }, 'p1' );
-
-                // Advance time past idle threshold - should attempt flush and fail
-                await clock.tickAsync( 6000 );
-
-                // Flush was attempted despite error
-                expect( mockSender.flush.called ).to.equal( true );
-
-                // The idle failure was logged and swallowed (retry next
-                // tick). Let the connection "recover" so the final flush
-                // delivers the buffered row and shutdown resolves cleanly.
-                mockSender.flush.resolves();
-                await storage.shutdown();
-            } );
-
-        } );
+        // The flush timer and the row trigger are pinned in
+        // flush-engine.specs.js (ADR-029).
 
         // --------------------------------------------------------------------
         // Asset class without insightTypes

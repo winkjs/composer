@@ -466,11 +466,11 @@ flow('pipeline')
 | `ilpUrl` | string | `127.0.0.1:9000` | ILP endpoint for writes (`host:port`). A literal address or a name, never `localhost`. No IPv6 literal: the QuestDB client cannot read one |
 | `pgUrl` | string | `127.0.0.1:8812` | PostgreSQL endpoint for table creation (`host:port`). A literal address or a name, never `localhost`. `[::1]:8812` is accepted |
 | `tablePrefix` | string | asset class name | Prefix for table names (`{tablePrefix}_{insightType}`) |
-| `flushMode` | string | `'auto'` | `'auto'` lets the client flush on a row or time trigger; `'manual'` flushes on an idle timer |
-| `idleFlushAfterMs` | number | `5000` | Idle time before a manual-mode flush |
-| `idleFlushCheckMs` | number | `1000` | How often the idle timer checks |
-| `autoFlushRows` | number | client default | Rows buffered before an auto-flush |
-| `autoFlushIntervalMs` | number | client default | Time before an auto-flush |
+| `flushMode` | string | — | Deprecated, removed in 0.8.0. Accepted and ignored: composer owns every flush |
+| `idleFlushAfterMs` | number | — | Deprecated, removed in 0.8.0. Accepted and ignored |
+| `idleFlushCheckMs` | number | — | Deprecated, removed in 0.8.0. Maps to `flushIntervalMs` |
+| `autoFlushRows` | number | — | Deprecated, removed in 0.8.0. Maps to `flushRows` |
+| `autoFlushIntervalMs` | number | — | Deprecated, removed in 0.8.0. Accepted and ignored |
 | `flushRows` | number | `5000` | Rows that start a send from inside the write. About 0.65 to 1.5 MB per request |
 | `flushIntervalMs` | number | `1000` | The send timer. Whatever is buffered is sent this often, so rows land within about a second |
 | `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1000 rows a second, hours at plant rate |

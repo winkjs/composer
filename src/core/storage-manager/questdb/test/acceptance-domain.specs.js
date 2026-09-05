@@ -63,8 +63,7 @@ describe( 'QuestDB persist-plan acceptance domain', function () {
         {
             ilpUrl: '127.0.0.1:9000',
             pgUrl: '127.0.0.1:8812',
-            flushMode: 'manual',
-            autoFlushRows: 10,
+            flushRows: 10,
             onWarning: ( msg ) => warnings.push( msg ),
             ...options
         },
@@ -212,7 +211,8 @@ describe( 'QuestDB persist-plan acceptance domain', function () {
 
             expect( second ).to.deep.equal( { ok: true } );
             expect( mockSender.at.callCount ).to.equal( 1 );
-            expect( storage.getPressure() ).to.equal( 0.1 );
+            // One row over the ceiling of 100 (ten times flushRows 10).
+            expect( storage.getPressure() ).to.equal( 0.01 );
         } );
 
     } );

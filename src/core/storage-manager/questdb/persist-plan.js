@@ -38,19 +38,24 @@
  *   strict mode (an `onWarning` that throws) rejects a bad row with the sender
  *   untouched.
  *
- * Async-flush failures — the no-silent-failures contract:
- * - @questdb/nodejs-client v4 declares sender.at() as async; the buffer
- *   mutation is sync but the trailing `await this.tryFlush()` can fire a
- *   network flush. When that flush fails (HTTP timeout, buffer overflow,
- *   QDB unreachable), the rows in that batch are dropped. Per composer's
- *   "no silent failures" contract, those drops MUST surface loudly.
+ * Row append rejections — the no-silent-failures contract:
+ * - @questdb/nodejs-client v4 declares sender.at() as async. The append
+ *   runs first and synchronously; the trailing `await this.tryFlush()`
+ *   does nothing, because the adapter turns the client's own flush
+ *   trigger off (ADR-029). So the promise rejects only when the append
+ *   itself threw, which for a validated row means the client's byte
+ *   ceiling (`max_buf_size`). The row never completed. Per composer's
+ *   "no silent failures" contract, that loss MUST surface.
  *
- *   Failures are routed through the `onDeliveryFailure` callback. When
- *   a caller provides one, they own the response (log, retry, alert,
- *   stop the flow). When none is provided, the catch handler **throws**
- *   the failure so it surfaces as an unhandled rejection and the
- *   process crashes loudly — better than running on with silently
- *   missing data.
+ *   The rejection is routed through the `onDeliveryFailure` callback.
+ *   When a caller provides one, they own the response (log, alert,
+ *   stop the flow). When none is provided, one classified
+ *   `DELIVERY_FAILED` console line reports it and the process keeps
+ *   running: an unattended deployment must report a lost row, not
+ *   stop on it. One handler exists per insight type and is attached
+ *   to each row's promise. The derived promise that `.catch()` creates
+ *   is the one per-row allocation this file cannot avoid while `at()`
+ *   is async.
  *
  *   This separates two concerns:
  *     - `onWarning` — soft, per-row data quality (NaN in float column,
@@ -62,8 +67,8 @@
  *       configuration, not in the data, so every row would repeat it.
  *       The field is ignored either way; the column stores the
  *       partition id.
- *     - `onDeliveryFailure` — hard, batch-level data loss. Default
- *       behaviour: throw, so production cannot run with silent drops.
+ *     - `onDeliveryFailure` — hard data loss: the row the client
+ *       refused. Default behaviour: one DELIVERY_FAILED console line.
  *
  * `err.code` (setup-time throws per ADR-018 fail-fast setup):
  * - `INVALID_CONFIG` — buildPersistPlans called with non-function
@@ -72,9 +77,9 @@
  *   name through a throwaway client buffer — a name is not a value, so the
  *   per-message phase 1 below cannot catch it).
  *
- * `err.code` (runtime throws / unhandled rejections):
- * - `DELIVERY_FAILED` — sender.at() async flush rejected and no
- *   `onDeliveryFailure` callback was provided.
+ * Runtime console classification:
+ * - `DELIVERY_FAILED` — sender.at() rejected and no `onDeliveryFailure`
+ *   callback was provided. One `logger.error` line naming the table.
  *
  * @see docs/architecture/storage-layer.md
  * @see ADR-018
@@ -265,10 +270,9 @@ const assertIlpNames = function ( tableName, columnNames ) {
  * @param {Object} [options] - Optional configuration
  * @param {function} [options.onWarning] - Soft per-row warning callback for
  *   invalid values (NaN, null, invalid timestamp). Default: console.warn.
- * @param {function} [options.onDeliveryFailure] - Hard batch-level failure
- *   callback for `sender.at()` async flush rejection (HTTP timeout, buffer
- *   overflow, QDB unreachable). Default: throw — surfaces as an unhandled
- *   rejection so production cannot run with silent row drops.
+ * @param {function} [options.onDeliveryFailure] - Called as
+ *   `( err, { tableName } )` when `sender.at()` rejects (the client's
+ *   byte ceiling). Default: one classified DELIVERY_FAILED console line.
  * @returns {Object.<string, function>} Map of insightType to persistRow function
  */
 const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
@@ -330,9 +334,9 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
             throw err;
         }
 
-        // Pre-compile writer steps
-        // designatedTimestamp is handled separately via sender.at()
-        // Other columns use their type-specific writers
+        // Pre-compile the writer steps. The designated timestamp is
+        // handled separately, via sender.at(). Every other column uses
+        // its type-specific writer.
         const stepNames = [];
         const stepWriters = [];
         const stepIsNumeric = [];
@@ -342,7 +346,8 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         for ( let j = 0; j < persistedColumnNames.length; j += 1 ) {
             const columnName = persistedColumnNames[ j ];
 
-            // Skip designatedTimestamp - handled separately via sender.at()
+            // Skip the designated timestamp. It is handled separately, via
+            // sender.at().
             if ( columnName !== designatedTimestamp ) {
                 const columnSpec = columns[ columnName ];
                 const columnType = columnSpec ? columnSpec.type : 'string';
@@ -352,9 +357,9 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
                 stepTypes.push( columnType );
                 stepAccepts.push( ACCEPTS[ columnType ] || acceptAny );
 
-                // float64 columns use resolution-aware writer factory
-                // Note: columnSpec is guaranteed to exist here since columnType='float64'
-                // requires columnSpec.type to be 'float64' (line 65)
+                // float64 columns use the resolution-aware writer factory.
+                // columnSpec exists here: columnType is 'float64' only when
+                // columnSpec.type is 'float64'.
                 if ( columnType === 'float64' ) {
                     stepWriters.push( createFloat64Writer( columnSpec.resolution ) );
                 } else {
@@ -365,6 +370,19 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
 
         const stepCount = stepNames.length;
         const tableName = tablePrefix + '_' + insightTypeName;
+
+        // One rejection handler per insight type, built here so the
+        // per-row path allocates no closure. See the file header for
+        // what a rejection means and why the process keeps running.
+        const onAppendRejected = function ( err ) {
+            if ( onDeliveryFailure ) {
+                onDeliveryFailure( err, { tableName } );
+                return;
+            }
+            logger.error(
+                `winkComposer/questdb: row append failed for table '${tableName}' [DELIVERY_FAILED]: ${err.message}`
+            );
+        }; // onAppendRejected()
         // Fail-fast at startup: a bad table or column name would otherwise
         // throw inside the client mid-row at write time.
         assertIlpNames( tableName, stepNames );
@@ -378,18 +396,20 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         // One report carries all the information.
         let assetIdMismatchWarned = false;
 
-        // Create closure that captures pre-resolved references
-        // Interface: persistRow(sender, message, partitionId) -> boolean
-        // Returns true when a row was opened and completed on the sender,
-        // false when phase 1 skipped the whole row (the sender was never
-        // touched). The caller's buffered-row accounting keys off this —
-        // a skipped row must not count as buffered.
-        // Note: partitionId is internal name, written as 'assetId' column to QuestDB
+        // Create the closure that captures the pre-resolved references.
+        // Interface: persistRow(sender, message, partitionId) -> boolean.
+        // It returns true when a row was opened and completed on the
+        // sender. It returns false when phase 1 skipped the whole row,
+        // so the sender was never touched. The caller's buffered-row
+        // accounting keys off this: a skipped row must not count as
+        // buffered. Note: partitionId is the internal name; it is written
+        // as the 'assetId' column in QuestDB.
         plansByInsightType[ insightTypeName ] = function ( sender, message, partitionId ) {
             // ---- Phase 1: validate. No sender calls — nothing irreversible
             // happens until every value has been checked (see file header).
 
-            // designatedTimestamp first - if invalid, skip entire row
+            // The designated timestamp first. When it is invalid, skip the
+            // entire row.
             const tsValue = message[ designatedTimestamp ];
             if ( tsValue === undefined || tsValue === null ) {
                 onWarning(
@@ -398,11 +418,11 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
                 );
                 return false;
             }
-            // Integer-or-bigint, matching the client's own .at() validation
-            // (probe-verified: at( ...000.5, 'ms' ) throws "Designated
-            // timestamp must be an integer or BigInt" — and it throws AFTER
-            // the whole row is written, so catching it here is the only
-            // place the row survives intact).
+            // Integer or bigint, matching the client's own .at() validation.
+            // Probe-verified: at( ...000.5, 'ms' ) throws "Designated
+            // timestamp must be an integer or BigInt". It throws AFTER the
+            // whole row is written, so catching it here is the only place
+            // the row survives intact.
             if ( !Number.isInteger( tsValue ) && typeof tsValue !== 'bigint' ) {
                 onWarning(
                     `designatedTimestamp '${designatedTimestamp}' is ${skipReason( tsValue, true, 'timestamp' )} ` +
@@ -429,14 +449,14 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
             }
 
             // Check every column value against its declared type. A failed
-            // check marks the column for a silent skip in phase 2 (QuestDB
-            // stores NULL) — the same treatment null already gets — and
-            // warns HERE, before the row opens, so an onWarning that throws
-            // (documented strict mode) rejects the row with the sender
-            // untouched instead of wedging it mid-row. Composer's NaN
-            // propagation ends here exactly as before: a NaN in a numeric
-            // column fails its acceptance check and lands as a NULL column
-            // while the row survives.
+            // check marks the column for a silent skip in phase 2, where
+            // QuestDB stores NULL. That is the treatment null already gets.
+            // The warning fires HERE, before the row opens. So an onWarning
+            // that throws (documented strict mode) rejects the row with the
+            // sender untouched instead of wedging it mid-row. Composer's
+            // NaN propagation ends here exactly as before. A NaN in a
+            // numeric column fails its acceptance check and lands as a
+            // NULL column while the row survives.
             for ( let k = 0; k < stepCount; k += 1 ) {
                 const rawValue = message[ stepNames[ k ] ];
                 stepValueOk[ k ] = ( rawValue !== null ) && ( rawValue !== undefined ) && stepAccepts[ k ]( rawValue );
@@ -461,41 +481,13 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
                 // about in phase 1 — before the row opened.
             }
 
-            // Designated timestamp (ends the row in ILP).
-            //
-            // Async flush failure handling — the no-silent-failures contract:
-            //
-            // sender.at() is async — the buffer mutation is sync but the
-            // trailing `await this.tryFlush()` may fire a network flush.
-            // When that flush fails (HTTP timeout, buffer overflow at the
-            // client's max_buf_size, QDB unreachable), the rows in that
-            // batch are dropped. Composer must NOT silently lose data.
-            //
-            // Routing rules:
-            //   - If a caller provided `onDeliveryFailure`, route the
-            //     failure to it. The caller owns the response (log,
-            //     retry-budget, alert, stop the flow).
-            //   - Otherwise, throw a classified `DELIVERY_FAILED` error.
-            //     Inside a .catch() handler this surfaces as an
-            //     unhandled rejection — Node logs it loudly and (15+)
-            //     terminates the process. Loud failure beats silent
-            //     loss every time.
+            // Designated timestamp (ends the row in ILP). sender.at() is
+            // async; its promise rejects when the append itself threw
+            // (see the file header). The prebuilt handler routes the
+            // rejection; a mock at() that returns no promise is skipped.
             const atResult = sender.at( tsValue, 'ms' );
             if ( atResult && typeof atResult.catch === 'function' ) {
-                atResult.catch( ( err ) => {
-                    if ( onDeliveryFailure ) {
-                        onDeliveryFailure( err, { tableName } );
-                        return;
-                    }
-                    const failure = new Error(
-                        `winkComposer/questdb: silent data loss — sender.at() async flush failed for table '${tableName}': ${err.message}. ` +
-                        'Rows in this batch were dropped. Per the no-silent-failures contract this is a hard failure. ' +
-                        'Provide an `onDeliveryFailure` callback in the storage config to handle these explicitly.'
-                    );
-                    failure.code = 'DELIVERY_FAILED';
-                    failure.cause = err;
-                    throw failure;
-                } );
+                atResult.catch( onAppendRejected );
             }
 
             return true;

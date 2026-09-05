@@ -5,24 +5,26 @@
  *
  * The client's flush() copies completed rows OUT of its buffer
  * synchronously, then sends the copy. So the moment a flush is called,
- * its rows are no longer "in the buffer" — they are in flight, and a
- * second flush cannot resend them. The adapter must track the two
- * quantities separately, or shutdown lies:
+ * its rows are no longer "in the buffer". They are in flight, and a
+ * second flush cannot resend them. The adapter tracks the two
+ * quantities separately. Without that, shutdown lies:
  *
- * - A hung idle flush holds rows in flight; shutdown's own flush finds
- *   an empty buffer, resolves fast, and shutdown reports CLEAN while
+ * - A hung timer flush holds rows in flight. Shutdown's own flush
+ *   would find an empty buffer, resolve fast, and report CLEAN while
  *   the rows are undelivered.
- * - A recovery flush's rows are counted nowhere, so shutdown skips its
- *   final flush and reports clean over an undelivered copy.
- * - After a lossy shutdown throw, a second shutdown() call sees an
- *   empty buffer and reports clean, contradicting the first call.
- * - Rows the persist plan SKIPPED (no sender call) still increment the
- *   counter, inflating pressure and dropped counts.
- * - write() during shutdown buffers rows that have no flusher left.
+ * - A recovery flush's rows would be counted nowhere. Shutdown would
+ *   skip its final flush and report clean over an undelivered copy.
+ * - After a lossy shutdown throw, a second shutdown() call would see
+ *   an empty buffer and report clean, contradicting the first call.
+ * - Rows the persist plan SKIPPED (no sender call) must not count. They
+ *   would inflate pressure and the dropped count.
+ * - write() during shutdown must not buffer rows that have no flusher.
  *
- * Every test here was proven red against the pre-fix adapter (the mock
+ * Every test here was proven red against the pre-fix adapter. The mock
  * flush models copy-out: the first call hangs or fails, the second call
- * resolves `false` — an empty buffer).
+ * resolves `false`, an empty buffer. The fixtures moved to the ADR-029
+ * engine on 2026-09-05. The timer flush replaced the idle flush, and
+ * pressure is the fill against the buffer ceiling.
  */
 
 import { expect } from 'chai';
@@ -48,8 +50,8 @@ const TEST_ASSET_CLASS = {
 
 const GOOD_MSG = { ts: 1735500000000, temp: 25.5 };
 
-// Poll until `condition()` is true or ~500ms elapse; the idle-flush
-// timers in these tests fire within a few ticks.
+// Poll until `condition()` is true or ~500ms elapse; the flush timers
+// in these tests fire within a few ticks.
 const waitFor = async function ( condition ) {
     for ( let i = 0; i < 50 && !condition(); i += 1 ) {
         // eslint-disable-next-line no-await-in-loop -- wait-for-condition poll
@@ -62,21 +64,21 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
     let mockSender;
     let deps;
 
+    // flushRows 10 gives a ceiling of 100, so one row reads 0.01.
     const makeStorage = ( options = {} ) => createQuestDBStorage(
         TEST_ASSET_CLASS,
         'pump',
         {
             ilpUrl: '127.0.0.1:9000',
             pgUrl: '127.0.0.1:8812',
-            flushMode: 'manual',
-            autoFlushRows: 10,
+            flushRows: 10,
             ...options
         },
         deps
     );
 
-    // Idle-flush timings shared by the tests that need the timer to fire.
-    const IDLE_OPTS = { idleFlushAfterMs: 1, idleFlushCheckMs: 10 };
+    // A short flush timer, shared by the tests that need it to fire.
+    const TIMER_OPTS = { flushIntervalMs: 10 };
 
     beforeEach( function () {
         mockSender = makeMockSender();
@@ -89,13 +91,13 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
         sinon.restore();
     } );
 
-    describe( 'B1 — shutdown racing a hung idle flush', function () {
+    describe( 'B1 — shutdown racing a hung timer flush', function () {
 
         it( 'reports SHUTDOWN_TIMEOUT with the in-flight count, never clean', async function () {
-            // Copy-out model: the idle flush hangs holding the row; any
+            // Copy-out model: the timer flush hangs holding the row; any
             // later flush sees an empty buffer and resolves immediately.
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
-            const storage = await makeStorage( IDLE_OPTS );
+            const storage = await makeStorage( TIMER_OPTS );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
             await waitFor( () => mockSender.flush.callCount >= 1 );
@@ -112,7 +114,7 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
         } );
 
         it( 'still resolves clean when the in-flight flush settles inside the budget', async function () {
-            // The idle flush is slow but succeeds — delivery completed,
+            // The timer flush is slow but succeeds: delivery completed,
             // shutdown owes a clean resolve.
             let releaseFlush = null;
             mockSender.flush.onFirstCall().returns(
@@ -120,7 +122,7 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
                     releaseFlush = resolve;
                 } )
             );
-            const storage = await makeStorage( IDLE_OPTS );
+            const storage = await makeStorage( TIMER_OPTS );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
             await waitFor( () => mockSender.flush.callCount >= 1 );
@@ -139,9 +141,9 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
             const storage = await makeStorage();
 
-            // One good row buffered, then a mid-row throw on the next
-            // write: recoverSender() fires the (hanging) recovery flush
-            // that carries the good row out of the buffer.
+            // One good row is buffered, then the next write throws
+            // mid-row. recoverSender() fires the recovery flush, which
+            // hangs, and that flush carries the good row out of the buffer.
             expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).ok ).to.equal( true );
             mockSender.floatColumn.onSecondCall().throws( new Error( 'injected mid-row fault' ) );
             const failed = storage.write( 'monitoring', GOOD_MSG, 'p1' );
@@ -231,40 +233,40 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
 
     } );
 
-    describe( 'idle-flush failure under copy-out — rows are lost, not retryable', function () {
+    describe( 'timer flush failure under copy-out — rows are lost, not retryable', function () {
 
         it( 'reports the lost count loudly and clears it from pressure', async function () {
-            mockSender.flush.onFirstCall().rejects( new Error( 'idle boom' ) );
+            mockSender.flush.onFirstCall().rejects( new Error( 'timer boom' ) );
             const errorSpy = sinon.spy( console, 'error' );
-            const storage = await makeStorage( IDLE_OPTS );
+            const storage = await makeStorage( TIMER_OPTS );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
             await waitFor( () => errorSpy.called );
 
             // The copy left the buffer with the failed flush: those rows
-            // are gone, and the counter must say so — "retry on next
-            // check" cannot resend them.
-            expect( errorSpy.calledWithMatch( /1 buffered row\(s\) lost/ ) ).to.equal( true );
+            // are gone, and the counter must say so. "Retry on the next
+            // tick" cannot resend them.
+            expect( errorSpy.calledWithMatch( /flush failed, 1 row\(s\) lost \[DELIVERY_FAILED\]: timer boom/ ) ).to.equal( true );
             expect( storage.getPressure() ).to.equal( 0 );
 
             await storage.shutdown( { timeout: 1000 } );
         } );
 
         it( 'routes the loss to onDeliveryFailure when a handler is provided', async function () {
-            mockSender.flush.onFirstCall().rejects( new Error( 'idle boom' ) );
+            mockSender.flush.onFirstCall().rejects( new Error( 'timer boom' ) );
             const onDeliveryFailure = sinon.stub();
-            const storage = await makeStorage( { ...IDLE_OPTS, onDeliveryFailure } );
+            const storage = await makeStorage( { ...TIMER_OPTS, onDeliveryFailure } );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
             await waitFor( () => onDeliveryFailure.called );
 
-            // Same convention as the recovery flush and the persist plan:
-            // the handler receives the RAW client error plus a context
-            // object naming the path and the cost.
+            // Same convention as the recovery flush: the handler receives
+            // the RAW client error plus a context object naming the
+            // trigger and the cost.
             expect( onDeliveryFailure.callCount ).to.equal( 1 );
             const [ err, ctx ] = onDeliveryFailure.firstCall.args;
-            expect( err.message ).to.include( 'idle boom' );
-            expect( ctx ).to.deep.equal( { idleFlush: true, rowsLost: 1 } );
+            expect( err.message ).to.include( 'timer boom' );
+            expect( ctx ).to.deep.equal( { trigger: 'timer', rowsLost: 1, abandoned: false } );
 
             await storage.shutdown( { timeout: 1000 } );
         } );
@@ -273,14 +275,14 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
 
     describe( 'pressure stays visible while a flush is in flight', function () {
 
-        it( 'a hung idle flush reads as pressure, not as delivered', async function () {
+        it( 'a hung timer flush reads as pressure, not as delivered', async function () {
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
-            const storage = await makeStorage( IDLE_OPTS );
+            const storage = await makeStorage( TIMER_OPTS );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
             await waitFor( () => mockSender.flush.callCount >= 1 );
 
-            expect( storage.getPressure() ).to.equal( 0.1 );
+            expect( storage.getPressure() ).to.equal( 0.01 );
 
             await storage.shutdown( { timeout: 10 } ).catch( () => undefined );
         } );

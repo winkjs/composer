@@ -66,9 +66,9 @@
  *                        producer stalls every flush until the idle
  *                        timer runs (the smoke run of 2026-09-04 saw
  *                        one tenth of the target rate at 0.5).
- *   AUTO_FLUSH_ROWS     5000 — the row boundary. At the target rate
+ *   FLUSH_ROWS          5000 — the row boundary. At the target rate
  *                        it is crossed about once a second.
- *   AUTO_FLUSH_MS       1000 — the time boundary. Both flush
+ *   FLUSH_INTERVAL_MS   1000 — the timer period. Both flush
  *                        triggers fire many times even in a short run.
  *   SAMPLE_INTERVAL_MS  10 000 — one sample every ten seconds, so a
  *                        two-minute run still has enough samples for
@@ -135,8 +135,8 @@ const SAMPLE_INTERVAL_MS = 10_000;
 const PRESSURE_CEILING   = 1.0;
 const PRODUCER_BATCH     = 50;
 const PRODUCER_PACE_MS   = 10;
-const AUTO_FLUSH_ROWS    = 5000;
-const AUTO_FLUSH_MS      = 1000;
+const FLUSH_ROWS         = 5000;
+const FLUSH_INTERVAL_MS  = 1000;
 
 // Mid-run memory tripwire. The end-of-run trend checks can never fire
 // if runaway growth kills the process first, so the sampler stops the
@@ -336,14 +336,13 @@ describe( 'QuestDB Soak — sustained run', function () {
         const storage = await createQuestDBStorage( assetClass, tablePrefix, {
             ilpUrl: QUESTDB_ILP_URL,
             pgUrl: QUESTDB_PG_URL,
-            flushMode: 'auto',
-            autoFlushRows: AUTO_FLUSH_ROWS,
-            autoFlushIntervalMs: AUTO_FLUSH_MS,
+            flushRows: FLUSH_ROWS,
+            flushIntervalMs: FLUSH_INTERVAL_MS,
             onWarning: function ( msg ) {
                 warnings.push( msg );
             },
             onDeliveryFailure: function ( err, ctx ) {
-                deliveryFailures.push( { code: err.code, message: err.message, table: ctx && ctx.tableName } );
+                deliveryFailures.push( { code: err.code, message: err.message, context: ctx } );
             }
         } );
 

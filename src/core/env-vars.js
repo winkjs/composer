@@ -65,7 +65,7 @@ const ENV_VARS = {
     // `processMessage` (file replays, testHarness, the headless driver):
     // for them the yield tick is the only planned chance for sink flush
     // timers and socket I/O to run. 500 ms is half the tightest background
-    // timer it must not starve (QUESTDB_IDLE_FLUSH_CHECK_MS, 1000).
+    // timer it must not starve (QUESTDB_FLUSH_INTERVAL_MS, default 1000).
     // Per-flow override: `.yield( { threshold } )`. Infinity = never yield.
     yieldTimeThresholdMs: rawYieldMs === '' ? NaN : Number( rawYieldMs ),
 
@@ -99,9 +99,18 @@ const ENV_VARS = {
     // outright, so a deployment that sets it stops here, at import.
     questdbIlpUrl: ( process.env.QUESTDB_ILP_URL ?? '127.0.0.1:9000' ).trim(),
     questdbPgUrl: ( process.env.QUESTDB_PG_URL ?? '127.0.0.1:8812' ).trim(),
-    questdbFlushMode: ( process.env.QUESTDB_FLUSH_MODE ?? 'auto' ).trim(),
-    questdbIdleFlushAfterMs: parseInt( process.env.QUESTDB_IDLE_FLUSH_AFTER_MS ?? '5000', 10 ),
-    questdbIdleFlushCheckMs: parseInt( process.env.QUESTDB_IDLE_FLUSH_CHECK_MS ?? '1000', 10 ),
+    // The five legacy flush variables (deprecated, ADR-029; removed in
+    // 0.8.0). Each carries a value only when set, so the adapter's
+    // DEPRECATED_OPTION line names only what an operator actually set.
+    // QUESTDB_IDLE_FLUSH_CHECK_MS maps to QUESTDB_FLUSH_INTERVAL_MS and
+    // QUESTDB_AUTO_FLUSH_ROWS to QUESTDB_FLUSH_ROWS; the other three
+    // are accepted and ignored.
+    questdbFlushMode: process.env.QUESTDB_FLUSH_MODE ?
+        process.env.QUESTDB_FLUSH_MODE.trim() : undefined,
+    questdbIdleFlushAfterMs: process.env.QUESTDB_IDLE_FLUSH_AFTER_MS ?
+        parseInt( process.env.QUESTDB_IDLE_FLUSH_AFTER_MS, 10 ) : undefined,
+    questdbIdleFlushCheckMs: process.env.QUESTDB_IDLE_FLUSH_CHECK_MS ?
+        parseInt( process.env.QUESTDB_IDLE_FLUSH_CHECK_MS, 10 ) : undefined,
     // Optional QuestDB settings (undefined if not set)
     questdbAutoFlushRows: process.env.QUESTDB_AUTO_FLUSH_ROWS ?
         parseInt( process.env.QUESTDB_AUTO_FLUSH_ROWS, 10 ) : undefined,
@@ -199,6 +208,7 @@ const validators = {
     },
 
     questdbFlushMode: function ( value ) {
+        if ( value === undefined ) return null;
         const validModes = [ 'auto', 'manual' ];
         if ( !validModes.includes( value ) ) {
             return `Must be one of ${validModes.join( ', ' )}, got: "${value}"`;
@@ -215,6 +225,14 @@ const validators = {
     },
 
     nonNegativeInt: function ( value, originalEnv ) {
+        if ( isNaN( value ) || value < 0 ) {
+            return `Must be non-negative integer, got: "${originalEnv}"`;
+        }
+        return null;
+    },
+
+    nonNegativeIntOrUndefined: function ( value, originalEnv ) {
+        if ( value === undefined ) return null;
         if ( isNaN( value ) || value < 0 ) {
             return `Must be non-negative integer, got: "${originalEnv}"`;
         }
@@ -276,8 +294,8 @@ const validationConfig = [
     { field: 'questdbIlpUrl', validator: validators.hostPort, label: 'QUESTDB_ILP_URL' },
     { field: 'questdbPgUrl', validator: validators.hostPort, label: 'QUESTDB_PG_URL' },
     { field: 'questdbFlushMode', validator: validators.questdbFlushMode, label: 'QUESTDB_FLUSH_MODE' },
-    { field: 'questdbIdleFlushAfterMs', validator: validators.nonNegativeInt, originalEnv: 'QUESTDB_IDLE_FLUSH_AFTER_MS' },
-    { field: 'questdbIdleFlushCheckMs', validator: validators.positiveInt, originalEnv: 'QUESTDB_IDLE_FLUSH_CHECK_MS' },
+    { field: 'questdbIdleFlushAfterMs', validator: validators.nonNegativeIntOrUndefined, originalEnv: 'QUESTDB_IDLE_FLUSH_AFTER_MS' },
+    { field: 'questdbIdleFlushCheckMs', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_IDLE_FLUSH_CHECK_MS' },
     { field: 'questdbAutoFlushRows', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_AUTO_FLUSH_ROWS' },
     { field: 'questdbAutoFlushIntervalMs', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_AUTO_FLUSH_INTERVAL_MS' },
     { field: 'questdbMaxBufSize', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_MAX_BUF_SIZE' },

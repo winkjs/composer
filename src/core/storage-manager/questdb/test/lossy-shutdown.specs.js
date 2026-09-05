@@ -8,20 +8,20 @@
  * was flushed. When that is not true, shutdown rejects with a classified
  * error naming what was dropped. Three pre-fix behaviors are pinned here,
  * all proven red before the fix:
- * - A FAILED final flush was logged and swallowed — shutdown resolved
+ * - A FAILED final flush was logged and swallowed. Shutdown resolved
  *   cleanly while dropping every buffered row. Now: classified
  *   DELIVERY_FAILED with `dropped: { count }` and the flush error on
  *   `cause`; the transport close is still attempted first (best effort).
  * - A HUNG final flush (the client's retry loop never settles against an
  *   unreachable server) blocked shutdown forever. Now: the flush is raced
- *   against the `{ timeout }` the caller
- *   already passes (ADR-018) → SHUTDOWN_TIMEOUT with the same
- *   `dropped` shape. No timeout supplied = no enforcement (unbounded),
- *   preserving direct-caller behavior.
- * - A HUNG idle flush piled up a new flush call every check interval
- *   (each one a fresh never-settling send). Now: a reentrancy guard —
- *   one boolean — keeps a single flush in flight; a hung flush surfaces
- *   as rising pressure instead of a growing pile of stuck requests.
+ *   against the `{ timeout }` the caller already passes (ADR-018), and
+ *   an overrun is SHUTDOWN_TIMEOUT with the same `dropped` shape. No
+ *   timeout supplied = no enforcement (unbounded), preserving
+ *   direct-caller behavior.
+ * - A HUNG timer flush piled up a new flush call every tick (each one a
+ *   fresh never-settling send). Now: the single-flight guard keeps one
+ *   engine flush in flight (ADR-029). A hung flush surfaces as rising
+ *   pressure instead of a growing pile of stuck requests.
  */
 
 import { expect } from 'chai';
@@ -61,7 +61,7 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
     const makeStorage = ( options = {} ) => createQuestDBStorage(
         TEST_ASSET_CLASS,
         'pump',
-        { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', flushMode: 'manual', ...options },
+        { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812', ...options },
         deps
     );
 
@@ -215,13 +215,13 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
 
     } );
 
-    describe( 'idle-flush reentrancy guard', function () {
+    describe( 'single-flight guard on the timer flush', function () {
 
         let storage = null;
 
         // Teardown must survive a failed assertion (m9). Shutdown without
         // touching the hung flush: nothing buffered ever settles, so
-        // shutdown would race its own flush — give it a tiny budget and
+        // shutdown would race its own flush. Give it a tiny budget and
         // swallow the classified throw.
         afterEach( async function () {
             if ( storage ) {
@@ -230,16 +230,12 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
             }
         } );
 
-        it( 'a hung idle flush is reported by shutdown: SHUTDOWN_TIMEOUT with the in-flight count (R6 regression)', async function () {
-            storage = await makeStorage( {
-                idleFlushAfterMs: 1,
-                idleFlushCheckMs: 10,
-                autoFlushRows: 10
-            } );
+        it( 'a hung timer flush is reported by shutdown: SHUTDOWN_TIMEOUT with the in-flight count (R6 regression)', async function () {
+            storage = await makeStorage( { flushIntervalMs: 10, flushRows: 10 } );
             mockSender.flush.returns( NEVER_SETTLES );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
-            // Wait for the idle flush to fire and hang: the row moves from
+            // Wait for the timer flush to fire and hang: the row moves from
             // buffered to in-flight under the R1 accounting.
             for ( let i = 0; i < 50 && mockSender.flush.callCount === 0; i += 1 ) {
                 // eslint-disable-next-line no-await-in-loop -- wait-for-condition poll
@@ -257,20 +253,14 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
             expect( thrown.dropped ).to.deep.equal( { count: 1 } );
         } );
 
-        it( 'a hung idle flush does not pile up a new flush every check interval', async function () {
-            storage = await makeStorage( {
-                idleFlushAfterMs: 1,
-                idleFlushCheckMs: 10,
-                // Pressure needs a capacity reference: without autoFlushRows
-                // configured, getPressure() has no denominator and reads 0.
-                autoFlushRows: 10
-            } );
+        it( 'a hung timer flush does not pile up a new flush every tick', async function () {
+            // flushRows 10 gives a ceiling of 100, so one row reads 0.01.
+            storage = await makeStorage( { flushIntervalMs: 10, flushRows: 10 } );
             mockSender.flush.returns( NEVER_SETTLES );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
-            // Wait for the first idle flush to fire, then several more
-            // check intervals — without the guard each tick would call
-            // flush again (bufferedRows stays > 0 while the flush hangs).
+            // Wait for the first timer flush to fire, then several more
+            // ticks. Without the guard each tick would call flush again.
             for ( let i = 0; i < 50 && mockSender.flush.callCount === 0; i += 1 ) {
                 // eslint-disable-next-line no-await-in-loop -- wait-for-condition poll
                 await new Promise( ( r ) => setTimeout( r, 10 ) );
@@ -279,10 +269,10 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
 
             expect( mockSender.flush.callCount ).to.equal( 1 );
 
-            // The hung flush is visible as pressure, not hidden — and the
-            // value is deterministic: one in-flight row over the
-            // autoFlushRows capacity of 10 (m9: exact, not just > 0).
-            expect( storage.getPressure() ).to.equal( 0.1 );
+            // The hung flush is visible as pressure, not hidden. The value
+            // is deterministic: one in-flight row over the ceiling of 100
+            // (m9: exact, not just > 0).
+            expect( storage.getPressure() ).to.equal( 0.01 );
         } );
 
     } );

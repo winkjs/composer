@@ -5,7 +5,7 @@
  */
 
 import { expect } from 'chai';
-import { describe, it, beforeEach, afterEach } from 'mocha';
+import { describe, it, beforeEach } from 'mocha';
 import sinon from 'sinon';
 
 import { buildPersistPlans, defaultOnWarning } from '../persist-plan.js';
@@ -922,21 +922,21 @@ describe( 'Persist Plan Builder', function () {
     } );
 
     // ========================================================================
-    // ASYNC FLUSH FAILURE — THE NO-SILENT-FAILURES CONTRACT
+    // ROW APPEND REJECTION — THE NO-SILENT-FAILURES CONTRACT
     // ========================================================================
-    // @questdb/nodejs-client v4 declares sender.at() as async — the buffer
-    // mutation is sync but the trailing `await this.tryFlush()` may fire a
-    // network flush. When that flush fails (HTTP timeout, buffer overflow,
-    // QDB unreachable), the rows in that batch are dropped.
+    // @questdb/nodejs-client v4 declares sender.at() as async. With the
+    // client's own flush trigger off (ADR-029), its promise rejects only
+    // when the append itself threw: the client's byte ceiling. The row
+    // never completed.
     //
-    // Composer's "no silent failures" contract says these drops MUST
-    // surface loudly:
+    // Composer's "no silent failures" contract says the loss MUST
+    // surface:
     //   - When a caller provides `onDeliveryFailure`, route to it.
-    //   - Otherwise, the catch handler throws — the resulting unhandled
-    //     rejection is loud (Node logs it; Node 15+ terminates the
-    //     process). Loud failure beats silent loss every time.
+    //   - Otherwise, one classified DELIVERY_FAILED console line. The
+    //     process keeps running: an unattended deployment reports a
+    //     lost row, it does not stop on it.
 
-    describe( 'sender.at() async flush failure (no-silent-failures contract)', function () {
+    describe( 'sender.at() rejection (no-silent-failures contract)', function () {
 
         const assetClass = {
             name: 'pump',
@@ -946,21 +946,10 @@ describe( 'Persist Plan Builder', function () {
             }
         };
 
-        // The unhandledRejection listener removes itself when the expected
-        // rejection arrives; when a test fails by timeout instead, it must
-        // not stay installed for the rest of the run (m9).
-        let strayRejectionListener = null;
-        afterEach( function () {
-            if ( strayRejectionListener ) {
-                process.removeListener( 'unhandledRejection', strayRejectionListener );
-                strayRejectionListener = null;
-            }
-        } );
-
         it( 'routes the failure through onDeliveryFailure when provided', async function () {
-            // Mocked sender whose at() returns a rejecting Promise — simulates
-            // the real QuestDB client's async at() failing during tryFlush.
-            const flushError = new Error( 'simulated tryFlush network failure' );
+            // Mocked sender whose at() returns a rejecting Promise. This
+            // models the real client refusing the append at its byte ceiling.
+            const flushError = new Error( 'simulated byte-ceiling refusal' );
             mockSender.at = sinon.stub().returns( Promise.reject( flushError ) );
 
             const failures = [];
@@ -982,37 +971,25 @@ describe( 'Persist Plan Builder', function () {
             expect( failures[ 0 ].ctx ).to.deep.equal( { tableName: 'pump_monitoring' } );
         } );
 
-        it( 'throws DELIVERY_FAILED as an unhandled rejection when no onDeliveryFailure is provided', function ( done ) {
-            // Default behaviour: the catch handler throws inside the Promise
-            // chain, which surfaces as an unhandled rejection. We capture
-            // the rejection via `process.on('unhandledRejection', ...)` so
-            // the test runner does not abort. The `settled` flag guards
-            // against the listener firing more than once if any other
-            // pending rejection slips in (e.g., timing artefacts from
-            // earlier tests).
-            const flushError = new Error( 'simulated tryFlush network failure' );
-            mockSender.at = sinon.stub().returns( Promise.reject( flushError ) );
-
-            let settled = false;
-            const onUnhandledRejection = ( err ) => {
-                if ( settled ) return;
-                if ( !err || err.code !== 'DELIVERY_FAILED' ) return;
-                settled = true;
-                process.removeListener( 'unhandledRejection', onUnhandledRejection );
-                try {
-                    expect( err.message ).to.contain( 'silent data loss' );
-                    expect( err.message ).to.contain( 'pump_monitoring' );
-                    expect( err.cause ).to.equal( flushError );
-                    done();
-                } catch ( assertErr ) {
-                    done( assertErr );
-                }
-            };
-            process.on( 'unhandledRejection', onUnhandledRejection );
-            strayRejectionListener = onUnhandledRejection;
+        it( 'prints one DELIVERY_FAILED line naming the table when no onDeliveryFailure is provided', async function () {
+            // Default behaviour: one classified console line. The process
+            // keeps running (ADR-029).
+            const appendError = new Error( 'Max buffer size is 104857600 bytes, requested buffer size: 209715200' );
+            mockSender.at = sinon.stub().returns( Promise.reject( appendError ) );
+            const errorSpy = sinon.spy( console, 'error' );
 
             const plans = buildPersistPlans( assetClass, 'pump' );  // no onDeliveryFailure
             plans.monitoring( mockSender, { ts: 1000, temp: 25.5 }, 'p1' );
+            await new Promise( ( resolve ) => setImmediate( resolve ) );
+            errorSpy.restore();
+
+            const lines = errorSpy.getCalls()
+                .map( ( call ) => String( call.args[ 0 ] ) )
+                .filter( ( line ) => line.includes( '[DELIVERY_FAILED]' ) );
+            expect( lines ).to.have.lengthOf( 1 );
+            expect( lines[ 0 ] ).to.include(
+                'winkComposer/questdb: row append failed for table \'pump_monitoring\' [DELIVERY_FAILED]: Max buffer size'
+            );
         } );
 
         it( 'throws INVALID_CONFIG when onDeliveryFailure is provided but is not a function', function () {

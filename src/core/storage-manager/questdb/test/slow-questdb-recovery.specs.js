@@ -227,9 +227,8 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
                 ilpUrl: PROXY_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix: opts.tablePrefix,
-                flushMode: 'auto',
-                autoFlushRows: 50,
-                autoFlushIntervalMs: 600000,
+                flushRows: 50,
+                flushIntervalMs: 600000,
                 retryTimeout: opts.retryTimeoutMs,
                 onDeliveryFailure: function ( err, ctx ) {
                     deliveryFailures.push( {
@@ -371,8 +370,7 @@ describe( 'QuestDB Hardening — mid-row fault replay (2026-06-10 incident shape
         const pgClient = await createPgClient();
         const storage = await createQuestDBStorage( replayAssetClass, tablePrefix, {
             ilpUrl: process.env.QUESTDB_ILP_URL || '127.0.0.1:9000',
-            pgUrl: QUESTDB_PG_URL,
-            flushMode: 'manual'
+            pgUrl: QUESTDB_PG_URL
         } );
         const { _persistPlans: plans } = storage;
         const originalPlan = plans.samples;

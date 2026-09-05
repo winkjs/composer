@@ -10,12 +10,10 @@
  *
  *   1. Shutdown grace — `handle.shutdown()` drains the buffer; no
  *      row is lost; the call returns within the configured window.
- *   2. Idle-flush timing — in manual mode, rows reach QDB
- *      `idleFlushAfterMs` after the last write, without anyone
- *      having to call shutdown.
- *   3. Auto-mode boundary — in auto mode, the QuestDB ILP client
- *      flushes when `autoFlushRows` is crossed, exercised by
- *      sending several multiples of the boundary.
+ *   2. Timer flush — rows reach QDB within `flushIntervalMs` of the
+ *      write, without anyone having to call shutdown.
+ *   3. Row trigger — the adapter flushes when `flushRows` is
+ *      reached, exercised by sending several multiples of it.
  *
  * Each test wires a real flow, drives it with the testHarness, and
  * queries QuestDB via PostgreSQL after the relevant operation
@@ -179,9 +177,10 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
         const tableName = `${tablePrefix}_samples`;
         tablesToCleanUp.push( tableName );
 
-        // Manual mode + a long auto-flush backstop means the only path
-        // for rows to reach QDB is the shutdown drain. If the drain
-        // races the buffer or returns early, this test catches it.
+        // A long timer, and fewer messages than the default flushRows,
+        // mean the only path for rows to reach QDB is the shutdown drain.
+        // If the drain races the buffer or returns early, this test
+        // catches it.
         const handle = await flow( 'drainTest' )
             .source( testHarness, {
                 messageTemplate: buildMessageTemplate( messageCount ),
@@ -193,8 +192,7 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
                 ilpUrl: QUESTDB_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix,
-                flushMode: 'manual',
-                autoFlushIntervalMs: 600000
+                flushIntervalMs: 600000
             } )
             .assetId( 'partitionId' )
             .persistIf( 'persist', ( _msg ) => true,
@@ -220,19 +218,18 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
     // Test 2 — Idle-flush timing
     // --------------------------------------------------------------------
 
-    it( 'idle-flush fires within idleFlushAfterMs — rows visible without shutdown', async function () {
+    it( 'the timer flushes within flushIntervalMs — rows visible without shutdown', async function () {
         const messageCount = 10;
-        const idleFlushAfterMs = 500;
-        const idleFlushCheckMs = 100;
-        const tablePrefix = `${RUN_PREFIX}_idle`;
+        const flushIntervalMs = 500;
+        const tablePrefix = `${RUN_PREFIX}_timer`;
         const tableName = `${tablePrefix}_samples`;
         tablesToCleanUp.push( tableName );
 
-        // Manual mode + short idle window. After the harness finishes
-        // generating, no further writes happen. The idle timer should
-        // fire `idleFlushAfterMs` after the last write and push the
-        // buffer to QDB — without anyone calling shutdown.
-        const handle = await flow( 'idleFlushTest' )
+        // A short timer and fewer messages than flushRows. After the
+        // harness finishes generating, no further writes happen. The
+        // timer should push the buffer to QDB within one interval,
+        // without anyone calling shutdown.
+        const handle = await flow( 'timerFlushTest' )
             .source( testHarness, {
                 messageTemplate: buildMessageTemplate( messageCount ),
                 assetClass,
@@ -243,9 +240,7 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
                 ilpUrl: QUESTDB_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix,
-                flushMode: 'manual',
-                idleFlushAfterMs,
-                idleFlushCheckMs
+                flushIntervalMs
             } )
             .assetId( 'partitionId' )
             .persistIf( 'persist', ( _msg ) => true,
@@ -254,15 +249,13 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
 
         await handle.whenComplete();
 
-        // Right after generation finishes, the buffer hasn't been
-        // flushed yet. The idle timer fires `idleFlushAfterMs` later.
-        // Wait for the rows to appear *before* shutting down — that
-        // proves the idle timer drove the flush.
+        // Wait for the rows to appear *before* shutting down. That
+        // proves the timer drove the flush.
         const visibleCount = await waitForRows(
             pgClient, tableName, messageCount,
-            ( idleFlushAfterMs + idleFlushCheckMs ) * 4   // generous bound
+            flushIntervalMs * 4   // generous bound
         );
-        expect( visibleCount, 'idle timer should flush the buffer' ).to.equal( messageCount );
+        expect( visibleCount, 'the timer should flush the buffer' ).to.equal( messageCount );
 
         await handle.shutdown();
     } );
@@ -271,20 +264,19 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
     // Test 3 — Auto-mode boundary
     // --------------------------------------------------------------------
 
-    it( 'auto-flush triggers at the autoFlushRows boundary', async function () {
-        const autoFlushRows = 50;
-        const messageCount = autoFlushRows * 4;   // four flushes worth
-        const tablePrefix = `${RUN_PREFIX}_auto`;
+    it( 'the row trigger fires at the flushRows boundary', async function () {
+        const flushRows = 50;
+        const messageCount = flushRows * 4;   // four flushes worth
+        const tablePrefix = `${RUN_PREFIX}_rows`;
         const tableName = `${tablePrefix}_samples`;
         tablesToCleanUp.push( tableName );
 
-        // Auto mode + short row boundary + long time backstop. The
-        // only path to QDB is the row-count trigger. With 4× the
-        // boundary's worth of messages, the boundary is exercised
-        // four times. The shutdown drain catches the final partial
-        // batch (200 messages cleanly = 0 leftover, but the drain
-        // is harmless either way).
-        const handle = await flow( 'autoFlushTest' )
+        // A short row boundary and a long timer. The only path to QDB
+        // is the row trigger. With 4× the boundary's worth of messages,
+        // the boundary is exercised four times. The shutdown drain
+        // catches the final partial batch (200 messages cleanly = 0
+        // leftover, but the drain is harmless either way).
+        const handle = await flow( 'rowTriggerTest' )
             .source( testHarness, {
                 messageTemplate: buildMessageTemplate( messageCount ),
                 assetClass,
@@ -295,9 +287,8 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
                 ilpUrl: QUESTDB_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix,
-                flushMode: 'auto',
-                autoFlushRows,
-                autoFlushIntervalMs: 600000   // 10 minutes — won't fire
+                flushRows,
+                flushIntervalMs: 600000   // 10 minutes — won't fire
             } )
             .assetId( 'partitionId' )
             .persistIf( 'persist', ( _msg ) => true,
@@ -308,7 +299,7 @@ describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
         await handle.shutdown();
 
         const finalCount = await waitForRows( pgClient, tableName, messageCount, 5000 );
-        expect( finalCount, 'auto-flush must deliver every message' ).to.equal( messageCount );
+        expect( finalCount, 'the row trigger must deliver every message' ).to.equal( messageCount );
     } );
 
 } );

@@ -12,6 +12,14 @@
  * from the values that won, so a fixed default here would fight a
  * threshold raised in the flow's config.
  *
+ * The three legacy flush variables, `QUESTDB_FLUSH_MODE`,
+ * `QUESTDB_IDLE_FLUSH_AFTER_MS` and `QUESTDB_IDLE_FLUSH_CHECK_MS`, also
+ * carry a value only when set. They used to have fixed defaults. With
+ * the defaults in place, the adapter's deprecation line would have
+ * named them for every operator, including the ones who never set
+ * them. Their validators accept undefined and otherwise keep the rules
+ * they had.
+ *
  * The label case pins a fix. The validation runner used to build the
  * label by uppercasing the field name and then looking for a
  * lower-to-upper boundary, which no longer existed. An operator saw
@@ -30,6 +38,13 @@ const FLUSH_VARS = [
     { field: 'questdbFlushIntervalMs', envVar: 'QUESTDB_FLUSH_INTERVAL_MS', sample: '500' },
     { field: 'questdbBufferCeilingRows', envVar: 'QUESTDB_BUFFER_CEILING_ROWS', sample: '80000' },
     { field: 'questdbFlushDeadlineMs', envVar: 'QUESTDB_FLUSH_DEADLINE_MS', sample: '30000' }
+];
+
+// The legacy variables and one value each of them accepted before.
+const LEGACY_VARS = [
+    { field: 'questdbFlushMode', envVar: 'QUESTDB_FLUSH_MODE', sample: 'manual' },
+    { field: 'questdbIdleFlushAfterMs', envVar: 'QUESTDB_IDLE_FLUSH_AFTER_MS', sample: '0' },
+    { field: 'questdbIdleFlushCheckMs', envVar: 'QUESTDB_IDLE_FLUSH_CHECK_MS', sample: '250' }
 ];
 
 describe( 'env-vars — QuestDB flush settings (ADR-029)', function () {
@@ -70,6 +85,52 @@ describe( 'env-vars — QuestDB flush settings (ADR-029)', function () {
             } );
             expect( result.code ).to.equal( 1 );
             expect( result.stderr ).to.include( `${row.envVar}: Must be positive integer, got: "many"` );
+        } );
+
+    } );
+
+} );
+
+describe( 'env-vars — the legacy QuestDB flush variables carry a value only when set (ADR-029)', function () {
+
+    it( 'the three fields are undefined when their variables are unset', async function () {
+        const { ENV_VARS } = await import( '../env-vars.js' );
+
+        LEGACY_VARS.forEach( function ( row ) {
+            expect( ENV_VARS ).to.have.property( row.field );
+            expect( ENV_VARS[ row.field ], row.field ).to.equal( undefined );
+        } );
+    } );
+
+    LEGACY_VARS.forEach( function ( row ) {
+
+        it( `still accepts ${row.envVar} when set`, async function () {
+            const result = await runWithEnv( {
+                NODE_ENV: 'test',
+                [ row.envVar ]: row.sample
+            } );
+            expect( result.code ).to.equal( 0 );
+            expect( result.stderr ).to.equal( '' );
+        } );
+
+    } );
+
+    describe( 'the validators behind them', function () {
+
+        it( 'questdbFlushMode accepts undefined and still rejects an unknown mode', async function () {
+            const { validators } = await import( '../env-vars.js' );
+
+            expect( validators.questdbFlushMode( undefined ) ).to.equal( null );
+            expect( validators.questdbFlushMode( 'batch' ) ).to.include( 'Must be one of' );
+        } );
+
+        it( 'nonNegativeIntOrUndefined accepts undefined and zero, rejects a negative or non-numeric value', async function () {
+            const { validators } = await import( '../env-vars.js' );
+
+            expect( validators.nonNegativeIntOrUndefined( undefined ) ).to.equal( null );
+            expect( validators.nonNegativeIntOrUndefined( 0, '0' ) ).to.equal( null );
+            expect( validators.nonNegativeIntOrUndefined( -5, '-5' ) ).to.include( 'Must be non-negative integer, got: "-5"' );
+            expect( validators.nonNegativeIntOrUndefined( NaN, 'soon' ) ).to.include( 'Must be non-negative integer, got: "soon"' );
         } );
 
     } );

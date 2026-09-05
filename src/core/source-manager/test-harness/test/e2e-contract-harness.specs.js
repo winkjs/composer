@@ -314,8 +314,7 @@ describe( 'testHarness E2E — three-sink contract check', function () {
                 .storage( questdbAdapter, {
                     ilpUrl: QUESTDB_ILP_URL,
                     pgUrl: QUESTDB_PG_URL,
-                    tablePrefix: TEST_PREFIX,
-                    flushMode: 'manual'
+                    tablePrefix: TEST_PREFIX
                 } )
                 .assetId( 'partitionId' )
                 .persistIf( 'persistAll', ( _msg ) => true,
