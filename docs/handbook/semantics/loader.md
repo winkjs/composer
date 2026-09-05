@@ -164,8 +164,8 @@ const handle = await flow('pump-monitor')
 
     // Register storage adapter (tablePrefix defaults to assetClass.name → 'rwmPump')
     .storage(questdbAdapter, {
-        ilpUrl: 'localhost:9000',   // QuestDB ILP endpoint
-        pgUrl: 'localhost:8812'     // QuestDB PostgreSQL endpoint
+        ilpUrl: '127.0.0.1:9000',   // QuestDB ILP endpoint
+        pgUrl: '127.0.0.1:8812'     // QuestDB PostgreSQL endpoint
     })
 
     // Isolate state per asset
@@ -227,8 +227,8 @@ const handle = await flow('pump-analytics')
     .assetClass(assetClass)
     .storage(questdbAdapter, {
         tablePrefix: 'factory1',
-        ilpUrl: 'localhost:9000',
-        pgUrl: 'localhost:8812'
+        ilpUrl: '127.0.0.1:9000',
+        pgUrl: '127.0.0.1:8812'
     })
     .assetId('pumpId')
 

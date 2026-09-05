@@ -20,7 +20,7 @@ A practical guide to building streaming intelligence pipelines with winkComposer
 
 8. **[Visualization](./visualization.md)** — From pipeline to dashboard: QuestDB as the integration surface, Grafana provisioning, query patterns, dashboard templates, and where the approach stops.
 
-9. **[Resilience](./resilience.md)** — Keeping a deployment running through restarts and outages: input durability with a fixed `clientId`, the recommended broker configuration walked line by line, what the broker guarantees in each outage type, and measuring durations from message time.
+9. **[Resilience](./resilience.md)** — Keeping a deployment running through restarts and outages. Covers input durability with a fixed `clientId`, and why every address is a literal and never `localhost`. Then the recommended broker configuration walked line by line, what the broker guarantees in each outage type, and measuring durations from message time.
 
 10. **[Environment Variables](./environment-variables.md)** — The runtime settings composer reads from the environment: MQTT and QuestDB connection details, flush tuning, and lifecycle timeouts. Defaults are built in; set these only to change a host, port, or limit.
 

@@ -63,6 +63,59 @@ name that is unique on your broker. Site plus line works well:
   power cut erases the saved backlog. How to turn it on is the next
   section.
 
+## Addresses: use a literal, never a name
+
+**The one rule:** write every adapter address as a literal IP
+address, such as `127.0.0.1:9000`. Do not write `localhost`.
+
+```javascript
+.storage( questdbAdapter, {
+    ilpUrl: '127.0.0.1:9000',    // a literal address, never localhost
+    pgUrl: '127.0.0.1:8812'
+} )
+```
+
+Why the rule exists takes a short story. `localhost` is a name, not
+an address. On most machines it stands for two addresses: `127.0.0.1`
+(IPv4) and `::1` (IPv6). Which one a program tries first depends on
+the operating system. A service may listen on only one of them.
+
+On a test rig, QuestDB listened on IPv4 only, and the box resolved
+`localhost` to `::1` first. For a day and a half the connection
+happened to land on the right address. Then it stopped. Every write
+went to an address nothing answered, and nothing reported it for
+four hours.
+
+Composer now refuses the name. `localhost` in any adapter address
+fails when the flow is defined. That covers `ilpUrl`, `pgUrl`, and
+`brokerUrl`. The error is `INVALID_CONFIG`, and its message names
+the literal to use. The same check runs on the environment
+variables. The shipped defaults are literals.
+
+Any other name, such as `questdb.plant.local`, is accepted with one
+warning at startup, marked `ADDRESS_IS_NAME`. The QuestDB adapter
+then checks the name before it accepts a row. It resolves every
+address behind the name and opens one connection to each. All of
+them must answer. When one refuses, setup fails with
+`TRANSPORT_UNREACHABLE` and a message like this:
+
+```text
+winkComposer/questdb: pgUrl 'questdb.plant.local:8812' is unreachable [TRANSPORT_UNREACHABLE]: [::1]:8812 refused, 127.0.0.1:8812 answers; set pgUrl to 127.0.0.1:8812
+```
+
+The message names the address to set. Reaching that sentence by hand
+on the rig took a day.
+
+The MQTT adapters refuse `localhost` and warn on a name, but they do
+not run the check. They keep connecting in the background, so a
+wrong address there shows as a broker that never connects, not as a
+failed startup.
+
+One limit to know. The QuestDB write path cannot take an IPv6
+literal, because the QuestDB client library (4.2.0) cannot read one.
+Use an IPv4 literal for `ilpUrl`. `pgUrl` and `brokerUrl` accept an
+IPv6 literal in brackets: `[::1]:8812`.
+
 ## Configuring the broker
 
 Composer ships a reference Mosquitto configuration at

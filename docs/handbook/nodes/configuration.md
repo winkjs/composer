@@ -6,7 +6,7 @@ Configuration methods are called **before** any processing nodes in the chain. T
 flow('pump-monitor')
     // Configuration
     .source(csv, { path: './data.csv' })
-    .storage(questdbAdapter, { ilpUrl: 'localhost:9000' })
+    .storage(questdbAdapter, { ilpUrl: '127.0.0.1:9000' })
     .assetClass(assetClass)
     .assetId('machineId')
 
@@ -99,7 +99,7 @@ flow('pipeline')
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `brokerUrl` | string | `MQTT_BROKER_URL` env var | MQTT broker URL (`mqtt://` or `mqtts://`) |
+| `brokerUrl` | string | `MQTT_BROKER_URL` env var | MQTT broker URL (`mqtt://` or `mqtts://`). A literal address or a name, never `localhost` |
 | `codec` | object | required | Codec with `pack( msg )` method returning Buffer |
 | `clientId` | string | auto-generated | MQTT client identifier |
 | `connectGraceMs` | number | `500` (`MQTT_CONNECT_GRACE_MS` env var) | How long flow startup waits for the broker's first connection acknowledgment, in milliseconds. The flow starts either way — an unreachable broker never fails startup. `0` skips the wait |
@@ -336,7 +336,7 @@ flow('aggregator')
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `brokerUrl` | string | required | MQTT broker URL (`mqtt://` or `mqtts://`) |
+| `brokerUrl` | string | required | MQTT broker URL (`mqtt://` or `mqtts://`). A literal address or a name, never `localhost` |
 | `topics` | string\|string[] | required | Topic(s) to subscribe (supports `+` and `#` wildcards) |
 | `codec` | object | `JSON.parse` | Codec with `unpack( payload )` method |
 | `dedupWindowMs` | number | `120000` | Dedup time bound: a duplicate arriving within this window of its original is dropped |
@@ -454,8 +454,8 @@ import { questdbAdapter } from '@winkjs/composer';
 flow('pipeline')
     .storage(questdbAdapter, {
         tablePrefix: 'prod',
-        ilpUrl: 'localhost:9000',
-        pgUrl: 'localhost:8812'
+        ilpUrl: '127.0.0.1:9000',
+        pgUrl: '127.0.0.1:8812'
     })
 ```
 
@@ -463,8 +463,8 @@ flow('pipeline')
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `ilpUrl` | string | `localhost:9000` | ILP endpoint for writes (`host:port`) |
-| `pgUrl` | string | `localhost:8812` | PostgreSQL endpoint for table creation (`host:port`) |
+| `ilpUrl` | string | `127.0.0.1:9000` | ILP endpoint for writes (`host:port`). A literal address or a name, never `localhost`. No IPv6 literal: the QuestDB client cannot read one |
+| `pgUrl` | string | `127.0.0.1:8812` | PostgreSQL endpoint for table creation (`host:port`). A literal address or a name, never `localhost`. `[::1]:8812` is accepted |
 | `tablePrefix` | string | asset class name | Prefix for table names (`{tablePrefix}_{insightType}`) |
 | `flushMode` | string | `'auto'` | `'auto'` lets the client flush on a row or time trigger; `'manual'` flushes on an idle timer |
 | `idleFlushAfterMs` | number | `5000` | Idle time before a manual-mode flush |
@@ -478,6 +478,10 @@ flow('pipeline')
 | `onDeliveryFailure` | function | `null` | Called when a write ultimately fails. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported once as a `CALLBACK_FAILED` console line |
 
 The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_PG_URL` environment variables when omitted. See [Environment Variables](../environment-variables.md).
+
+**Addresses.** Write both as a literal IP address. `localhost` is refused when the flow is defined, with `INVALID_CONFIG` and a message that names the literal to use. The name stands for two addresses, and the service may answer on only one.
+
+Any other name is accepted with one startup warning, marked `ADDRESS_IS_NAME`. The adapter then checks both endpoints before it opens a client: every address a name resolves to must answer. See [Resilience](../resilience.md#addresses-use-a-literal-never-a-name) for the reasons.
 
 Config is checked when the flow is defined, before anything connects. A
 misspelled option name (say `illpUrl` instead of `ilpUrl`) is rejected with an
@@ -521,11 +525,11 @@ column 'temp' is wrong-typed (expected float64, received string) in insightType 
 
 | Code | What happened | What to do |
 |------|---------------|------------|
-| `TRANSPORT_UNREACHABLE` | The PostgreSQL endpoint did not answer — nothing listening, host unresolvable, or the attempt timed out | The config may be fine. Check the network, the firewall, and whether QuestDB is running |
-| `INVALID_CONFIG` | The config itself does not work — a required URL is missing, credentials were rejected, a column declares an unsupported type | Fix the storage config or the `QUESTDB_*` environment variable it fell back to |
+| `TRANSPORT_UNREACHABLE` | An endpoint did not answer. The adapter checks `pgUrl` and then `ilpUrl` before it opens any client; every address a name resolves to must answer. The message lists each address with its result and names the literal to set | The config may be fine. Check the network, the firewall, and whether QuestDB is running. When one address answered, set the literal the message names |
+| `INVALID_CONFIG` | The config itself does not work — a required URL is missing, an address names `localhost`, `ilpUrl` is an IPv6 literal, credentials were rejected, a column declares an unsupported type | Fix the storage config or the `QUESTDB_*` environment variable it fell back to |
 | `MISSING_ASSET_CLASS` | The flow never called `.assetClass()` | Add the asset class to the flow |
 
-The underlying error is preserved on `err.cause` for diagnostics either way.
+When a client library produced the error, it is preserved on `err.cause` for diagnostics.
 
 Persist plans are compiled at startup, so writes add no overhead during message processing.
 

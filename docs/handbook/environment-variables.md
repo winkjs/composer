@@ -98,8 +98,8 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 
 | Variable | Default | What it sets |
 |----------|---------|--------------|
-| `QUESTDB_ILP_URL` | `localhost:9000` | Write path — ILP over HTTP; `host:port` |
-| `QUESTDB_PG_URL` | `localhost:8812` | Read and table-creation path — Postgres wire; `host:port` |
+| `QUESTDB_ILP_URL` | `127.0.0.1:9000` | Write path — ILP over HTTP; `host:port`, a literal address or a name, never `localhost`, no IPv6 literal |
+| `QUESTDB_PG_URL` | `127.0.0.1:8812` | Read and table-creation path — Postgres wire; `host:port`, a literal address or a name, never `localhost` |
 | `QUESTDB_FLUSH_MODE` | `auto` | `auto` or `manual` |
 | `QUESTDB_IDLE_FLUSH_AFTER_MS` | `5000` | Idle time before a manual-mode flush |
 | `QUESTDB_IDLE_FLUSH_CHECK_MS` | `1000` | How often the idle timer checks |
@@ -110,3 +110,9 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 | `QUESTDB_DATABASE` | `qdb` | Database name |
 | `QUESTDB_USER` | `admin` | User |
 | `QUESTDB_PASSWORD` | `quest` | Password; may be empty for passwordless auth |
+
+### Addresses: a literal, never `localhost`
+
+Every adapter address takes a literal IP address or a host name. That covers `QUESTDB_ILP_URL`, `QUESTDB_PG_URL`, and `MQTT_BROKER_URL`. The name `localhost` is refused when the variable is read, before anything connects. The message names the literal to use. The reason is that the name stands for two addresses, `127.0.0.1` and `::1`, and the process cannot know which one the service answers on.
+
+Any other name is accepted with one warning at startup. The QuestDB adapter then checks every address the name resolves to before it accepts a row. `QUESTDB_ILP_URL` cannot take an IPv6 literal, because the QuestDB client cannot read one. The other two accept an IPv6 literal in brackets, such as `[::1]:8812`. The full story is in [Resilience](./resilience.md#addresses-use-a-literal-never-a-name).
