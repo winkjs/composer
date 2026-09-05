@@ -9,6 +9,16 @@
  * Setup throws when either endpoint does not answer, so a flow never
  * starts against a dead database.
  *
+ * Module layout. This file holds the factory, the config schema, and
+ * the adapter export. The work lives in four modules next to it:
+ * - `resolve-options.js` merges the config and the environment into
+ *   the settings, and derives the ceiling and the deadline.
+ * - `address-policy.js` holds the ADR-030 address checks, the setup
+ *   probe wrapper, and the classification of a connect failure.
+ * - `flush-engine.js` owns the hot path, every flush, the counters
+ *   behind pressure and health, and the shutdown drain (ADR-029).
+ * - `persist-plan.js` compiles one row writer per insight type.
+ *
  * The handle the factory returns:
  * - `write(insightType, msg, partitionId)`: the hot path. Appends one
  *   row to the client's buffer and returns at once. `{ ok: true }`
@@ -20,33 +30,15 @@
  *   every row was delivered. A loss is a classified rejection.
  * - `getPressure()`: buffer fill in [0, 1]. Sync, O(1), no allocation.
  * - `getHealth()`: `{ status, connected, pressure, ... }`.
+ * `flush-engine.js` documents how each one behaves.
  *
  * Composer owns every flush (ADR-029). The client's own trigger is
- * off (`auto_flush=off`), so a batch leaves the process only when this
- * module says so. Two triggers exist. A write that brings the buffer
- * to `flushRows` starts a flush at once, inside `write()`, and does
- * not wait for it. A timer starts a flush every `flushIntervalMs` when
- * anything is buffered, so a slow stream still lands within about one
- * interval. Only one engine flush runs at a time. While one is in
- * flight, both triggers wait and rows collect in the buffer. An
- * explicit `flush()`, the shutdown drain, and the mid-row recovery
- * flush are the caller's own decisions and start regardless.
- *
- * Why the module counts exactly. The client copies the rows out of
- * its buffer the moment a flush starts, before any network work. So
- * `bufferedRows` counts rows waiting for the next flush, and
- * `inFlightRows` counts rows inside flushes that have not settled.
- * Every flush start and settle passes through `trackFlush`, so both
- * numbers are exact, not estimates. A failed flush has lost its rows,
- * because the copy is gone with it. The engine reports that loss once
- * per flush: to `onDeliveryFailure` when the caller gave one, as
- * `( err, { trigger, rowsLost, abandoned } )`, otherwise as one
- * classified `DELIVERY_FAILED` console line.
- *
- * Not yet in this version, and landing with the next change: a
- * deadline per flush, so a send that never settles is abandoned and
- * reported, and a pause of delivery while the endpoint is unreachable,
- * so a short QuestDB restart costs no rows.
+ * off (`auto_flush=off`), so a batch leaves the process only when the
+ * engine says so. A write that brings the buffer to `flushRows` starts
+ * a flush at once. A timer starts a flush every `flushIntervalMs` when
+ * anything is buffered. Only one engine flush runs at a time. A failed
+ * flush is reported once, with the exact rows lost, and the process
+ * keeps running.
  *
  * Durability in plain words (ADR-018). `durabilityClass` is
  * `'in-memory'`. Rows live in the client's buffer until a flush reaches
@@ -76,26 +68,25 @@
  *   `QUESTDB_ILP_URL` and `QUESTDB_PG_URL`; the credentials come from
  *   `QUESTDB_DATABASE`, `QUESTDB_USER` and `QUESTDB_PASSWORD`.
  *
+ * Long-running commitments (ADR-018 §12). One timer, created at setup
+ * and cleared at shutdown; it does not hold the process open. Every
+ * counter is bounded by the ceiling. The per-row path allocates
+ * nothing beyond the one derived promise `persist-plan.js` documents.
+ * Reconnection and request retries belong to the client. No listeners
+ * are attached. `flush-engine.js` carries the detail.
+ *
+ * Health (ADR-018 §8). `status` is `red` when not connected or at
+ * capacity, `yellow` at `pressure >= 0.66` or any outstanding write
+ * error, `green` otherwise. `connected` is derived from recent write
+ * success, because the ILP client exposes no socket state.
+ * `flush-engine.js` documents the derivation.
+ *
  * Deprecated options (ADR-029, removed in 0.8.0). `autoFlushRows` maps
  * to `flushRows` and `idleFlushCheckMs` maps to `flushIntervalMs`.
  * `flushMode`, `idleFlushAfterMs` and `autoFlushIntervalMs` are
  * accepted and ignored. The same holds for their `QUESTDB_*`
  * variables. Setup prints one `DEPRECATED_OPTION` line naming every
  * legacy key in use and what happened to it.
- *
- * Long-running commitments (ADR-018 §12). One timer, created at setup
- * and cleared at shutdown; it does not hold the process open. Every
- * counter is bounded by the ceiling. The per-row path allocates
- * nothing in this module; the persist plan documents its own one
- * derived promise per row. Reconnection and request retries belong to
- * the client. No listeners are attached.
- *
- * Health (ADR-018 §8). `connected` is derived, because the ILP client
- * exposes no socket state: false while shutting down or after five
- * consecutive write errors. `status` is `red` when not connected or at
- * capacity (`pressure >= 1`), `yellow` when `pressure >= 0.66` or any
- * write error is outstanding, `green` otherwise. One successful write
- * clears the error count.
  *
  * `err.code` vocabulary (per-adapter; ADR-018 has each adapter document
  * its own codes in this header):
@@ -165,28 +156,26 @@
  *   is left for a new row. One shared result object.
  * - `SEND_FAILED`          — the persist plan threw while invoking
  *   sender methods (type coercion failure, a client throw). The
- *   half-written row is cancelled (see mid-row recovery below).
+ *   half-written row is cancelled (mid-row recovery, in
+ *   `flush-engine.js`).
  * - `INVALID_TIMESTAMP`    — reserved; today persist-plan handles invalid
  *   timestamps via `onWarning + skip-row`. It may later be surfaced as a
  *   hard return error.
  *
  * Shutdown-time throws (ADR-018 — a clean shutdown resolve means
  * everything buffered or in flight was delivered; both carry
- * `dropped: { count }`, exact). Shutdown settles every unsettled flush
- * plus one final flush, raced against `{ timeout }`; its outcome is
- * latched so repeated calls cannot contradict it:
+ * `dropped: { count }`, exact):
  * - `DELIVERY_FAILED`  — a flush failed; first flush error on `cause`.
  * - `SHUTDOWN_TIMEOUT` — delivery did not settle within the caller's
- *   `{ timeout }` (a send against an unreachable server may never
- *   settle — see the client dependency note below).
+ *   `{ timeout }`.
  *
  * Runtime console classification (tokens, not `err.code` values):
- * - `DELIVERY_FAILED`  — an engine or recovery flush failed and no
- *   `onDeliveryFailure` was given. One `logger.error` line per failed
- *   flush, carrying the exact rows lost and the client's message. The
- *   process keeps running: an unattended deployment must report a
- *   lost batch, not stop on it. The health surface carries the same
- *   fact.
+ * - `DELIVERY_FAILED`  — an engine or recovery flush failed, or the
+ *   client refused a row append, and no `onDeliveryFailure` was given.
+ *   One `logger.error` line per event, carrying the exact rows lost
+ *   and the client's message. The process keeps running: an
+ *   unattended deployment must report a lost batch, not stop on it.
+ *   The health surface carries the same fact.
  * - `DEPRECATED_OPTION` — one `logger.warn` line at setup naming the
  *   legacy keys in use (see Deprecated options above).
  * - `ADDRESS_IS_NAME`  — `ilpUrl` or `pgUrl` is a name other than
@@ -235,46 +224,13 @@
  * promise and routes the failure to `onDeliveryFailure` as
  * `( err, { tableName } )`, or prints one `DELIVERY_FAILED` line. The
  * next write finds the sender holding the unfinished row, throws, and
- * the mid-row recovery below clears it.
- *
- * Mid-row recovery (ADR-018 — a rejected message costs that message,
- * nothing else):
- * - A persist plan that throws between sender.table() and sender.at() leaves
- *   the client holding a half-written row. Without recovery, every later
- *   write fails with "Table name has already been set" — the 2026-06-10
- *   silent-write-failure incident lost 98.6% of a replay's rows this way.
- * - write()'s catch therefore calls recoverSender(), which composes two
- *   documented client calls: flush() ships every COMPLETED row out of the
- *   buffer (the copy-out happens synchronously, before any network I/O; the
- *   client documents that an unfinished row stays behind), then reset()
- *   clears the buffer — at that point holding only the broken stub — and
- *   lowers the client's row-in-progress flags.
- * - The recovery flush carries real data and is tracked like every
- *   flush. If it fails, the loss is reported like any other:
- *   `onDeliveryFailure( err, { trigger: 'recovery', rowsLost, abandoned } )`,
- *   or one `DELIVERY_FAILED` line.
- * - The client (4.2.0) has no row-cancel API, while its sibling clients do
- *   (.NET CancelRow, Rust/C rewind_to_marker, Java recovers automatically).
- *   Upstream issue #60 tracks the gap:
- *   https://github.com/questdb/nodejs-questdb-client/issues/60
- *   When a release ships cancelRow(), recoverSender() becomes that one call.
+ * the mid-row recovery in `flush-engine.js` clears it.
  *
  * Client dependency note. `package.json` pins `@questdb/nodejs-client`
- * to `~4.2.0`, because this module relies on five facts of that
- * release. Re-verify each one on an upgrade:
- * - `flush()` is `async` and copies the completed rows out of the
- *   buffer before it sends (copy-out).
- * - `at()` is `async`; its append runs first and synchronously.
- * - `tryFlush()` checks `auto_flush` first, so `auto_flush=off` stops
- *   every client-side flush.
- * - `close()` on the HTTP transport is an empty function. Nothing here
- *   can abort an in-flight send; process exit is the backstop.
- * - A send against an unreachable server can retry without end
- *   (undici `RetryAgent`, `maxRetries: Infinity`), so a flush promise
- *   may never settle. The shutdown `{ timeout }` bounds it today; the
- *   per-flush deadline lands next.
- * `persist-plan.js` also imports `SenderBufferV1`, an exported but
- * undocumented member, for name validation at setup only.
+ * to `~4.2.0`. `flush-engine.js` lists the five facts of that release
+ * the engine relies on; re-verify each on an upgrade. `persist-plan.js`
+ * also imports `SenderBufferV1`, an exported but undocumented member,
+ * for name validation at setup only.
  *
  * Integration with persist-if node:
  * - persist-if calls: state.storage.write(insightType, msg, partitionId)
@@ -318,106 +274,23 @@ import pg from 'pg';
 import { ENV_VARS } from '../../env-vars.js';
 import { logger } from '../../logger/index.js';
 import { validators } from '../../utils/validate/index.js';
-import { wrapCallback } from '../../utils/callback-guard/index.js';
-import {
-    classifyAddress,
-    formatAddress,
-    suggestLiteral,
-    localhostRefusalMessage,
-    nameWarningMessage
-} from '../../utils/address/index.js';
-import { probeAddress, describeProbe } from '../../utils/address/probe.js';
+import { probeAddress } from '../../utils/address/probe.js';
 import { buildPersistPlans } from './persist-plan.js';
 import { ensureTables } from './ensure-tables.js';
 import { assertColumnFacts } from './assert-columns.js';
 import { resolveOptions, deprecationMessage } from './resolve-options.js';
-
-// ============================================================================
-// HOT-PATH SINGLETONS
-// ============================================================================
-
-/**
- * Singleton success result reused on every successful write. Hot-path zero
- * allocation per ADR-013 / ADR-004. Plain literal — not frozen (V8 hot paths
- * handle plain objects more predictably; no caller mutates this).
- * @type {{ok: true}}
- */
-const RESULT_OK = { ok: true };
-
-/**
- * Shared refusal for a write after `shutdown()` was called. The timer is
- * stopped and the final flush may have run, so a row accepted now would
- * have no flusher left. Static text, one object: refusing allocates
- * nothing.
- * @type {{ok: false, error: {code: string, message: string}}}
- */
-const RESULT_SHUTTING_DOWN = {
-    ok: false,
-    error: {
-        code: 'SHUTTING_DOWN',
-        message: 'winkComposer/questdb: write rejected [SHUTTING_DOWN]: the storage is shutting down'
-    }
-};
-
-/**
- * Shared refusal for a write at the buffer ceiling (ADR-029). Shedding
- * happens under stress, when the endpoint is not taking rows, so the
- * refusal must cost nothing per call. Static text, one object.
- * @type {{ok: false, error: {code: string, message: string}}}
- */
-const RESULT_STORAGE_FULL = {
-    ok: false,
-    error: {
-        code: 'STORAGE_FULL',
-        message: 'winkComposer/questdb: write rejected [STORAGE_FULL]: the buffer holds bufferCeilingRows rows ' +
-            'and the endpoint has not taken them; the row was shed'
-    }
-};
-
-/**
- * Console channel for the callback guard: one classified line in this
- * adapter's family. Receives an already-safe detail string, never the
- * raw thrown value.
- */
-const reportCallbackFault = function ( severity, name, detail ) {
-    logger.error(
-        `winkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
-    );
-}; // reportCallbackFault()
-
-// Error results (INVALID_INSIGHT_TYPE, SEND_FAILED) are constructed per-call
-// because each carries dynamic content (the offending insightType name and the
-// underlying err.message respectively). These paths are rare; per-occurrence
-// allocation on errors is acceptable. The singletons above cover the
-// per-message hot path and the two refusals that can fire under load.
-
-/**
- * Health status thresholds. consecutiveWriteErrors crossing the YELLOW
- * threshold elevates status to 'yellow'; crossing the RED threshold flips
- * `connected` to false (and therefore `status` to 'red'). Tuned for "any
- * error is worth flagging" + "sustained errors mean the transport is gone."
- */
-const HEALTH_ERROR_YELLOW_THRESHOLD = 1;
-const HEALTH_ERROR_RED_THRESHOLD = 5;
-
-/**
- * Pressure threshold above which `status` elevates to at least 'yellow'.
- * The value matches the pressure-aware-yield design (ADR-020, still a
- * Draft). That design proposes 0.66 as the pressure level where the
- * flow would start yielding to let sinks drain; the number still needs
- * benchmark confirmation. Today the yield trigger is time-only (ADR-024), so
- * this alignment is forward-looking, not a description of current yield
- * behaviour. Numeric — the constant exists once here rather than scattered
- * as a magic number.
- */
-const HEALTH_PRESSURE_YELLOW_THRESHOLD = 0.66;
-
-/**
- * Pressure at which the adapter is at capacity: the next write is shed.
- * ADR-018 §8 makes this red, whether or not the transport is known to
- * be down.
- */
-const HEALTH_PRESSURE_RED_THRESHOLD = 1;
+import {
+    isAllowedIlpUrl,
+    isAllowedPgUrl,
+    assertNotLocalhost,
+    assertIlpNotIPv6,
+    warnIfName,
+    assertReachable,
+    pgConnectionTarget,
+    NETWORK_ERROR_CODES,
+    buildSender
+} from './address-policy.js';
+import { createFlushEngine } from './flush-engine.js';
 
 // ============================================================================
 // CONFIGURATION BUILDER
@@ -450,244 +323,8 @@ const buildSenderConfig = function ( options ) {
 }; // buildSenderConfig()
 
 // ============================================================================
-// ADDRESS POLICY (ADR-030)
-// ============================================================================
-
-/**
- * Builds a setup-time INVALID_CONFIG error in this adapter's message
- * family.
- *
- * @param {string} message - The message clause, already in ADR-028 form
- * @returns {Error} The classified error
- */
-const invalidConfig = function ( message ) {
-    const err = new Error( `winkComposer/questdb: ${message}` );
-    err.code = 'INVALID_CONFIG';
-    return err;
-}; // invalidConfig()
-
-/**
- * Schema validator for `ilpUrl`: non-empty, never `localhost`, and
- * never an IPv6 literal, because the client (4.2.0) splits the address
- * on its first colon and cannot read one. A value the grammar cannot
- * read passes; the client reports its own error for it.
- *
- * @param {*} value - The configured value
- * @returns {boolean} Whether the value is allowed
- */
-const isAllowedIlpUrl = function ( value ) {
-    if ( !validators.nonEmptyString( value ) ) {
-        return false;
-    }
-    const address = classifyAddress( value, 'hostPort' );
-    return ( address.kind !== 'localhost' ) && ( address.family !== 6 );
-}; // isAllowedIlpUrl()
-
-/**
- * Schema validator for `pgUrl`: non-empty and never `localhost`. An
- * IPv6 literal is fine here; the PostgreSQL client takes a bare host.
- *
- * @param {*} value - The configured value
- * @returns {boolean} Whether the value is allowed
- */
-const isAllowedPgUrl = function ( value ) {
-    if ( !validators.nonEmptyString( value ) ) {
-        return false;
-    }
-    return classifyAddress( value, 'hostPort' ).kind !== 'localhost';
-}; // isAllowedPgUrl()
-
-/**
- * Classifies one address and refuses `localhost`. The schema already
- * refused it at flow definition; this call covers the environment
- * fallback and direct callers, and carries the classified code.
- *
- * @param {string} field - The config key, for the message
- * @param {string} value - The address as configured
- * @param {string} envVar - The environment variable that also sets it
- * @returns {Object} The classified address
- * @throws {Error} INVALID_CONFIG when the host is `localhost`
- */
-const assertNotLocalhost = function ( field, value, envVar ) {
-    const address = classifyAddress( value, 'hostPort' );
-    if ( address.kind === 'localhost' ) {
-        throw invalidConfig( localhostRefusalMessage( { field, address, envVar } ) );
-    }
-    return address;
-}; // assertNotLocalhost()
-
-/**
- * Refuses an IPv6 literal for `ilpUrl`, naming the client limitation.
- *
- * @param {Object} address - The classified `ilpUrl`
- * @throws {Error} INVALID_CONFIG when the host is an IPv6 literal
- */
-const assertIlpNotIPv6 = function ( address ) {
-    if ( address.family === 6 ) {
-        throw invalidConfig(
-            `ilpUrl '${formatAddress( address )}' is refused [INVALID_CONFIG]: the QuestDB client (4.2.0) ` +
-            'splits the address on its first colon and cannot read an IPv6 literal; use an IPv4 ' +
-            `literal such as ${suggestLiteral( address )}`
-        );
-    }
-}; // assertIlpNotIPv6()
-
-/**
- * Prints the one ADDRESS_IS_NAME line for a host that is a name.
- *
- * @param {string} field - The config key, for the message
- * @param {Object} address - The classified address
- */
-const warnIfName = function ( field, address ) {
-    if ( address.kind === 'name' ) {
-        logger.warn( `winkComposer/questdb: ${nameWarningMessage( { field, host: address.host } )}` );
-    }
-}; // warnIfName()
-
-/**
- * Runs the setup probe for one endpoint and fails setup unless every
- * resolved address answers (ADR-030 item 4). A value the grammar could
- * not read, or one without a port, is not probed: the client owns
- * that error.
- *
- * @param {string} field - The config key, for the message
- * @param {Object} address - The classified address
- * @param {function} probeFn - The probe (injectable; `probeAddress` in production)
- * @returns {Promise<void>} Resolves when every resolved address answered
- * @throws {Error} TRANSPORT_UNREACHABLE with the per-address detail
- */
-const assertReachable = async function ( field, address, probeFn ) {
-    if ( ( address.kind === 'unparsed' ) || ( address.port === undefined ) ) {
-        return;
-    }
-    const outcome = await probeFn( address );
-    if ( outcome.ok ) {
-        return;
-    }
-    const err = new Error(
-        `winkComposer/questdb: ${field} '${formatAddress( address )}' is unreachable [TRANSPORT_UNREACHABLE]: ` +
-        describeProbe( outcome, field, address )
-    );
-    err.code = 'TRANSPORT_UNREACHABLE';
-    throw err;
-}; // assertReachable()
-
-/**
- * The host and port handed to the PostgreSQL client. The parsed
- * address is used when the grammar read it with a port, which is what
- * lets `[::1]:8812` through. Otherwise the previous first-colon split
- * stays, so pg reports its own error for a value composer cannot read.
- *
- * @param {string} pgUrl - The address as configured
- * @param {Object} address - Its classification
- * @returns {{host: string, port: number}} The connection target
- */
-const pgConnectionTarget = function ( pgUrl, address ) {
-    if ( ( address.kind !== 'unparsed' ) && ( address.port !== undefined ) ) {
-        return { host: address.host, port: address.port };
-    }
-    const [ host, port ] = pgUrl.split( ':' );
-    return { host, port: parseInt( port, 10 ) };
-}; // pgConnectionTarget()
-
-// ============================================================================
 // STORAGE FACTORY
 // ============================================================================
-
-/**
- * Race a final flush against the shutdown time budget. No budget
- * (0/undefined) means no enforcement — the await is unbounded, preserving
- * direct-caller behavior. On timeout the flush promise is deliberately
- * left pending: the client's send may never settle (see the file header),
- * and the process is shutting down anyway. Its eventual rejection, if
- * any, is absorbed by the race's own handlers — never an
- * unhandledRejection.
- *
- * @param {Promise} flushPromise - the in-flight sender.flush()
- * @param {number} timeoutMs - budget in ms; 0/absent disables the race
- * @returns {Promise} settles with the flush, or rejects SHUTDOWN_TIMEOUT
- */
-const raceFlushTimeout = function ( flushPromise, timeoutMs ) {
-    if ( !( timeoutMs > 0 ) ) {
-        return flushPromise;
-    }
-    return new Promise( function ( resolve, reject ) {
-        const timer = setTimeout( function () {
-            const err = new Error( `final flush did not settle within ${timeoutMs} ms` );
-            err.code = 'SHUTDOWN_TIMEOUT';
-            reject( err );
-        }, timeoutMs );
-        timer.unref();
-        flushPromise.then(
-            function ( value ) {
-                clearTimeout( timer );
-                resolve( value );
-            },
-
-            /* c8 ignore start -- unreachable from the sole caller:
-               doShutdown races a Promise.all over waits that absorb
-               their own rejections (that is what keeps the dropped
-               count exact), so the raced promise cannot reject today.
-               The handler stays because this utility's contract is
-               generic — without it, a rejecting promise from a future
-               caller would become an unhandled rejection and a race
-               that never settles. */
-            function ( err ) {
-                clearTimeout( timer );
-                reject( err );
-            }
-
-            /* c8 ignore stop */
-        );
-    } );
-}; // raceFlushTimeout()
-
-/**
- * Node syscall codes that mean the PostgreSQL endpoint did not answer.
- * Used at setup to classify a connect failure as TRANSPORT_UNREACHABLE
- * (the one split the ADR-018 error vocabulary mandates — see the
- * connect wrap below).
- * Module-level Set: allocated once at load, membership check at setup.
- *
- * @type {Set<string>}
- */
-const NETWORK_ERROR_CODES = new Set( [
-    'ECONNREFUSED',
-    'ENOTFOUND',
-    'ETIMEDOUT',
-    'EHOSTUNREACH',
-    'ENETUNREACH',
-    'ECONNRESET',
-    'EAI_AGAIN',
-    'EPIPE'
-] );
-
-/**
- * Builds the ILP sender and classifies a failure. `fromConfig` may
- * itself reach the endpoint (a `/settings` fetch for protocol
- * negotiation), so a network code becomes `TRANSPORT_UNREACHABLE` and
- * anything else `INVALID_CONFIG`, the same split as the PostgreSQL
- * connect wrap. The client's error stays on `err.cause`.
- *
- * @param {Object} SenderClass - The client's Sender class
- * @param {string} senderConfig - The sender configuration string
- * @param {string} ilpUrl - The configured `ilpUrl`, for the message
- * @returns {Promise<Object>} The connected sender
- * @throws {Error} TRANSPORT_UNREACHABLE or INVALID_CONFIG, cause attached
- */
-const buildSender = async function ( SenderClass, senderConfig, ilpUrl ) {
-    try {
-        return await SenderClass.fromConfig( senderConfig );
-    } catch ( buildErr ) {
-        const code = NETWORK_ERROR_CODES.has( buildErr.code ) ? 'TRANSPORT_UNREACHABLE' : 'INVALID_CONFIG';
-        const err = new Error(
-            `winkComposer/questdb: could not build the ILP sender for ilpUrl '${ilpUrl}' [${code}]: ${buildErr.message}`
-        );
-        err.code = code;
-        err.cause = buildErr;
-        throw err;
-    }
-}; // buildSender()
 
 /**
  * Create QuestDB storage adapter.
@@ -721,18 +358,7 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // Options become settings here, once (ADR-029). A ceiling below the
     // threshold fails setup inside the resolver with INVALID_CONFIG.
     const { settings, deprecations } = resolveOptions( options, ENV_VARS );
-    const {
-        ilpUrl,
-        pgUrl,
-        flushRows,
-        flushIntervalMs,
-        bufferCeilingRows,
-        maxBufSize,
-        retryTimeout,
-        partitionBy,
-        onWarning,
-        onDeliveryFailure
-    } = settings;
+    const { ilpUrl, pgUrl, maxBufSize, retryTimeout, partitionBy, onWarning, onDeliveryFailure } = settings;
 
     // One line names every legacy key in use and what happened to it.
     if ( deprecations.length > 0 ) {
@@ -774,17 +400,9 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // guarded copy for the row-append site. Handing it a pre-wrapped
     // function would defeat that validation (the guard turns a
     // non-function into null instead of the fail-fast INVALID_CONFIG).
+    // The engine wraps its own copy after this validation (ADR-027:
+    // wrap once, after the site's own validation).
     const persistPlans = buildPersistPlans( assetClass, tablePrefix, { onWarning, onDeliveryFailure } );
-
-    // Arm the delivery-failure callback for this module's own report
-    // sites: the engine flushes and the mid-row recovery flush. All
-    // fire inside promise chains, where a broken handler used to become
-    // an unhandled rejection. The guard classifies the fault instead
-    // (ADR-018) and its cost stays inside the handler. Absent stays
-    // null, so the no-handler console fallback keeps its meaning.
-    const safeOnDeliveryFailure = wrapCallback( onDeliveryFailure, {
-        name: 'onDeliveryFailure', severity: 'red', report: reportCallbackFault
-    } );
 
     // Setup probe, PostgreSQL side (ADR-030 item 4): every address the
     // endpoint resolves to must answer before the client opens. The
@@ -805,13 +423,13 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // `err.code` an operator can route on. The ADR-018 error vocabulary
     // mandates one split here. An endpoint that does not answer is
     // TRANSPORT_UNREACHABLE: a Node syscall code like ECONNREFUSED (see
-    // NETWORK_ERROR_CODES above). The remediation there is "check the
-    // network, the firewall, whether the service is running", and the
-    // connection string may be fine. Everything else stays
-    // INVALID_CONFIG: an auth failure (the host answered), a protocol
-    // error, an unclassified throw. The fix there is the supplied
-    // config. The underlying error is preserved on `err.cause` for
-    // diagnostics either way.
+    // NETWORK_ERROR_CODES in address-policy.js). The remediation there
+    // is "check the network, the firewall, whether the service is
+    // running", and the connection string may be fine. Everything else
+    // stays INVALID_CONFIG: an auth failure (the host answered), a
+    // protocol error, an unclassified throw. The fix there is the
+    // supplied config. The underlying error is preserved on `err.cause`
+    // for diagnostics either way.
     try {
         await pgClient.connect();
     } catch ( connErr ) {
@@ -843,484 +461,16 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // a failure there is classified, cause attached (see buildSender).
     const sender = await buildSender( SenderClass, senderConfig, ilpUrl );
 
-    // ------------------------------------------------------------------
-    // Engine state
-    // ------------------------------------------------------------------
-
-    // Rows accepted and waiting for the next flush. The client copies
-    // its rows out of the buffer the moment a flush starts. So a flush
-    // start moves this count to `inFlightRows` at once.
-    let bufferedRows = 0;
-
-    // Rows inside flushes that have not settled, plus the promises
-    // carrying them. getPressure() adds this to bufferedRows: a hung
-    // flush is undelivered data and must read as pressure. shutdown()
-    // settles these entries instead of firing a blind flush at a
-    // buffer the copy-out already emptied.
-    let inFlightRows = 0;
-    const inFlightFlushes = new Set();
-
-    // One engine flush at a time (ADR-029). A send against an
-    // unreachable server can hang; without this guard every timer tick
-    // and every threshold crossing would start another stuck request.
-    // While the guard is up, rows collect in the buffer up to the
-    // ceiling, and the condition shows as rising pressure. Only the
-    // row and timer triggers respect the guard.
-    let flushInFlight = false;
-
-    // Shutdown outcome, latched on the first call. A lossy shutdown's
-    // failed flush already emptied the buffer via copy-out. A re-run
-    // would find nothing to flush and resolve clean, contradicting the
-    // recorded loss. Every caller gets the first call's promise instead.
-    let shutdownPromise = null;
-
-    // Health state. shuttingDown flips true at the start of shutdown()
-    // and never resets. consecutiveWriteErrors increments on every
-    // write() catch and resets to 0 on every successful persist plan
-    // call. A shed row touches neither: it is a capacity refusal, not
-    // a sender error.
-    let shuttingDown = false;
-    let consecutiveWriteErrors = 0;
-
-    /**
-     * Registers a flush the moment it is called. Copy-out means the rows
-     * leave the buffer NOW, delivered or not, so the caller hands them
-     * over in the same breath. Settlement — either way — removes them
-     * from the in-flight tally: resolved means delivered; rejected means
-     * lost, and loss REPORTING stays with the caller (the engine and the
-     * recovery flush report through `reportFlushLoss`, shutdown throws
-     * classified, an explicit `flush()` rejects to its caller).
-     *
-     * @param {Promise} flushPromise - the just-fired sender.flush()
-     * @param {number} rows - row count the flush copy carries
-     * @returns {{promise: Promise, rows: number}} the tracked entry
-     */
-    const trackFlush = function ( flushPromise, rows ) {
-        const entry = { promise: flushPromise, rows };
-        inFlightRows += rows;
-        inFlightFlushes.add( entry );
-        const settle = function () {
-            inFlightFlushes.delete( entry );
-            inFlightRows -= rows;
-        };
-        flushPromise.then( settle, settle );
-        return entry;
-    }; // trackFlush()
-
-    /**
-     * Reports one lost flush. The rows are gone with the failed copy,
-     * so this is a statement of loss, not a retry hint. The caller owns
-     * the response when it asked to; otherwise one classified line.
-     * The process keeps running either way (see the file header).
-     *
-     * @param {Error} err - The client's rejection
-     * @param {string} trigger - 'rows', 'timer' or 'recovery'
-     * @param {number} rows - Rows the flush carried
-     */
-    const reportFlushLoss = function ( err, trigger, rows ) {
-        if ( safeOnDeliveryFailure ) {
-            safeOnDeliveryFailure( err, { trigger, rowsLost: rows, abandoned: false } );
-            return;
-        }
-        logger.error( `winkComposer/questdb: flush failed, ${rows} row(s) lost [DELIVERY_FAILED]: ${err.message}` );
-    }; // reportFlushLoss()
-
-    /** Lowers the single-flight guard. */
-    const releaseFlight = function () {
-        flushInFlight = false;
-    }; // releaseFlight()
-
-    /**
-     * Starts one engine flush for everything buffered. The caller has
-     * checked the guard and that the buffer is not empty. The client's
-     * flush() is async, so it never throws here (a 4.2.0 fact recorded
-     * in the header); its rejection is handled below.
-     *
-     * @param {string} trigger - 'rows' or 'timer', for the loss report
-     */
-    const startFlush = function ( trigger ) {
-        flushInFlight = true;
-        const rows = bufferedRows;
-        bufferedRows = 0;
-        const entry = trackFlush( sender.flush(), rows );
-        entry.promise.then( releaseFlight, function ( err ) {
-            releaseFlight();
-            reportFlushLoss( err, trigger, rows );
-        } );
-    }; // startFlush()
-
-    /**
-     * The timer tick: flush whatever is buffered, unless a flush is
-     * already in flight. Synchronous and O(1); nothing here can throw.
-     */
-    const checkFlush = function () {
-        if ( flushInFlight || ( bufferedRows === 0 ) ) {
-            return;
-        }
-        startFlush( 'timer' );
-    }; // checkFlush()
-
-    // The one timer (ADR-018 §12): created here, cleared at shutdown.
-    // It does not hold the process open. The client's own interval
-    // trigger would not have served. It checks elapsed time only when
-    // a new row arrives. A stream that stops would leave its last rows
-    // in the buffer for good.
-    const flushTimer = setInterval( checkFlush, flushIntervalMs );
-    flushTimer.unref();
-
-    // ========================================================================
-    // STORAGE INTERFACE
-    // ========================================================================
-
-    /**
-     * Cancels a half-written ILP row after a mid-row throw, so the NEXT write
-     * starts clean (see "Mid-row recovery" in the file header for the full
-     * account and the upstream issue link).
-     *
-     * flush() copies every completed row out of the buffer synchronously and
-     * sends them in the background; the unfinished row stays behind. reset()
-     * then clears the buffer — only the broken stub remains at that point —
-     * and lowers the client's row-in-progress flags. Net effect: the broken
-     * row vanishes, every good row is on its way, the sender accepts the
-     * next write.
-     *
-     * The early flush carries real data. If its send fails, that loss is
-     * reported like any other (see `reportFlushLoss`). Never silent.
-     */
-    const recoverSender = function () {
-        try {
-            // flush() is an async function: it can never throw synchronously,
-            // and the rows it sends live in its own copy of the buffer.
-            // Tracked like every flush, so shutdown settles it and its
-            // rows stay visible as pressure until it settles.
-            const rows = bufferedRows;
-            const entry = trackFlush( sender.flush(), rows );
-            sender.reset();
-            bufferedRows = 0;
-
-            entry.promise.catch( function ( flushErr ) {
-                reportFlushLoss( flushErr, 'recovery', rows );
-            } );
-        } catch ( recoveryErr ) {
-            // Defensive: with the 4.2.0 client neither call can throw here
-            // (flush is async, reset is trivial buffer bookkeeping). A
-            // future client could change that and leave the sender
-            // wedged. Even then write() must return its classified result
-            // rather than throw (ADR-018: the hot path never throws), and
-            // the failure must be visible.
-            logger.error( `winkComposer/questdb: sender recovery failed: ${recoveryErr.message}` );
-        }
-    }; // recoverSender()
-
-    /**
-     * Write a message to QuestDB for a given insightType.
-     *
-     * Sync hot-path return per ADR-018 / ADR-013:
-     * - `RESULT_OK` (singleton) on successful enqueue.
-     * - `RESULT_SHUTTING_DOWN` (singleton) after shutdown() was called.
-     * - `{ ok: false, error: { code: 'INVALID_INSIGHT_TYPE', message } }`
-     *   when the insightType has no persist plan (config error).
-     * - `RESULT_STORAGE_FULL` (singleton) when the rows buffered plus the
-     *   rows in flight have reached `bufferCeilingRows`.
-     * - `{ ok: false, error: { code: 'SEND_FAILED', message } }` when the
-     *   persist plan throws (sender method failure: type coercion
-     *   failure, a client throw).
-     *
-     * Never throws. A row that brings the buffer to `flushRows` starts a
-     * flush before this returns, unless one is already in flight. The
-     * flush is not awaited.
-     *
-     * @param {string} insightType - SignalType name (must exist in assetClass)
-     * @param {Object} message - Message with column values
-     * @param {string} partitionId - Partition identifier (stored as SYMBOL)
-     * @returns {{ok: true} | {ok: false, error: {code: string, message: string}}}
-     */
-    const write = function ( insightType, message, partitionId ) {
-        if ( shuttingDown ) {
-            return RESULT_SHUTTING_DOWN;
-        }
-
-        const persistPlan = persistPlans[ insightType ];
-
-        if ( !persistPlan ) {
-            return {
-                ok: false,
-                error: {
-                    code: 'INVALID_INSIGHT_TYPE',
-                    message: `No persist plan for insightType '${insightType}'`
-                }
-            };
-        }
-
-        // The ceiling counts rows in flight too: a hung flush holds real
-        // memory, and the row it would make room for has not landed.
-        if ( ( bufferedRows + inFlightRows ) >= bufferCeilingRows ) {
-            return RESULT_STORAGE_FULL;
-        }
-
-        try {
-            // The plan reports whether it actually opened a row. A row
-            // skipped in phase 1 (bad designated timestamp) never touched
-            // the sender and must not count as buffered. It would inflate
-            // pressure and shutdown's dropped count.
-            const written = persistPlan( sender, message, partitionId );
-            consecutiveWriteErrors = 0;  // recovery — health flips back to green
-            if ( written ) {
-                bufferedRows += 1;
-                if ( ( bufferedRows >= flushRows ) && !flushInFlight ) {
-                    startFlush( 'rows' );
-                }
-            }
-            return RESULT_OK;
-        } catch ( err ) {
-            consecutiveWriteErrors += 1;  // health degradation signal
-            // The throw may have left a half-written row in the sender.
-            // Cancel it, so this failure costs one row and not the rest
-            // of the run (ADR-018). Safe to call even when no row was
-            // open: flushing early is harmless, and reset() on a
-            // consistent buffer is a no-op.
-            recoverSender();
-            return {
-                ok: false,
-                error: {
-                    code: 'SEND_FAILED',
-                    message: err.message
-                }
-            };
-        }
-    }; // write()
-
-    /**
-     * Flush pending rows to QuestDB now. The caller's own decision: it
-     * starts a flush even while an engine flush is in flight. The rows
-     * move to the in-flight tally at the call (copy-out); a failure
-     * rejects to the caller, and the settle handler keeps the pressure
-     * accounting straight either way. Nothing buffered: resolves at once.
-     *
-     * @returns {Promise<void>}
-     */
-    const flush = async function () {
-        if ( bufferedRows === 0 ) {
-            return;
-        }
-        const entry = trackFlush( sender.flush(), bufferedRows );
-        bufferedRows = 0;
-        await entry.promise;
-    }; // flush()
-
-    /**
-     * Backpressure metric for the partition manager. Returns the buffer fill
-     * ratio in [0, 1] per ADR-018 (sync, O(1), allocation-free): the rows
-     * buffered plus the rows in flight, over `bufferCeilingRows`. It reads
-     * 1 exactly when the next write would be shed. Exact, because the
-     * engine sees every flush start and settle.
-     *
-     * Rows inside unsettled flush copies count as pressure: a hung flush
-     * is undelivered data, and hiding it is what let shutdown report
-     * clean over it. They leave the tally when their flush settles —
-     * delivered or reported lost.
-     *
-     * @returns {number} Pressure value in [0, 1]
-     */
-    const getPressure = function () {
-        return Math.min( 1, ( bufferedRows + inFlightRows ) / bufferCeilingRows );
-    }; // getPressure()
-
-    /**
-     * Health snapshot for operator monitoring (uniform across sinks).
-     * Returns the ADR-018 health floor `{status, connected, pressure}`,
-     * plus the adapter's own diagnostic counters.
-     *
-     * Status derivation (kept in code, not config — operator mental model is
-     * load-bearing institutional knowledge):
-     * - `red`    if `!connected` (shutting down or sustained write failure)
-     *            or `pressure >= HEALTH_PRESSURE_RED_THRESHOLD` (at capacity)
-     * - `yellow` if `pressure >= HEALTH_PRESSURE_YELLOW_THRESHOLD` OR
-     *               `consecutiveWriteErrors >= HEALTH_ERROR_YELLOW_THRESHOLD`
-     * - `green`  otherwise
-     *
-     * `connected` here is *derived* — QuestDB's ILP sender is fire-and-forget
-     * with no observable socket state, so we infer transport health from
-     * recent write success.
-     *
-     * @returns {{status: 'green'|'yellow'|'red', connected: boolean, pressure: number, consecutiveWriteErrors: number, bufferedRows: number, inFlightRows: number}}
-     */
-    const getHealth = function () {
-        const pressure = getPressure();
-        const connected = !shuttingDown && ( consecutiveWriteErrors < HEALTH_ERROR_RED_THRESHOLD );
-
-        let status;
-        if ( !connected || ( pressure >= HEALTH_PRESSURE_RED_THRESHOLD ) ) {
-            status = 'red';
-        } else if ( ( pressure >= HEALTH_PRESSURE_YELLOW_THRESHOLD ) || ( consecutiveWriteErrors >= HEALTH_ERROR_YELLOW_THRESHOLD ) ) {
-            status = 'yellow';
-        } else {
-            status = 'green';
-        }
-
-        return {
-            // Required health floor (ADR-018)
-            status,
-            connected,
-            pressure,
-            // Adapter-specific diagnostics
-            consecutiveWriteErrors,
-            bufferedRows,
-            inFlightRows
-        };
-    }; // getHealth()
-
-    /**
-     * Best-effort transport close on the lossy path: the loss report
-     * (the classified throw that follows) matters more than a close
-     * failure, which is only logged.
-     */
-    const closeQuietly = function () {
-        return sender.close().catch( function ( closeErr ) {
-            logger.error( `winkComposer/questdb: transport close failed during lossy shutdown: ${closeErr.message}` );
-        } );
-    }; // closeQuietly()
-
-    /**
-     * The real shutdown body. `shutdown` below latches its promise so
-     * every caller — including re-entrant and post-failure callers —
-     * receives this one outcome.
-     *
-     * A clean resolve is a delivery statement (ADR-018): everything
-     * buffered OR in flight was delivered. Shutdown therefore settles
-     * every unsettled flush (engine, recovery, explicit) plus one final
-     * flush for whatever is still buffered, all raced against the
-     * caller's `{ timeout }` (ADR-018 drain-then-close). It never fires
-     * a blind flush at a buffer an earlier copy-out emptied — that is
-     * what let it report clean over a hung flush.
-     *
-     * On loss it rejects classified, `dropped: { count }` exact:
-     * - any awaited flush fails → `DELIVERY_FAILED`, first flush error
-     *   on `cause`, count = rows on the flushes that failed;
-     * - the combined wait does not settle in time → `SHUTDOWN_TIMEOUT`,
-     *   count = rows not confirmed delivered. A send against an
-     *   unreachable server may never settle (see the client dependency
-     *   note in the file header), so the bound is what keeps shutdown
-     *   finite.
-     * `dropped` is a statement about THIS session: those rows were not
-     * confirmed delivered before close. An abandoned flush keeps
-     * retrying and may still land its rows later if the server
-     * recovers — the count is a floor on uncertainty, not a proof of
-     * loss.
-     *
-     * The transport close is attempted in both loss paths, but on the
-     * HTTP transport the client's `close()` is an empty function
-     * (verified against @questdb/nodejs-client 4.2.0), so nothing can
-     * abort an abandoned flush's retry timers from here; they keep the
-     * event loop alive. Process exit is the final backstop — in a flow,
-     * the shutdown manager's `SHUTDOWN_FORCE_TIMEOUT_MS` exit covers
-     * this. No timeout supplied = no enforcement (unbounded await),
-     * preserving direct-caller behavior.
-     */
-    const doShutdown = async function ( timeout ) {
-        // Flip the health flag first so any concurrent getHealth() call
-        // immediately sees the shutdown and returns red/disconnected —
-        // and write() starts refusing new rows (SHUTTING_DOWN).
-        shuttingDown = true;
-
-        // Stop the flush timer: the final flush below is the last one.
-        clearInterval( flushTimer );
-
-        // Everything delivery still owes: flushes already in flight
-        // (their rows left the buffer at their call) plus one final
-        // flush for whatever is still buffered. Each wait records its
-        // outcome into the tallies below. The mapped promises never
-        // reject, so the only rejection the race can surface is the
-        // timeout itself.
-        let totalRows = 0;
-        let deliveredRows = 0;
-        let failedRows = 0;
-        let firstFailure = null;
-        const waits = [];
-
-        const awaitDelivery = function ( entry ) {
-            totalRows += entry.rows;
-            waits.push( entry.promise.then(
-                function () {
-                    deliveredRows += entry.rows;
-                },
-                function ( err ) {
-                    failedRows += entry.rows;
-                    if ( !firstFailure ) {
-                        firstFailure = err;
-                    }
-                }
-            ) );
-        }; // awaitDelivery()
-
-        inFlightFlushes.forEach( awaitDelivery );
-        if ( bufferedRows > 0 ) {
-            const entry = trackFlush( sender.flush(), bufferedRows );
-            bufferedRows = 0;
-            awaitDelivery( entry );
-        }
-
-        if ( waits.length > 0 ) {
-            try {
-                await raceFlushTimeout( Promise.all( waits ), timeout );
-            } catch ( err ) {
-                await closeQuietly();
-                const dropped = totalRows - deliveredRows;
-                const timedOut = new Error(
-                    `winkComposer/questdb: ${err.message}; ${dropped} buffered row(s) dropped`
-                );
-                timedOut.code = 'SHUTDOWN_TIMEOUT';
-                timedOut.dropped = { count: dropped };
-                throw timedOut;
-            }
-
-            if ( failedRows > 0 ) {
-                await closeQuietly();
-                const failure = new Error(
-                    `winkComposer/questdb: flush failed during shutdown: ${firstFailure.message}; ${failedRows} buffered row(s) dropped`
-                );
-                failure.code = 'DELIVERY_FAILED';
-                failure.dropped = { count: failedRows };
-                failure.cause = firstFailure;
-                throw failure;
-            }
-        }
-
-        // Close sender
-        await sender.close();
-    }; // doShutdown()
-
-    /**
-     * Shutdown the storage adapter gracefully.
-     * Flushes pending data and closes connections.
-     *
-     * Called by wire-storages.shutdown() which is invoked during:
-     * - Pipeline shutdown (flowHandle.shutdown())
-     * - Process signal handlers (SIGINT, SIGTERM)
-     *
-     * The outcome is latched: the first call runs the shutdown, every
-     * later call returns the same promise. A lossy shutdown's failed
-     * flush already emptied the buffer (copy-out), so a re-run would
-     * find nothing to flush and resolve clean, contradicting the
-     * recorded loss. One consequence: the first caller's `{ timeout }`
-     * governs; a later caller's is ignored.
-     *
-     * @param {{timeout?: number}} [options]
-     * @returns {Promise<void>}
-     */
-    const shutdown = function ( { timeout = 0 } = {} ) {
-        if ( !shutdownPromise ) {
-            shutdownPromise = doShutdown( timeout );
-        }
-        return shutdownPromise;
-    }; // shutdown()
+    // Everything after setup is the engine's: the hot path, the
+    // flushes, the counters, the drain.
+    const engine = createFlushEngine( { sender, persistPlans, settings, onDeliveryFailure } );
 
     return {
-        write,
-        flush,
-        shutdown,
-        getPressure,
-        getHealth,
+        write: engine.write,
+        flush: engine.flush,
+        shutdown: engine.shutdown,
+        getPressure: engine.getPressure,
+        getHealth: engine.getHealth,
         // Expose for testing/debugging
         _sender: sender,
         _persistPlans: persistPlans
