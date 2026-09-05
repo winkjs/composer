@@ -471,6 +471,10 @@ flow('pipeline')
 | `idleFlushCheckMs` | number | `1000` | How often the idle timer checks |
 | `autoFlushRows` | number | client default | Rows buffered before an auto-flush |
 | `autoFlushIntervalMs` | number | client default | Time before an auto-flush |
+| `flushRows` | number | `5000` | Rows that start a send from inside the write. About 0.65 to 1.5 MB per request |
+| `flushIntervalMs` | number | `1000` | The send timer. Whatever is buffered is sent this often, so rows land within about a second |
+| `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1000 rows a second, hours at plant rate |
+| `flushDeadlineMs` | number | derived per send | Longest wait for one send before it is declared failed. Derived from the rows it carries, from 25 seconds for one row to 275 seconds for a full catch-up send. Set it to fix one value for every send |
 | `maxBufSize` | number | client default | ILP send-buffer size in bytes |
 | `retryTimeout` | number | client default | How long the client retries a failed send |
 | `partitionBy` | string | — | Partitioning when the adapter creates a table: `NONE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR` |

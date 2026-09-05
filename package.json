@@ -70,7 +70,7 @@
         "sinon": "^19.0.2"
     },
     "dependencies": {
-        "@questdb/nodejs-client": "^4.2.0",
+        "@questdb/nodejs-client": "~4.2.0",
         "glob": "^13.0.6",
         "mqtt": "^5.15.1",
         "msgpackr": "^1.11.10",

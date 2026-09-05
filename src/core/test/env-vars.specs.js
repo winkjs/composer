@@ -22,36 +22,10 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { runWithEnv } from './env-vars-test-helpers.js';
+
 const testDirname = path.dirname( fileURLToPath( import.meta.url ) );
 const envVarsPath = path.join( testDirname, '..', 'env-vars.js' );
-
-/**
- * Helper to run env-vars.js with custom environment variables
- * Returns { code, stdout, stderr }
- */
-const runWithEnv = function ( env ) {
-    return new Promise( ( resolve ) => {
-        const child = spawn( 'node', [ '--input-type=module', '-e', `import '${envVarsPath}'` ], {
-            env: { ...process.env, ...env },
-            stdio: [ 'pipe', 'pipe', 'pipe' ]
-        } );
-
-        let stdout = '';
-        let stderr = '';
-
-        child.stdout.on( 'data', ( data ) => {
-            stdout += data.toString();
-        } );
-
-        child.stderr.on( 'data', ( data ) => {
-            stderr += data.toString();
-        } );
-
-        child.on( 'close', ( code ) => {
-            resolve( { code, stdout, stderr } );
-        } );
-    } );
-};
 
 describe( 'env-vars', function () {
 
@@ -771,10 +745,12 @@ describe( 'env-vars', function () {
                 MQTT_MSG_EXPIRY: '0'
             } );
             expect( result.code ).to.equal( 1 );
-            // Check that all errors are reported (labels derived from field names)
-            expect( result.stderr ).to.include( 'NODEENV:' );
-            expect( result.stderr ).to.include( 'MQTTKEEPALIVE:' );
-            expect( result.stderr ).to.include( 'MQTTMSGEXPIRY:' );
+            // Every error is reported, each under the variable's own name.
+            // (Until 2026-09-05 the runner printed NODEENV and MQTTKEEPALIVE:
+            // it uppercased the field before inserting the underscores.)
+            expect( result.stderr ).to.include( 'NODE_ENV:' );
+            expect( result.stderr ).to.include( 'MQTT_KEEPALIVE:' );
+            expect( result.stderr ).to.include( 'MQTT_MSG_EXPIRY:' );
         } );
 
     } );

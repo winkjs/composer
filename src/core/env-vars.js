@@ -112,6 +112,20 @@ const ENV_VARS = {
     questdbRetryTimeout: process.env.QUESTDB_RETRY_TIMEOUT ?
         parseInt( process.env.QUESTDB_RETRY_TIMEOUT, 10 ) : undefined,
 
+    // QuestDB flush settings owned by composer (ADR-029). Each carries a
+    // value only when the operator set one. The adapter's option
+    // resolver supplies the defaults and derives the ceiling and the
+    // deadline from the values that won, so a fixed default here would
+    // fight a threshold raised in the flow's config.
+    questdbFlushRows: process.env.QUESTDB_FLUSH_ROWS ?
+        parseInt( process.env.QUESTDB_FLUSH_ROWS, 10 ) : undefined,
+    questdbFlushIntervalMs: process.env.QUESTDB_FLUSH_INTERVAL_MS ?
+        parseInt( process.env.QUESTDB_FLUSH_INTERVAL_MS, 10 ) : undefined,
+    questdbBufferCeilingRows: process.env.QUESTDB_BUFFER_CEILING_ROWS ?
+        parseInt( process.env.QUESTDB_BUFFER_CEILING_ROWS, 10 ) : undefined,
+    questdbFlushDeadlineMs: process.env.QUESTDB_FLUSH_DEADLINE_MS ?
+        parseInt( process.env.QUESTDB_FLUSH_DEADLINE_MS, 10 ) : undefined,
+
     // QuestDB Credentials
     questdbDatabase: ( process.env.QUESTDB_DATABASE ?? 'qdb' ).trim(),
     questdbUser: ( process.env.QUESTDB_USER ?? 'admin' ).trim(),
@@ -268,6 +282,10 @@ const validationConfig = [
     { field: 'questdbAutoFlushIntervalMs', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_AUTO_FLUSH_INTERVAL_MS' },
     { field: 'questdbMaxBufSize', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_MAX_BUF_SIZE' },
     { field: 'questdbRetryTimeout', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_RETRY_TIMEOUT' },
+    { field: 'questdbFlushRows', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_FLUSH_ROWS' },
+    { field: 'questdbFlushIntervalMs', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_FLUSH_INTERVAL_MS' },
+    { field: 'questdbBufferCeilingRows', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_BUFFER_CEILING_ROWS' },
+    { field: 'questdbFlushDeadlineMs', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_FLUSH_DEADLINE_MS' },
     // QuestDB Credentials
     { field: 'questdbDatabase', validator: validators.nonEmptyString, label: 'QUESTDB_DATABASE' },
     { field: 'questdbUser', validator: validators.nonEmptyString, label: 'QUESTDB_USER' }
@@ -284,7 +302,14 @@ const validate = function () {
     for ( const config of validationConfig ) {
         const value = ENV_VARS[ config.field ];
         const originalEnv = config.originalEnv ? process.env[ config.originalEnv ] : value;
-        const label = config.label || config.field.toUpperCase().replace( /([a-z])([A-Z])/g, '$1_$2' );
+        // The label is the variable name as the operator typed it. A row
+        // that records the variable uses it; otherwise the name is
+        // derived from the field, inserting the underscores BEFORE
+        // uppercasing (the other order finds no boundaries and printed
+        // QUESTDBRETRYTIMEOUT until 2026-09-05).
+        const label = config.label ||
+            config.originalEnv ||
+            config.field.replace( /([a-z])([A-Z])/g, '$1_$2' ).toUpperCase();
 
         const error = config.validator( value, originalEnv || value, label );
         if ( error ) {

@@ -1281,6 +1281,10 @@ const configSchema = {
         'idleFlushCheckMs',
         'autoFlushRows',
         'autoFlushIntervalMs',
+        'flushRows',
+        'flushIntervalMs',
+        'bufferCeilingRows',
+        'flushDeadlineMs',
         'maxBufSize',
         'retryTimeout',
         'partitionBy',
@@ -1338,6 +1342,33 @@ const configSchema = {
         required: false,
         validator: validators.positiveInteger,
         error: 'autoFlushIntervalMs must be a positive integer'
+    },
+    // The flush settings composer owns (ADR-029). The relation between
+    // the ceiling and the threshold is checked by the option resolver
+    // at setup, where both values are known.
+    flushRows: {
+        type: 'number',
+        required: false,
+        validator: validators.positiveInteger,
+        error: 'flushRows must be a positive integer'
+    },
+    flushIntervalMs: {
+        type: 'number',
+        required: false,
+        validator: validators.positiveInteger,
+        error: 'flushIntervalMs must be a positive integer'
+    },
+    bufferCeilingRows: {
+        type: 'number',
+        required: false,
+        validator: validators.positiveInteger,
+        error: 'bufferCeilingRows must be a positive integer'
+    },
+    flushDeadlineMs: {
+        type: 'number',
+        required: false,
+        validator: validators.positiveInteger,
+        error: 'flushDeadlineMs must be a positive integer'
     },
     maxBufSize: {
         type: 'number',

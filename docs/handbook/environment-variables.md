@@ -107,6 +107,10 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 | `QUESTDB_AUTO_FLUSH_INTERVAL_MS` | unset | Time before an auto-flush (client default when unset) |
 | `QUESTDB_MAX_BUF_SIZE` | unset | ILP send-buffer size, bytes (client default when unset) |
 | `QUESTDB_RETRY_TIMEOUT` | unset | Write-retry timeout (client default when unset) |
+| `QUESTDB_FLUSH_ROWS` | unset | Rows that start a send; the adapter uses 5000 when unset |
+| `QUESTDB_FLUSH_INTERVAL_MS` | unset | The send timer; the adapter uses 1000 when unset |
+| `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset |
+| `QUESTDB_FLUSH_DEADLINE_MS` | unset | A fixed longest wait for one send; derived from the send's size when unset |
 | `QUESTDB_DATABASE` | `qdb` | Database name |
 | `QUESTDB_USER` | `admin` | User |
 | `QUESTDB_PASSWORD` | `quest` | Password; may be empty for passwordless auth |

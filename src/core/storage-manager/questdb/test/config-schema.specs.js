@@ -77,6 +77,11 @@ describe( 'QuestDB Storage — configSchema Export', function () {
         expect( configSchema ).to.have.property( 'idleFlushCheckMs' );
         expect( configSchema ).to.have.property( 'autoFlushRows' );
         expect( configSchema ).to.have.property( 'autoFlushIntervalMs' );
+        // The flush settings composer owns (ADR-029).
+        expect( configSchema ).to.have.property( 'flushRows' );
+        expect( configSchema ).to.have.property( 'flushIntervalMs' );
+        expect( configSchema ).to.have.property( 'bufferCeilingRows' );
+        expect( configSchema ).to.have.property( 'flushDeadlineMs' );
         expect( configSchema ).to.have.property( 'maxBufSize' );
         expect( configSchema ).to.have.property( 'retryTimeout' );
         expect( configSchema ).to.have.property( 'partitionBy' );
@@ -312,6 +317,54 @@ describe( 'QuestDB Storage — Buffer/Retry Fields Validation', function () {
         } );
 
         expect( result.valid ).to.equal( true );
+    } );
+
+} );
+
+describe( 'QuestDB Storage — Flush Settings Validation (ADR-029)', function () {
+
+    // The four settings composer's own flush engine reads. Each is a
+    // positive integer; the relation between the ceiling and the
+    // threshold is checked by the resolver, not the schema.
+    const FLUSH_KEYS = [ 'flushRows', 'flushIntervalMs', 'bufferCeilingRows', 'flushDeadlineMs' ];
+
+    FLUSH_KEYS.forEach( function ( key ) {
+
+        describe( key, function () {
+
+            it( 'accepts a positive integer', function () {
+                const result = validate( { ...minimalValidConfig, [ key ]: 250 } );
+
+                expect( result.valid ).to.equal( true );
+            } );
+
+            it( 'rejects zero', function () {
+                const result = validate( { ...minimalValidConfig, [ key ]: 0 } );
+
+                expect( result.valid ).to.equal( false );
+                expect( result.errors[ 0 ] ).to.include( key );
+            } );
+
+            it( 'rejects a negative value', function () {
+                const result = validate( { ...minimalValidConfig, [ key ]: -1 } );
+
+                expect( result.valid ).to.equal( false );
+            } );
+
+            it( 'rejects a fractional value', function () {
+                const result = validate( { ...minimalValidConfig, [ key ]: 250.5 } );
+
+                expect( result.valid ).to.equal( false );
+            } );
+
+            it( 'rejects a string', function () {
+                const result = validate( { ...minimalValidConfig, [ key ]: '250' } );
+
+                expect( result.valid ).to.equal( false );
+            } );
+
+        } );
+
     } );
 
 } );
