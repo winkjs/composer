@@ -41,9 +41,19 @@
  * `entry.onDone` to add its tally, so the field is read at settle time,
  * not captured at track time.
  *
+ * Outcomes for health. Every settle also records its outcome, so
+ * health can read delivery and not only buffering. A delivered flush
+ * zeroes `consecutiveFlushFailures` and stamps `lastFlushAt`. A failed
+ * or abandoned flush adds one to the count and replaces
+ * `lastFlushError` with `{ message, abandoned, at }`. The last error is
+ * never cleared: the count says whether it is current, and the message
+ * stays readable after recovery. The engine turns these into the
+ * health ladder (yellow on the first failure, red on the second or on
+ * an abandonment).
+ *
  * Nothing here runs on the per-row path. One entry object, one timer,
  * and two closures per flush; a flush carries thousands of rows by
- * default.
+ * default. The error record allocates only on the failure path.
  *
  * @see ADR-029
  */
@@ -68,14 +78,38 @@ const abandonmentError = function ( rows, deadlineMs ) {
 
 /**
  * Builds the ledger. The engine reads `ledger.inFlightRows` on the
- * write path and `ledger.abandonedFlushes` in health; the drain walks
+ * write path and the outcome fields in health; the drain walks
  * `ledger.entries`. Only `track` writes to them.
  *
  * @param {Object} settings - Resolved settings; the deadline inputs (`flushDeadlineMs`, `retryTimeout`)
- * @returns {{ledger: {inFlightRows: number, abandonedFlushes: number, entries: Set}, track: function}}
+ * @returns {{ledger: {inFlightRows: number, abandonedFlushes: number, consecutiveFlushFailures: number, lastFlushAt: number|null, lastFlushError: {message: string, abandoned: boolean, at: number}|null, entries: Set}, track: function}}
  */
 const createFlushTracker = function ( settings ) {
-    const ledger = { inFlightRows: 0, abandonedFlushes: 0, entries: new Set() };
+    const ledger = {
+        inFlightRows: 0,
+        abandonedFlushes: 0,
+        consecutiveFlushFailures: 0,
+        lastFlushAt: null,
+        lastFlushError: null,
+        entries: new Set()
+    };
+
+    /**
+     * Records one settled flush for health. Runs once per flush, never
+     * per row.
+     *
+     * @param {Error|null} err - Null when delivered
+     * @param {boolean} abandoned - Whether the deadline ended it
+     */
+    const recordOutcome = function ( err, abandoned ) {
+        if ( err === null ) {
+            ledger.consecutiveFlushFailures = 0;
+            ledger.lastFlushAt = Date.now();
+            return;
+        }
+        ledger.consecutiveFlushFailures += 1;
+        ledger.lastFlushError = { message: err.message, abandoned, at: Date.now() };
+    }; // recordOutcome()
 
     /**
      * Registers a flush the moment it is called and arms its deadline.
@@ -98,6 +132,7 @@ const createFlushTracker = function ( settings ) {
             clearTimeout( entry.timer );
             ledger.entries.delete( entry );
             ledger.inFlightRows -= rows;
+            recordOutcome( err, abandoned );
             entry.onDone( err, abandoned );
         };
 

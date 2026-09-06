@@ -80,12 +80,14 @@
  * are attached. `flush-engine.js` carries the detail.
  *
  * Health (ADR-018 §8). `status` is `red` when not connected or at
- * capacity, `yellow` at `pressure >= 0.66` or any outstanding write
- * error, `green` otherwise. `connected` is derived from recent write
- * success and from the probe, because the ILP client exposes no socket
- * state; it is false while delivery is paused. The health object
- * carries `pausedSince` and `abandonedFlushes`. `flush-engine.js`
- * documents the derivation.
+ * capacity. It is `yellow` at `pressure >= 0.66`, on an outstanding
+ * write error, or after one failed flush. Otherwise it is `green`.
+ * `connected` is derived, because the ILP client exposes no socket
+ * state. It is false while delivery is paused, after five write errors
+ * in a row, after two failed flushes in a row, or after one abandoned
+ * flush. The health object carries `pausedSince`, `abandonedFlushes`,
+ * `consecutiveFlushFailures`, `lastFlushAt`, and `lastFlushError`.
+ * `flush-engine.js` documents the derivation.
  *
  * Deprecated options (ADR-029, removed in 0.8.0). `autoFlushRows` maps
  * to `flushRows` and `idleFlushCheckMs` maps to `flushIntervalMs`.

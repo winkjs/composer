@@ -3,48 +3,40 @@
 /* eslint-disable no-process-env, no-await-in-loop, no-invalid-this */
 
 /**
- * @fileoverview Recovery scenario for the QuestDB adapter, driven by
- * testHarness.
+ * @fileoverview Recovery from a mid-stream QuestDB outage, driven by
+ * testHarness through a TCP proxy (ADR-029).
  *
  * Slow tier — runs only via `npm run test:hardening`. The regular
  * `npm test` ignores `slow-*.specs.js`.
  *
- * Concern: a mid-stream QuestDB outage. We use a tiny TCP proxy
- * that forwards 127.0.0.1:19000 → 127.0.0.1:9000 (where the real
- * docker-compose QDB is listening). The flow's storage points at
- * the proxy. Mid-run we close the proxy server, simulating QDB
- * becoming unreachable. After a defined outage we reopen it.
+ * The proxy forwards 127.0.0.1:19000 to the real QuestDB on 9000.
+ * The flow's storage points at the proxy. Mid-run the proxy closes,
+ * so QuestDB becomes unreachable, and after a set outage it reopens.
  *
- * The QuestDB ILP HTTP client retries failed flushes within its
- * `retry_timeout` budget. That fact splits the test into two
- * scenarios — both worth pinning:
+ * Composer owns every flush (ADR-029). The buffer ceiling is the
+ * outage budget: rows written during an outage are held in memory up
+ * to `bufferCeilingRows`, and past it a write is refused with
+ * `STORAGE_FULL`. The flush that meets the outage hangs until the
+ * endpoint returns or its deadline passes, whichever comes first.
+ * Two legs pin that model:
  *
- *   1. **Outage within retry budget — zero loss.** When the
- *      outage is shorter than the configured retry budget, the
- *      client transparently retries and every row eventually
- *      lands. Composer survives; no failures captured.
+ *   1. **Ceiling sized to the outage, deadline longer than it.** Every
+ *      row lands, no loss is reported, and the ceiling is never hit.
+ *      The outage costs nothing.
  *
- *   2. **Outage exceeds retry budget — failures surface loudly.**
- *      When the client's retry budget runs out, the failed
- *      flushes route through `onDeliveryFailure`. Composer still
- *      survives the outage — pipeline continues producing once
- *      connectivity returns.
+ *   2. **Ceiling smaller than the outage.** Rows past the ceiling are
+ *      shed, visibly: pressure reads 1 while the endpoint is dead.
+ *      The loss is confined to the outage window. The exact per-row
+ *      shedding count is pinned at unit level in
+ *      `buffer-ceiling.specs.js`; a live run can bound it, not count
+ *      it, because a refusal leaves no mark in the flow's counters.
  *
- * What this test deliberately does NOT assert (real product gaps,
- * known and not yet closed):
- *
- *   - getHealth() red→green during recovery. The adapter's
- *     `consecutiveWriteErrors` counter today increments only on
- *     synchronous write errors, not on async flush failures. So
- *     getHealth() doesn't go red on a network outage. That's a
- *     real wiring gap.
- *
- *   - Loss-free survival of outages **beyond** the retry budget.
- *     QDB ILP HTTP doesn't have a persistent disk-backed queue
- *     like Prometheus remote_write or Kafka producers. Once
- *     retry budget runs out, failed batches are gone. Closing
- *     this gap would require a WAL-style persistence layer in
- *     composer.
+ * Until 2026-09-05 this file asserted the old promise, that the
+ * client's own retries land every row of a 5 s outage. Under the
+ * bounded buffer that promise holds only when the ceiling is sized
+ * for the outage, which leg 1 states in its settings. Health during
+ * the outage, the pause, and the resume are proven in
+ * `slow-questdb-health-outage.specs.js`.
  */
 
 import { expect } from 'chai';
@@ -54,6 +46,7 @@ import pg from 'pg';
 import { flow } from '../../../../composer.js';
 import * as testHarness from '../../../source-manager/test-harness/index.js';
 import { startProxy, stopProxy } from '../../../test-utils/tcp-proxy.js';
+import { storages as wireStorages } from '../../../wiring/index.js';
 import questdbAdapter, { createQuestDBStorage } from '../index.js';
 
 const QUESTDB_PG_URL    = process.env.QUESTDB_PG_URL  || '127.0.0.1:8812';
@@ -203,19 +196,23 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
         }
     } );
 
-    // Helper that runs an outage scenario with the given retry budget
-    // and outage duration. Returns capture data for assertions.
+    // Runs one outage with the given storage settings. The harness
+    // produces 600 rows at 5 ms, about 200 rows a second, so a 5 s
+    // outage covers about 1,000 rows. Returns every fact the
+    // assertions need, including pressure samples taken during the
+    // outage (a sustained state, so sampling may assert it).
     const runOutageScenario = async function ( opts ) {
         const tableName = `${opts.tablePrefix}_samples`;
         tablesToCleanUp.push( tableName );
 
         const messageCount = 600;
-        const intervalMs = 5;     // ~3 s of generation total
+        const intervalMs = 5;
 
         // Start the proxy and connect the flow to it.
         proxy = await startProxy( PROXY_PORT, QUESTDB_REAL_PORT );
 
         const deliveryFailures = [];
+        let produced = 0;
         const handle = await flow( opts.flowName )
             .source( testHarness, {
                 messageTemplate: buildMessageTemplate( messageCount, intervalMs ),
@@ -229,33 +226,53 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
                 tablePrefix: opts.tablePrefix,
                 flushRows: 50,
                 flushIntervalMs: 600000,
-                retryTimeout: opts.retryTimeoutMs,
+                ...opts.storage,
                 onDeliveryFailure: function ( err, ctx ) {
                     deliveryFailures.push( {
                         message: err && err.message,
-                        table: ctx && ctx.tableName,
+                        rowsLost: ctx && ctx.rowsLost,
+                        abandoned: ctx && ctx.abandoned,
                         at: Date.now()
                     } );
                 }
             } )
             .assetId( 'partitionId' )
-            .persistIf( 'persist', ( _msg ) => true,
-                { storageName: 'questdb', insightType: 'samples' } )
+            .persistIf( 'persist', function ( _msg ) {
+                // Counts every row offered to the storage, so the
+                // outage window's rows are known exactly.
+                produced += 1;
+                return true;
+            }, { storageName: 'questdb', insightType: 'samples' } )
             .run();
+
+        const storageHandle = wireStorages.get().questdb;
+        expect( storageHandle, 'storage singleton must be wired' ).to.not.equal( undefined );
 
         // Phase 1: let some messages flow through cleanly.
         await sleep( 500 );
+        const producedBeforeOutage = produced;
 
-        // Phase 2: simulate outage.
+        // Phase 2: the outage. Sample pressure while the endpoint is dead.
         await stopProxy( proxy );
         proxy = null;
         const outageStart = Date.now();
+        const heldAtOutageStart = storageHandle.getHealth().bufferedRows + storageHandle.getHealth().inFlightRows;
+        const pressureSamples = [];
+        while ( ( Date.now() - outageStart ) < opts.outageMs ) {
+            pressureSamples.push( storageHandle.getPressure() );
+            await sleep( 50 );
+        }
 
-        await sleep( opts.outageMs );
-
-        // Phase 3: bring connectivity back.
+        // Phase 3: bring connectivity back. Rows keep arriving until
+        // the held rows drain, so the count at drain time bounds the
+        // shedding from above.
         proxy = await startProxy( PROXY_PORT, QUESTDB_REAL_PORT );
         const recoveryAt = Date.now();
+        const producedDuringOutage = produced - producedBeforeOutage;
+        while ( ( storageHandle.getPressure() >= 1 ) && ( ( Date.now() - recoveryAt ) < 10000 ) ) {
+            await sleep( 20 );
+        }
+        const producedUntilDrained = produced - producedBeforeOutage;
 
         // Phase 4: let the harness finish its remaining messages
         // and the pipeline drain.
@@ -270,57 +287,78 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
             messageCount,
             finalCount,
             deliveryFailures,
+            pressureSamples,
+            heldAtOutageStart,
+            producedDuringOutage,
+            producedUntilDrained,
             outageMs: recoveryAt - outageStart,
             handle
         };
     };
 
-    it( 'within retry budget — survives outage with zero loss', async function () {
-        // Outage 5 s, retry budget 15 s. The QDB client transparently
-        // retries the failed flushes; every row eventually lands.
-        const result = await runOutageScenario( {
-            flowName: 'recoveryWithinBudget',
-            tablePrefix: `${RUN_PREFIX}_within`,
-            retryTimeoutMs: 15000,
-            outageMs: 5000
-        } );
-
-        console.log( '\n  [recovery — within budget]:' );
+    const printSummary = function ( label, result ) {
+        const maxPressure = Math.max( ...result.pressureSamples );
+        console.log( `\n  [recovery — ${label}]:` );
         console.log( `    messages produced:    ${result.messageCount}` );
+        console.log( `    held at outage start: ${result.heldAtOutageStart}` );
+        console.log( `    produced in outage:   ${result.producedDuringOutage} (until drained: ${result.producedUntilDrained})` );
         console.log( `    rows in QDB:          ${result.finalCount}` );
         console.log( `    rows missing:         ${result.messageCount - result.finalCount}` );
         console.log( `    delivery failures:    ${result.deliveryFailures.length}` );
+        console.log( `    max pressure:         ${maxPressure.toFixed( 3 )}` );
         console.log( `    outage window:        ~${result.outageMs} ms` );
+    };
 
-        // Hard assertions:
-        // 1. Composer survived (we reached this line).
-        expect( result.handle ).to.not.equal( null );
-        // 2. Zero loss — the retry mechanism absorbed the outage.
+    it( 'ceiling sized to the outage: every row lands and nothing is reported', async function () {
+        // A 5 s outage at about 200 rows a second needs a ceiling of
+        // about 1,000 rows. 2,000 leaves room. The derived deadline
+        // for a 50-row batch at retryTimeout 15 s is about 30 s. So
+        // the flush that meets the outage hangs, and it completes
+        // when the proxy returns. The outage costs nothing.
+        const result = await runOutageScenario( {
+            flowName: 'recoveryCeilingHolds',
+            tablePrefix: `${RUN_PREFIX}_holds`,
+            outageMs: 5000,
+            storage: { retryTimeout: 15000, bufferCeilingRows: 2000 }
+        } );
+        printSummary( 'ceiling holds', result );
+
         expect( result.finalCount ).to.equal( result.messageCount );
-        // 3. No delivery failures surfaced (because none were
-        //    actually permanent).
         expect( result.deliveryFailures ).to.deep.equal( [] );
+        expect( Math.max( ...result.pressureSamples ), 'the ceiling was never reached' ).to.be.lessThan( 1 );
     } );
 
-    // The "beyond retry budget" scenario was originally a second test
-    // in this file, but a real-network outage doesn't reliably trigger
-    // delivery failures through `onDeliveryFailure`: the QuestDB ILP
-    // HTTP client appears to keep failed batches in its buffer and
-    // re-attempt them on the next auto-flush boundary even after
-    // retry_timeout elapses. End result: a paced 600-message run
-    // through a 12 s outage with retry_timeout=3 s still landed every
-    // row. That's actually a stronger durability claim than the
-    // ILP docs imply — captured as a finding rather than something
-    // we artificially break.
-    //
-    // The "loud delivery failure" contract (the no-silent-failures
-    // path) is tested deterministically and at unit level in
-    // `persist-plan.specs.js` — three contract tests for the
-    // explicit-callback path, the default-throw path, and the
-    // bad-callback validation. A real-outage integration test that
-    // forces the failure path would need to overflow the client's
-    // max_buf_size, which is a buffer-overflow scenario already
-    // covered by `slow-questdb-throughput.specs.js`.
+    it( 'ceiling smaller than the outage: rows past it are shed, visibly, inside the outage', async function () {
+        // The same outage against a 500-row ceiling. About 1,000 rows
+        // arrive while the endpoint is dead, so about half are refused
+        // with STORAGE_FULL. Pressure reads 1 for the rest of the
+        // outage, which a sampler cannot miss.
+        const result = await runOutageScenario( {
+            flowName: 'recoveryCeilingSheds',
+            tablePrefix: `${RUN_PREFIX}_sheds`,
+            outageMs: 5000,
+            storage: { retryTimeout: 15000, bufferCeilingRows: 500 }
+        } );
+        printSummary( 'ceiling sheds', result );
+
+        // The ceiling was reached and held.
+        expect( Math.max( ...result.pressureSamples ) ).to.equal( 1 );
+
+        // The room left under the ceiling when the endpoint died is
+        // what the outage could hold. Every row past it was refused
+        // until the held rows drained after the endpoint returned.
+        // So the shed count lies between the rows past the room at
+        // recovery and the rows past the room at drain time. Both
+        // ends are counts, not samples.
+        const room = 500 - result.heldAtOutageStart;
+        const shedAtLeast = result.producedDuringOutage - room;
+        const shedAtMost = result.producedUntilDrained - room;
+        expect( shedAtLeast, 'the outage overran the room' ).to.be.greaterThan( 0 );
+        expect( result.finalCount ).to.be.at.most( result.messageCount - shedAtLeast );
+        expect( result.finalCount ).to.be.at.least( result.messageCount - shedAtMost );
+        // No batch was abandoned: the outage was shorter than the deadline.
+        expect( result.deliveryFailures ).to.deep.equal( [] );
+    } );
 
 } );
 

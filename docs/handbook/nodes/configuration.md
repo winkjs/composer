@@ -527,6 +527,20 @@ column 'temp' is wrong-typed (expected float64, received string) in insightType 
 
 A QuestDB restart therefore costs only the send that was on the wire when the port closed. While paused, health reads red with `connected: false` and a `pausedSince` time. A send the server answered and refused, such as a full disk, does not pause delivery. That send is reported lost, with the probe's finding, and the next send proceeds.
 
+**Health monitoring.** The storage handle's `getHealth()` reads delivery as well as buffering. One failed send reads `yellow`. Two failed sends in a row, or one send that passed its deadline, read `red` with `connected: false`. The next delivered send reads `green` again.
+
+```javascript
+storage.getHealth()
+// Returns: { status: 'green'|'yellow'|'red', connected, pressure: 0.0-1.0,
+//            consecutiveWriteErrors, bufferedRows, inFlightRows, abandonedFlushes,
+//            pausedSince,               // epoch ms while paused, else null
+//            consecutiveFlushFailures,  // failed sends since the last delivered one
+//            lastFlushAt,               // epoch ms of the last delivered send, else null
+//            lastFlushError }           // { message, abandoned, at } of the last failed send, else null
+```
+
+`connected: false` has two causes, and `pausedSince` tells them apart. With a time in `pausedSince`, QuestDB was unreachable and delivery is paused. With `pausedSince: null`, QuestDB answered and refused twice, so check `lastFlushError.message`. `lastFlushAt` is the staleness number for a long unattended run: alert when it grows older than a few send intervals. `lastFlushError` is never cleared, so the last failure stays readable after recovery, and `consecutiveFlushFailures` says whether it is current. A monitor should act on `red`, or on `yellow` that persists, not on one `yellow` sample.
+
 **Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain — the final flush failed, or a hung flush outlived the shutdown budget — shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Inside a flow, the framework catches this rejection and logs it — one classified line naming the storage, the code, and the count — so the flow's own shutdown still completes for the other sinks.
 
 **A failed startup names its cause.** When the adapter cannot start, the error's `code` tells you which of two different problems you have — so you fix the right thing:

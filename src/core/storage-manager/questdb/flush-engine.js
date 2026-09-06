@@ -60,12 +60,18 @@
  * rides through without loss.
  *
  * Health (ADR-018 §8). `connected` is derived, because the ILP client
- * exposes no socket state: false while shutting down, while delivery
- * is paused, or after five consecutive write errors. `status` is `red`
- * when not connected or at capacity (`pressure >= 1`), `yellow` when
- * `pressure >= 0.66` or any write error is outstanding, `green`
- * otherwise. One successful write clears the error count. The health
- * object also carries `abandonedFlushes` and `pausedSince`.
+ * exposes no socket state. It is false while shutting down, while
+ * delivery is paused, after five consecutive write errors, or when
+ * delivery reads red. Delivery reads red after two failed flushes in
+ * a row, or after one abandoned flush. `status` is `red` when not
+ * connected or at capacity (`pressure >= 1`). It is `yellow` when
+ * `pressure >= 0.66`, when a write error is outstanding, or when one
+ * flush has failed. Otherwise it is `green`. One successful write
+ * clears the write error count, and one delivered flush clears the
+ * flush failure count. The health object also carries
+ * `abandonedFlushes`, `pausedSince`, `consecutiveFlushFailures`,
+ * `lastFlushAt`, and `lastFlushError` (`{ message, abandoned, at }`,
+ * kept after recovery so the last failure stays readable).
  *
  * Shutdown (ADR-018 drain-then-close). A clean resolve is a delivery
  * statement: everything buffered or in flight was delivered. The
@@ -218,6 +224,15 @@ const reportCallbackFault = function ( severity, name, detail ) {
  */
 const HEALTH_ERROR_YELLOW_THRESHOLD = 1;
 const HEALTH_ERROR_RED_THRESHOLD = 5;
+
+/**
+ * Consecutive failed flushes that read as red delivery. One failure is
+ * yellow, because the client's own retries make a single failure
+ * worth a look but not an alarm. Two in a row mean the server keeps
+ * refusing. An abandoned flush reads red on its own, because a
+ * deadline is already the client's full retry budget plus a margin.
+ */
+const HEALTH_FLUSH_FAILURE_RED_THRESHOLD = 2;
 
 /**
  * Pressure threshold above which `status` elevates to at least 'yellow'.
@@ -609,27 +624,36 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
      *
      * Status derivation (kept in code, not config — operator mental model is
      * load-bearing institutional knowledge):
-     * - `red`    if `!connected` (shutting down, delivery paused, or
-     *            sustained write failure)
+     * - `red`    if `!connected` (shutting down, delivery paused,
+     *            sustained write failure, or delivery red: two failed
+     *            flushes in a row, or one abandoned flush)
      *            or `pressure >= HEALTH_PRESSURE_RED_THRESHOLD` (at capacity)
      * - `yellow` if `pressure >= HEALTH_PRESSURE_YELLOW_THRESHOLD` OR
-     *               `consecutiveWriteErrors >= HEALTH_ERROR_YELLOW_THRESHOLD`
+     *               `consecutiveWriteErrors >= HEALTH_ERROR_YELLOW_THRESHOLD` OR
+     *               one flush has failed since the last delivered one
      * - `green`  otherwise
      *
      * `connected` here is *derived* — QuestDB's ILP sender is fire-and-forget
      * with no observable socket state, so we infer transport health from
-     * recent write success and from the probe that paused delivery.
+     * recent write success, from the ledger's flush outcomes, and from
+     * the probe that paused delivery.
      *
-     * @returns {{status: 'green'|'yellow'|'red', connected: boolean, pressure: number, consecutiveWriteErrors: number, bufferedRows: number, inFlightRows: number, abandonedFlushes: number, pausedSince: number|null}}
+     * @returns {{status: 'green'|'yellow'|'red', connected: boolean, pressure: number, consecutiveWriteErrors: number, bufferedRows: number, inFlightRows: number, abandonedFlushes: number, pausedSince: number|null, consecutiveFlushFailures: number, lastFlushAt: number|null, lastFlushError: {message: string, abandoned: boolean, at: number}|null}}
      */
     const getHealth = function () {
         const pressure = getPressure();
-        const connected = !shuttingDown && !gate.isPaused() && ( consecutiveWriteErrors < HEALTH_ERROR_RED_THRESHOLD );
+        const flushFailures = ledger.consecutiveFlushFailures;
+        const deliveryRed = ( flushFailures >= HEALTH_FLUSH_FAILURE_RED_THRESHOLD ) ||
+            ( ( flushFailures > 0 ) && ledger.lastFlushError.abandoned );
+        const connected = !shuttingDown && !gate.isPaused() &&
+            ( consecutiveWriteErrors < HEALTH_ERROR_RED_THRESHOLD ) && !deliveryRed;
 
         let status;
         if ( !connected || ( pressure >= HEALTH_PRESSURE_RED_THRESHOLD ) ) {
             status = 'red';
-        } else if ( ( pressure >= HEALTH_PRESSURE_YELLOW_THRESHOLD ) || ( consecutiveWriteErrors >= HEALTH_ERROR_YELLOW_THRESHOLD ) ) {
+        } else if ( ( pressure >= HEALTH_PRESSURE_YELLOW_THRESHOLD ) ||
+            ( consecutiveWriteErrors >= HEALTH_ERROR_YELLOW_THRESHOLD ) ||
+            ( flushFailures > 0 ) ) {
             status = 'yellow';
         } else {
             status = 'green';
@@ -645,7 +669,10 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
             bufferedRows,
             inFlightRows: ledger.inFlightRows,
             abandonedFlushes: ledger.abandonedFlushes,
-            pausedSince: gate.pausedSince()
+            pausedSince: gate.pausedSince(),
+            consecutiveFlushFailures: flushFailures,
+            lastFlushAt: ledger.lastFlushAt,
+            lastFlushError: ledger.lastFlushError
         };
     }; // getHealth()
 

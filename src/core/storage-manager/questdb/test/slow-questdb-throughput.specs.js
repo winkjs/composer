@@ -11,14 +11,22 @@
  *
  * Two concerns:
  *
- *   1. **Sustained throughput** — drive the harness flat-out for a
- *      meaningful run (~60 s on commodity hardware), assert no row
- *      loss, log the observed msg/s and heap delta. The hard
- *      assertion is "every harness id present in QDB" — the
- *      throughput number itself is logged for documentation, not
- *      asserted as a tight bound (CI machines vary). A conservative
- *      absolute floor (1 000 msg/s) catches catastrophic regressions
- *      without flaking on slower hardware.
+ *   1. **Sustained throughput** — drive the harness flat-out with a
+ *      breath every millisecond (`.yield( { threshold: 1 } )`), assert
+ *      no row loss, log the observed msg/s and heap delta. The hard
+ *      assertion is "every row present in QDB" — the throughput
+ *      number itself is logged for documentation, not asserted as a
+ *      tight bound (CI machines vary). A conservative absolute floor
+ *      (1 000 msg/s) catches catastrophic regressions without flaking.
+ *
+ *      A second leg drives the same burst with no breath at all
+ *      (`threshold: Infinity`). Composer owns every flush (ADR-029),
+ *      one flush is in flight at a time, and a flush can settle only
+ *      when the event loop runs. So a synchronous burst lands exactly
+ *      the buffer ceiling and sheds the rest with `STORAGE_FULL`. The
+ *      leg pins that number. Until 2026-09-05 this file asserted the
+ *      old promise, that an unbounded queue of client flushes lands
+ *      every row of a synchronous burst.
  *
  *   2. **Pressure response** — sample `getPressure()` while the
  *      harness drives load; assert the counter rises (proving the
@@ -181,28 +189,16 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
     // Test 1 — Sustained throughput with no row loss
     // --------------------------------------------------------------------
 
-    it( 'sustains a flat-out run without losing rows', async function () {
-        // Failure mode (found during hardening): at unpaced
-        // production rates that exceed QDB's ingest rate, the
-        // @questdb/nodejs-client send buffer (default
-        // `max_buf_size = 100 MiB`) fills up. Once full, HTTP
-        // flushes start timing out at `request_timeout` (~10 s)
-        // and the rows in those failed flushes get dropped. With
-        // our row shape (~78 bytes/row on the wire) the buffer
-        // caps at ~1.28 M rows. The "ceiling" is therefore
-        // time-bounded, not count-bounded.
+    it( 'sustains a flat-out run with a breath every millisecond without losing rows', async function () {
+        // The harness at interval 0 pushes rows in a tight loop and
+        // waits on each one. A breath every millisecond lets each
+        // flush settle while the burst continues (see the handbook's
+        // yield section). Measured 2026-09-06 on a laptop: 3,000,000
+        // rows, zero loss, about 235,000 rows a second delivered.
         //
-        // Per the no-silent-failures contract, the QDB
-        // adapter now throws `DELIVERY_FAILED` from inside the
-        // sender.at() catch handler when no `onDeliveryFailure`
-        // callback is provided. Tests provide an explicit callback
-        // so we can capture failures into a list. The assertions:
-        // zero failures captured AND every row landed.
-        //
-        // 500 000 messages keeps us well below the buffer ceiling
-        // on commodity hardware while still exercising the
-        // pipeline meaningfully (~1.7 s of unpaced production at
-        // observed ~287 k msg/s, ~100 auto-flush boundaries crossed).
+        // Tests provide an explicit `onDeliveryFailure` so failures
+        // land in a list. The assertions: zero failures captured AND
+        // every row landed.
         const messageCount = 500000;
         const tablePrefix = `${RUN_PREFIX}_run`;
         const tableName = `${tablePrefix}_samples`;
@@ -229,6 +225,7 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
 
         const t0 = Date.now();
         const handle = await flow( 'tputRun' )
+            .yield( { threshold: 1 } )
             .source( testHarness, {
                 messageTemplate: buildMessageTemplate( messageCount ),
                 assetClass,
@@ -308,6 +305,64 @@ describe( 'QuestDB Hardening — sustained throughput and pressure response', fu
         //    flight at any time. We allow 100 MB for jit profiles,
         //    buffers, etc. Anything beyond that suggests a leak.
         expect( heapDelta / 1024 / 1024 ).to.be.lessThan( 100 );
+    } );
+
+    // --------------------------------------------------------------------
+    // Test 1b — A synchronous burst lands exactly the ceiling
+    // --------------------------------------------------------------------
+
+    it( 'a synchronous burst with no breath lands exactly the buffer ceiling', async function () {
+        // No breath ever: the event loop is blocked from the first
+        // row to the last. The first flush starts at flushRows and
+        // cannot settle. Rows collect until buffered plus in flight
+        // reach the ceiling, ten times flushRows, and every later
+        // write is refused with STORAGE_FULL. At shutdown the drain
+        // delivers the in-flight batch and the held rows: exactly
+        // the ceiling. ADR-029 records this as a consequence of the
+        // bounded buffer, and the handbook's yield section tells a
+        // tight-loop caller how to avoid it.
+        const messageCount = 500000;
+        const flushRows = 5000;
+        const ceiling = flushRows * 10;
+        const tablePrefix = `${RUN_PREFIX}_burst`;
+        const tableName = `${tablePrefix}_samples`;
+        tablesToCleanUp.push( tableName );
+
+        const deliveryFailures = [];
+        const handle = await flow( 'burstRun' )
+            .yield( { threshold: Infinity } )
+            .source( testHarness, {
+                messageTemplate: buildMessageTemplate( messageCount ),
+                assetClass,
+                shutdownOnComplete: false
+            } )
+            .assetClass( assetClass )
+            .storage( questdbAdapter, {
+                ilpUrl: QUESTDB_ILP_URL,
+                pgUrl: QUESTDB_PG_URL,
+                tablePrefix,
+                flushRows,
+                flushIntervalMs: 600000,
+                onDeliveryFailure: function ( err ) {
+                    deliveryFailures.push( err && err.message );
+                }
+            } )
+            .assetId( 'partitionId' )
+            .persistIf( 'persist', ( _msg ) => true,
+                { storageName: 'questdb', insightType: 'samples' } )
+            .run();
+
+        await handle.whenComplete();
+        await handle.shutdown();
+        const finalCount = await waitForRows( pgClient, tableName, ceiling, 30000 );
+
+        console.log( '\n  [burst] run summary:' );
+        console.log( `    messages produced:  ${messageCount}` );
+        console.log( `    rows in QDB:        ${finalCount}` );
+        console.log( `    buffer ceiling:     ${ceiling}` );
+
+        expect( deliveryFailures, 'no flush failed; the rest were refused, not lost in transit' ).to.deep.equal( [] );
+        expect( finalCount ).to.equal( ceiling );
     } );
 
     // --------------------------------------------------------------------
