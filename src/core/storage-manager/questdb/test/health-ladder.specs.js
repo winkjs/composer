@@ -1,8 +1,7 @@
 // core/storage-manager/questdb/test/health-ladder.specs.js
 
 /**
- * @fileoverview Health reads flush outcomes (ADR-029, Story 1 of the
- * delivery-truth work).
+ * @fileoverview Health reads flush outcomes (ADR-029).
  *
  * Before this change `getHealth()` read buffering, the pause, and
  * pressure. It did not read flush outcomes. A server that answered

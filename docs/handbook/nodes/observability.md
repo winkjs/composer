@@ -42,6 +42,14 @@ itself; your supervisor owns files. Both variables, the transports,
 and the per-platform file routes are documented in
 [Environment Variables](../environment-variables.md#the-logger-settings).
 
+The QuestDB adapter prints one line at every change of its delivery
+state, and nothing while a state persists. `DELIVERY_HEALTH` marks
+delivery degrading, turning red, or being restored. `CIRCUIT_OPEN`
+marks a pause and a resume. `STORAGE_FULL` marks rows starting and
+stopping being refused at the buffer ceiling. Every one of these
+prints at `warn` or above. The lines and their levels are listed under
+[Configuration → storage](./configuration.md#storage).
+
 ## Watching a source: status and metrics
 
 A source reports its health through two callbacks you pass in its

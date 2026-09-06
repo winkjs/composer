@@ -57,7 +57,11 @@
  * no allocation. A shed row is a capacity refusal, not a sender error,
  * and does not touch the error counter. Health reads red at the
  * ceiling. With hold and probe, the ceiling is the outage the adapter
- * rides through without loss.
+ * rides through without loss. A shedding episode prints two lines and
+ * no more: one at the first refusal, one when the interval tick finds
+ * room again, with the count refused. The ended line can lag the
+ * first free slot by one interval; that keeps the accept branch free
+ * of the check.
  *
  * Health (ADR-018 §8). `connected` is derived, because the ILP client
  * exposes no socket state. It is false while shutting down, while
@@ -71,7 +75,10 @@
  * flush failure count. The health object also carries
  * `abandonedFlushes`, `pausedSince`, `consecutiveFlushFailures`,
  * `lastFlushAt`, and `lastFlushError` (`{ message, abandoned, at }`,
- * kept after recovery so the last failure stays readable).
+ * kept after recovery so the last failure stays readable). The ladder
+ * itself is `deliveryStateOf` in `flush-tracker.js`, which also prints
+ * one line at every change of it, so a log reader and a health reader
+ * see the same state.
  *
  * Shutdown (ADR-018 drain-then-close). A clean resolve is a delivery
  * statement: everything buffered or in flight was delivered. The
@@ -144,7 +151,7 @@
 
 import { logger } from '../../logger/index.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
-import { createFlushTracker } from './flush-tracker.js';
+import { createFlushTracker, deliveryStateOf } from './flush-tracker.js';
 import { createDeliveryGate } from './delivery-gate.js';
 import { createShutdownDrain } from './shutdown-drain.js';
 
@@ -224,15 +231,6 @@ const reportCallbackFault = function ( severity, name, detail ) {
  */
 const HEALTH_ERROR_YELLOW_THRESHOLD = 1;
 const HEALTH_ERROR_RED_THRESHOLD = 5;
-
-/**
- * Consecutive failed flushes that read as red delivery. One failure is
- * yellow, because the client's own retries make a single failure
- * worth a look but not an alarm. Two in a row mean the server keeps
- * refusing. An abandoned flush reads red on its own, because a
- * deadline is already the client's full retry budget plus a margin.
- */
-const HEALTH_FLUSH_FAILURE_RED_THRESHOLD = 2;
 
 /**
  * Pressure threshold above which `status` elevates to at least 'yellow'.
@@ -316,6 +314,14 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
     // a sender error.
     let shuttingDown = false;
     let consecutiveWriteErrors = 0;
+
+    // The shedding episode. It is up from the first row refused at the
+    // ceiling until the tick finds room again. The count feeds the
+    // "ended" line. The refusal branch raises it, and that branch runs
+    // only while the adapter is already shedding. The tick lowers it.
+    // So the accept branch never looks at it.
+    let shedding = false;
+    let shedRows = 0;
 
     // The ledger of flushes in flight (exact counts, deadlines) and the
     // gate that pauses delivery while the endpoint is unreachable. The
@@ -428,6 +434,10 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
      * here can throw.
      */
     const checkFlush = function () {
+        if ( shedding && ( ( bufferedRows + ledger.inFlightRows ) < bufferCeilingRows ) ) {
+            shedding = false;
+            logger.warn( `winkComposer/questdb: shedding ended, ${shedRows} row(s) refused [STORAGE_FULL]: the buffer has room again` );
+        }
         if ( gate.isPaused() ) {
             gate.tick().then( startAfterResume );
             return;
@@ -534,6 +544,17 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
         // The ceiling counts rows in flight too: a hung flush holds real
         // memory, and the row it would make room for has not landed.
         if ( ( bufferedRows + ledger.inFlightRows ) >= bufferCeilingRows ) {
+            // The first refusal of an episode prints once; the rest
+            // only count. This branch runs only while shedding, so the
+            // check costs the accept path nothing.
+            if ( !shedding ) {
+                shedding = true;
+                shedRows = 0;
+                logger.warn(
+                    `winkComposer/questdb: shedding began at the ceiling of ${bufferCeilingRows} rows [STORAGE_FULL]: new rows are refused until the endpoint takes them`
+                );
+            }
+            shedRows += 1;
             return RESULT_STORAGE_FULL;
         }
 
@@ -642,18 +663,18 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
      */
     const getHealth = function () {
         const pressure = getPressure();
-        const flushFailures = ledger.consecutiveFlushFailures;
-        const deliveryRed = ( flushFailures >= HEALTH_FLUSH_FAILURE_RED_THRESHOLD ) ||
-            ( ( flushFailures > 0 ) && ledger.lastFlushError.abandoned );
+        // The ladder comes from the tracker's one function, the same
+        // one that prints the edge lines, so the two never disagree.
+        const delivery = deliveryStateOf( ledger );
         const connected = !shuttingDown && !gate.isPaused() &&
-            ( consecutiveWriteErrors < HEALTH_ERROR_RED_THRESHOLD ) && !deliveryRed;
+            ( consecutiveWriteErrors < HEALTH_ERROR_RED_THRESHOLD ) && ( delivery !== 'red' );
 
         let status;
         if ( !connected || ( pressure >= HEALTH_PRESSURE_RED_THRESHOLD ) ) {
             status = 'red';
         } else if ( ( pressure >= HEALTH_PRESSURE_YELLOW_THRESHOLD ) ||
             ( consecutiveWriteErrors >= HEALTH_ERROR_YELLOW_THRESHOLD ) ||
-            ( flushFailures > 0 ) ) {
+            ( delivery === 'yellow' ) ) {
             status = 'yellow';
         } else {
             status = 'green';
@@ -670,7 +691,7 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
             inFlightRows: ledger.inFlightRows,
             abandonedFlushes: ledger.abandonedFlushes,
             pausedSince: gate.pausedSince(),
-            consecutiveFlushFailures: flushFailures,
+            consecutiveFlushFailures: ledger.consecutiveFlushFailures,
             lastFlushAt: ledger.lastFlushAt,
             lastFlushError: ledger.lastFlushError
         };

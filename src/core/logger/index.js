@@ -87,7 +87,7 @@ const silentTransport = {
 };
 
 // The env-selectable transports. The mqtt transport joins this map
-// when ADR-029 lands.
+// when ADR-031 lands.
 const transports = {
     console: consoleTransport,
     json: jsonTransport,

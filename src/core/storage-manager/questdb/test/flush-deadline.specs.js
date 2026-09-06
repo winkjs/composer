@@ -71,11 +71,16 @@ const writeRows = function ( storage, count ) {
     }
 }; // writeRows()
 
-/** The DELIVERY_FAILED lines a console.error spy captured. */
+/**
+ * The DELIVERY_FAILED loss lines a console.error spy captured. The
+ * ladder's red edge line quotes the abandonment message as its detail,
+ * so it carries the same token inside a `DELIVERY_HEALTH` line; that
+ * line states a health change, not a loss, and is left out here.
+ */
 const deliveryFailedLines = function ( errorSpy ) {
     return errorSpy.getCalls()
         .map( ( call ) => String( call.args[ 0 ] ) )
-        .filter( ( line ) => line.includes( '[DELIVERY_FAILED]' ) );
+        .filter( ( line ) => line.includes( '[DELIVERY_FAILED]' ) && !line.includes( '[DELIVERY_HEALTH]' ) );
 }; // deliveryFailedLines()
 
 describe( 'QuestDB flush deadline (ADR-029)', function () {

@@ -187,11 +187,28 @@
  *   batch, not stop on it. The health surface carries the same fact.
  * - `CIRCUIT_OPEN`     — delivery paused or resumed (ADR-029 hold and
  *   probe). One `logger.warn` line when a failing probe pauses
- *   delivery, naming the held rows and the finding. One `logger.info`
- *   line when a tick probe passes and delivery resumes. Nothing per
- *   tick. Remediation: the endpoint refused a TCP connect; check that
- *   QuestDB is running and reachable. Rows are held up to the ceiling
- *   meanwhile, and health reads red with `pausedSince`.
+ *   delivery, naming the held rows and the finding. One `logger.warn`
+ *   line when a tick probe passes and delivery resumes, at warn so a
+ *   log transport with a warn floor carries the episode end. Nothing
+ *   per tick. Remediation: the endpoint refused a TCP connect; check
+ *   that QuestDB is running and reachable. Rows are held up to the
+ *   ceiling meanwhile, and health reads red with `pausedSince`.
+ * - `DELIVERY_HEALTH` — the delivery ladder changed state. One
+ *   `logger.warn` line when it enters yellow (the first failed flush),
+ *   one `logger.error` line when it enters red (two failed in a row,
+ *   or one abandoned), and one `logger.warn` line when it returns to
+ *   green, naming the episode length and the rows reported lost in it.
+ *   Nothing while a state persists, whatever the outage length, and
+ *   the lines print with or without `onDeliveryFailure`. Remediation:
+ *   the detail is the client's message or the deadline; a red with no
+ *   `pausedSince` in health is a server that answers and refuses.
+ * - `STORAGE_FULL` (lines) — one `logger.warn` line when the first row
+ *   of an episode is refused at the ceiling, and one when the buffer
+ *   has room again, with the count refused. The end is found at the
+ *   interval tick, so its line can lag the first free slot by one
+ *   interval. Remediation: the endpoint is not taking rows; read the
+ *   `CIRCUIT_OPEN` and `DELIVERY_HEALTH` lines beside it, and raise
+ *   `bufferCeilingRows` when a longer outage must be ridden through.
  * - `DEPRECATED_OPTION` — one `logger.warn` line at setup naming the
  *   legacy keys in use (see Deprecated options above).
  * - `ADDRESS_IS_NAME`  — `ilpUrl` or `pgUrl` is a name other than

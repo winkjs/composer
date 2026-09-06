@@ -1,9 +1,9 @@
 // core/storage-manager/questdb/test/slow-questdb-health-outage.specs.js
 
 /**
- * @fileoverview Health during a live QuestDB outage (ADR-029, the
- * delivery-truth work, Story 1). Hardening tier: runs under
- * `npm run test:hardening`, never under `npm test`.
+ * @fileoverview Health during a live QuestDB outage (ADR-029).
+ * Hardening tier: runs under `npm run test:hardening`, never under
+ * `npm test`.
  *
  * The run-5 soak found the adapter reporting green while every row
  * was lost. This spec kills the ILP path mid-run, through the TCP
@@ -18,7 +18,7 @@
  * probe fails, and delivery pauses. There is no "first failed flush"
  * step before red on a live kill; the unit spec
  * `health-ladder.specs.js` pins that step with a server that answers
- * an error, and Story 6 row 8 carries its live leg.
+ * an error; its live leg belongs to the fault-model matrix.
  *
  * Assertions follow the testing rule for sampled observations. Red
  * during the pause is a sustained state, so samples may assert it.
@@ -36,6 +36,13 @@
  * bound also proves no duplicates. Second, with both triggers armed,
  * either one can start the flush that meets the outage, so the first
  * leg accepts both and only the second leg pins the timer.
+ *
+ * The log is asserted too. Every change of delivery state prints one
+ * line through the facade, so a live outage must read, in order: red
+ * at the abandonment, paused, resumed, restored, and nothing else from
+ * the adapter. The restored line names the rows reported lost, which
+ * must equal the sum the callback received. That makes the log an
+ * event-driven record of the outage, not a sampled one.
  */
 
 /* eslint-disable no-process-env, no-await-in-loop, no-invalid-this */
@@ -165,6 +172,32 @@ const waitForHealth = async function ( storage, predicate, maxMs ) {
     return health;
 };
 
+/**
+ * Captures the facade's warn and error lines while still printing
+ * them. The lines are the event-driven record of every edge the
+ * adapter passed, so the assertions can name them in order.
+ */
+const captureConsole = function () {
+    const lines = [];
+    const wrap = function ( level, original ) {
+        return function ( ...args ) {
+            lines.push( { level, text: String( args[ 0 ] ) } );
+            original.apply( console, args );
+        };
+    };
+    const originalWarn = console.warn;
+    const originalError = console.error;
+    console.warn = wrap( 'warn', originalWarn );
+    console.error = wrap( 'error', originalError );
+    return {
+        lines,
+        restore: function () {
+            console.warn = originalWarn;
+            console.error = originalError;
+        }
+    };
+}; // captureConsole()
+
 // ============================================================================
 // TEST
 // ============================================================================
@@ -176,6 +209,7 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
     let qdbUp = false;
     let pgClient = null;
     let proxy = null;
+    let capture = null;
     const tablesToCleanUp = [];
 
     before( async function () {
@@ -205,6 +239,10 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
     } );
 
     afterEach( async function () {
+        if ( capture ) {
+            capture.restore();
+            capture = null;
+        }
         if ( proxy ) {
             await stopProxy( proxy );
             proxy = null;
@@ -222,6 +260,7 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         tablesToCleanUp.push( tableName );
 
         proxy = await startProxy( PROXY_PORT, QUESTDB_REAL_PORT );
+        capture = captureConsole();
 
         const deliveryFailures = [];
         const handle = await flow( opts.flowName )
@@ -277,8 +316,11 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         await handle.shutdown();
         await sleep( 1500 );
         const landed = await countRows( pgClient, tableName );
+        const lines = capture.lines;
+        capture.restore();
+        capture = null;
 
-        return { baseline, samples, recovered, deliveryFailures, landed, outageStart };
+        return { baseline, samples, recovered, deliveryFailures, landed, outageStart, lines };
     };
 
     /** The assertions both legs share. */
@@ -325,6 +367,17 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         expect( rowsLost ).to.be.greaterThan( 0 );
         expect( landed ).to.be.at.least( opts.messageCount - rowsLost );
         expect( landed ).to.be.at.most( opts.messageCount );
+
+        // The log carries every edge once, in order: red at the
+        // abandonment, paused, resumed, restored. Nothing else from the
+        // adapter, whatever the outage length. The restored line's row
+        // count is the same sum the callback received.
+        const adapterLines = result.lines.filter( ( l ) => l.text.includes( 'winkComposer/questdb' ) );
+        expect( adapterLines.map( ( l ) => l.level ) ).to.deep.equal( [ 'error', 'warn', 'warn', 'warn' ] );
+        expect( adapterLines[ 0 ].text ).to.include( 'delivery red after 1 failed flush(es) [DELIVERY_HEALTH]' );
+        expect( adapterLines[ 1 ].text ).to.include( 'delivery paused' ).and.include( '[CIRCUIT_OPEN]' );
+        expect( adapterLines[ 2 ].text ).to.include( 'delivery resumed' ).and.include( '[CIRCUIT_OPEN]' );
+        expect( adapterLines[ 3 ].text ).to.include( `${rowsLost} row(s) reported lost meanwhile [DELIVERY_HEALTH]` );
     };
 
     it( 'producer at rate: reads red with pausedSince while the endpoint is dead, green after it returns', async function () {
@@ -343,6 +396,7 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         console.log( `    red samples:          ${result.samples.filter( ( h ) => h.status === 'red' ).length} of ${result.samples.length}` );
         console.log( `    delivery failures:    ${result.deliveryFailures.length}` );
         console.log( `    rows landed:          ${result.landed} of ${opts.messageCount}` );
+        console.log( `    adapter log lines:    ${result.lines.filter( ( l ) => l.text.includes( 'winkComposer/questdb' ) ).length}` );
 
         assertOutageTruth( opts, result );
     } );
@@ -363,6 +417,7 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         console.log( `    red samples:          ${result.samples.filter( ( h ) => h.status === 'red' ).length} of ${result.samples.length}` );
         console.log( `    delivery failures:    ${result.deliveryFailures.length}` );
         console.log( `    rows landed:          ${result.landed} of ${opts.messageCount}` );
+        console.log( `    adapter log lines:    ${result.lines.filter( ( l ) => l.text.includes( 'winkComposer/questdb' ) ).length}` );
 
         assertOutageTruth( opts, result );
     } );

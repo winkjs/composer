@@ -35,8 +35,10 @@
  *
  * Console lines (ADR-028 grammar, token `CIRCUIT_OPEN` from ADR-018
  * §9). One `logger.warn` line on pause, with the held row count and
- * the finding. One `logger.info` line on resume, with the pause
- * length and the held count. Nothing per tick. A probe that itself
+ * the finding. One `logger.warn` line on resume, with the pause
+ * length and the held count. The resume line is warn, not info, so a
+ * log transport that keeps only warn and above still carries the end
+ * of the episode. Nothing per tick. A probe that itself
  * throws or rejects counts as a failed probe: the gate must not depend
  * on the probe's own robustness to decide whether to pause.
  *
@@ -107,7 +109,7 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
         const seconds = Math.round( ( Date.now() - pausedSince ) / 1000 );
         paused = false;
         pausedSince = null;
-        logger.info(
+        logger.warn(
             `winkComposer/questdb: delivery resumed after ${seconds} s, ${heldRows()} row(s) held [CIRCUIT_OPEN]: ${finding}`
         );
     }; // resume()

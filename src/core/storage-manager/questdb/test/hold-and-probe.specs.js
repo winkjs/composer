@@ -453,16 +453,17 @@ describe( 'QuestDB hold and probe (ADR-029)', function () {
 
     describe( 'a passing tick probe resumes delivery', function () {
 
-        it( 'one info line, pausedSince cleared, one flush carries everything held', async function () {
-            const logSpy = sinon.spy( console, 'log' );
+        it( 'one warn line, pausedSince cleared, one flush carries everything held', async function () {
+            const warnSpy = sinon.spy( console, 'warn' );
             const storage = await failFirstFlush( 'refused', 3 );
 
             probe.setResult( 'answers' );
             await clock.tickAsync( 1000 );
 
-            const lines = linesWith( logSpy, '[CIRCUIT_OPEN]' );
-            expect( lines ).to.have.lengthOf( 1 );
-            expect( lines[ 0 ] ).to.equal(
+            // The pause line, then the resume line, both at warn.
+            const lines = linesWith( warnSpy, '[CIRCUIT_OPEN]' );
+            expect( lines ).to.have.lengthOf( 2 );
+            expect( lines[ 1 ] ).to.equal(
                 'winkComposer/questdb: delivery resumed after 1 s, 3 row(s) held [CIRCUIT_OPEN]: 127.0.0.1:9000 answers'
             );
 
@@ -490,7 +491,8 @@ describe( 'QuestDB hold and probe (ADR-029)', function () {
             await clock.tickAsync( 0 );
 
             expect( probe.engineCalls() ).to.equal( 3 );
-            expect( linesWith( warnSpy, '[CIRCUIT_OPEN]' ) ).to.have.lengthOf( 2 );
+            // Pause, resume, pause: the resume line is warn too.
+            expect( linesWith( warnSpy, '[CIRCUIT_OPEN]' ) ).to.have.lengthOf( 3 );
             expect( storage.getHealth().pausedSince ).to.equal( NOW + 1000 );
 
             await storage.shutdown( { timeout: 10 } ).catch( () => undefined );

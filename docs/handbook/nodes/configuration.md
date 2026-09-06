@@ -167,6 +167,8 @@ emitter.getHealth()
 //            stats: { published, publishErrors, encodeErrors, errors, reconnects, unacked } }
 ```
 
+Inside a flow, the emitter handle is not reachable yet. A flow-level `getHealth()` on the run handle is planned for a later release. Until then, a flow learns of delivery trouble through `onDeliveryFailure` and the framework's log lines.
+
 #### Terminal Emitter
 
 Debug emitter that writes to stdout. Useful for development and testing.
@@ -527,6 +529,14 @@ column 'temp' is wrong-typed (expected float64, received string) in insightType 
 
 A QuestDB restart therefore costs only the send that was on the wire when the port closed. While paused, health reads red with `connected: false` and a `pausedSince` time. A send the server answered and refused, such as a full disk, does not pause delivery. That send is reported lost, with the probe's finding, and the next send proceeds.
 
+**What the adapter logs, and when.** Every change of delivery state prints one line through the [framework log](./observability.md#framework-log-lines), with or without an `onDeliveryFailure` function. Nothing prints while a state persists, however long an outage lasts. The lines, in the order a typical outage shows them:
+
+- `DELIVERY_HEALTH` at `warn` when the first send fails, at `error` when delivery turns red, and at `warn` when it is restored. The restored line names the episode length and the rows reported lost in it.
+- `CIRCUIT_OPEN` at `warn` when delivery pauses, and again when it resumes.
+- `STORAGE_FULL` at `warn` when the first row of an episode is refused at the ceiling, and again when the buffer has room, with the count refused.
+
+A whole outage prints six lines at most. All of them print at `warn` or above, so a log level of `warn` still shows every one. A log reader and a health reader see the same story, because one function derives both.
+
 **Health monitoring.** The storage handle's `getHealth()` reads delivery as well as buffering. One failed send reads `yellow`. Two failed sends in a row, or one send that passed its deadline, read `red` with `connected: false`. The next delivered send reads `green` again.
 
 ```javascript
@@ -540,6 +550,8 @@ storage.getHealth()
 ```
 
 `connected: false` has two causes, and `pausedSince` tells them apart. With a time in `pausedSince`, QuestDB was unreachable and delivery is paused. With `pausedSince: null`, QuestDB answered and refused twice, so check `lastFlushError.message`. `lastFlushAt` is the staleness number for a long unattended run: alert when it grows older than a few send intervals. `lastFlushError` is never cleared, so the last failure stays readable after recovery, and `consecutiveFlushFailures` says whether it is current. A monitor should act on `red`, or on `yellow` that persists, not on one `yellow` sample.
+
+Inside a flow, the storage handle is not reachable yet. A flow-level `getHealth()` on the run handle is planned for a later release. Until then, a flow learns of delivery trouble through `onDeliveryFailure` and the framework's log lines.
 
 **Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain — the final flush failed, or a hung flush outlived the shutdown budget — shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Inside a flow, the framework catches this rejection and logs it — one classified line naming the storage, the code, and the count — so the flow's own shutdown still completes for the other sinks.
 
