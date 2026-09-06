@@ -24,7 +24,10 @@ import { describe, it, before, after, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createQuestDBStorage } from '../index.js';
-import { makeMockSender, makeMockDeps } from './test-helpers.js';
+import { makeMockSender, makeMockDeps, ILP_ADDRESS, probeOutcomeFor } from './test-helpers.js';
+
+/** The probe finding a failed flush carries here: the endpoint answers. */
+const PROBE_ANSWERS = probeOutcomeFor( ILP_ADDRESS, 'answers' );
 
 const TEST_ASSET_CLASS = {
     name: 'pump',
@@ -175,7 +178,9 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             // Two-argument passthrough at this site: the raw error and
             // the timer flush context reach the handler unchanged.
             expect( onDeliveryFailure.firstCall.args[ 0 ] ).to.equal( idleError );
-            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { trigger: 'timer', rowsLost: 1, abandoned: false } );
+            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( {
+                trigger: 'timer', rowsLost: 1, abandoned: false, probe: PROBE_ANSWERS
+            } );
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 1 );
             expect( lines[ 0 ] ).to.contain( 'handler down' );
@@ -250,7 +255,9 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             expect( onDeliveryFailure.firstCall.args[ 0 ] ).to.equal( flushError );
             // The first write failed mid-row with nothing buffered, so the
             // recovery flush carried no completed rows.
-            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { trigger: 'recovery', rowsLost: 0, abandoned: false } );
+            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( {
+                trigger: 'recovery', rowsLost: 0, abandoned: false, probe: PROBE_ANSWERS
+            } );
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 1 );
             expect( lines[ 0 ] ).to.contain( 'handler down' );

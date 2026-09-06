@@ -38,7 +38,11 @@
  * a flush at once. A timer starts a flush every `flushIntervalMs` when
  * anything is buffered. Only one engine flush runs at a time. A failed
  * flush is reported once, with the exact rows lost, and the process
- * keeps running.
+ * keeps running. Every flush has a deadline, derived from the rows it
+ * carries, and a flush past it is abandoned and reported. A failed or
+ * abandoned flush runs the ADR-030 probe. While the probe fails,
+ * delivery pauses: rows are held up to the ceiling and each tick
+ * probes again. `flush-engine.js` carries the detail.
  *
  * Durability in plain words (ADR-018). `durabilityClass` is
  * `'in-memory'`. Rows live in the client's buffer until a flush reaches
@@ -78,8 +82,10 @@
  * Health (ADR-018 §8). `status` is `red` when not connected or at
  * capacity, `yellow` at `pressure >= 0.66` or any outstanding write
  * error, `green` otherwise. `connected` is derived from recent write
- * success, because the ILP client exposes no socket state.
- * `flush-engine.js` documents the derivation.
+ * success and from the probe, because the ILP client exposes no socket
+ * state; it is false while delivery is paused. The health object
+ * carries `pausedSince` and `abandonedFlushes`. `flush-engine.js`
+ * documents the derivation.
  *
  * Deprecated options (ADR-029, removed in 0.8.0). `autoFlushRows` maps
  * to `flushRows` and `idleFlushCheckMs` maps to `flushIntervalMs`.
@@ -170,12 +176,20 @@
  *   `{ timeout }`.
  *
  * Runtime console classification (tokens, not `err.code` values):
- * - `DELIVERY_FAILED`  — an engine or recovery flush failed, or the
- *   client refused a row append, and no `onDeliveryFailure` was given.
- *   One `logger.error` line per event, carrying the exact rows lost
- *   and the client's message. The process keeps running: an
- *   unattended deployment must report a lost batch, not stop on it.
- *   The health surface carries the same fact.
+ * - `DELIVERY_FAILED`  — an engine or recovery flush failed or was
+ *   abandoned at its deadline, or the client refused a row append, and
+ *   no `onDeliveryFailure` was given. One `logger.error` line per
+ *   event, carrying the exact rows lost and the client's message. A
+ *   flush line ends with the probe finding when a probe ran. The
+ *   process keeps running: an unattended deployment must report a lost
+ *   batch, not stop on it. The health surface carries the same fact.
+ * - `CIRCUIT_OPEN`     — delivery paused or resumed (ADR-029 hold and
+ *   probe). One `logger.warn` line when a failing probe pauses
+ *   delivery, naming the held rows and the finding. One `logger.info`
+ *   line when a tick probe passes and delivery resumes. Nothing per
+ *   tick. Remediation: the endpoint refused a TCP connect; check that
+ *   QuestDB is running and reachable. Rows are held up to the ceiling
+ *   meanwhile, and health reads red with `pausedSince`.
  * - `DEPRECATED_OPTION` — one `logger.warn` line at setup naming the
  *   legacy keys in use (see Deprecated options above).
  * - `ADDRESS_IS_NAME`  — `ilpUrl` or `pgUrl` is a name other than
@@ -274,7 +288,7 @@ import pg from 'pg';
 import { ENV_VARS } from '../../env-vars.js';
 import { logger } from '../../logger/index.js';
 import { validators } from '../../utils/validate/index.js';
-import { probeAddress } from '../../utils/address/probe.js';
+import { probeAddress, describeProbe } from '../../utils/address/probe.js';
 import { buildPersistPlans } from './persist-plan.js';
 import { ensureTables } from './ensure-tables.js';
 import { assertColumnFacts } from './assert-columns.js';
@@ -342,7 +356,7 @@ const buildSenderConfig = function ( options ) {
  * @param {number} [options.flushRows=5000] - Rows that start a flush from inside write()
  * @param {number} [options.flushIntervalMs=1000] - Period of the flush timer
  * @param {number} [options.bufferCeilingRows] - Most rows held; default ten times flushRows
- * @param {number} [options.flushDeadlineMs] - Fixed deadline per flush (engine lands next)
+ * @param {number} [options.flushDeadlineMs] - Fixed deadline per flush; derived from the rows when unset
  * @param {number} [options.maxBufSize] - Initial client buffer size in bytes
  * @param {number} [options.retryTimeout] - Client retry window in ms
  * @param {string} [options.partitionBy='DAY'] - Table partition interval
@@ -461,9 +475,21 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // a failure there is classified, cause attached (see buildSender).
     const sender = await buildSender( SenderClass, senderConfig, ilpUrl );
 
+    // The probe the engine runs after a failed flush (ADR-029 hold and
+    // probe), bound to the ILP address so the engine knows nothing
+    // about addresses. Setup ran the same probe on both endpoints.
+    const probe = {
+        run: function () {
+            return probeFn( ilpAddress );
+        },
+        describe: function ( outcome ) {
+            return describeProbe( outcome, 'ilpUrl', ilpAddress );
+        }
+    };
+
     // Everything after setup is the engine's: the hot path, the
     // flushes, the counters, the drain.
-    const engine = createFlushEngine( { sender, persistPlans, settings, onDeliveryFailure } );
+    const engine = createFlushEngine( { sender, persistPlans, settings, onDeliveryFailure, probe } );
 
     return {
         write: engine.write,

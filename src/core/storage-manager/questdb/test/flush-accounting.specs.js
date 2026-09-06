@@ -32,7 +32,10 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createQuestDBStorage } from '../index.js';
-import { makeMockSender, makeMockDeps, NEVER_SETTLES } from './test-helpers.js';
+import { makeMockSender, makeMockDeps, NEVER_SETTLES, ILP_ADDRESS, probeOutcomeFor } from './test-helpers.js';
+
+/** The probe finding a failed flush carries here: the endpoint answers. */
+const PROBE_ANSWERS = probeOutcomeFor( ILP_ADDRESS, 'answers' );
 
 const TEST_ASSET_CLASS = {
     name: 'pump',
@@ -266,7 +269,7 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
             expect( onDeliveryFailure.callCount ).to.equal( 1 );
             const [ err, ctx ] = onDeliveryFailure.firstCall.args;
             expect( err.message ).to.include( 'timer boom' );
-            expect( ctx ).to.deep.equal( { trigger: 'timer', rowsLost: 1, abandoned: false } );
+            expect( ctx ).to.deep.equal( { trigger: 'timer', rowsLost: 1, abandoned: false, probe: PROBE_ANSWERS } );
 
             await storage.shutdown( { timeout: 1000 } );
         } );

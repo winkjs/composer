@@ -479,7 +479,7 @@ flow('pipeline')
 | `retryTimeout` | number | client default | How long the client retries a failed send |
 | `partitionBy` | string | — | Partitioning when the adapter creates a table: `NONE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR` |
 | `onWarning` | function | `null` | Called with non-fatal storage warnings |
-| `onDeliveryFailure` | function | `null` | Called when a write ultimately fails. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported once as a `CALLBACK_FAILED` console line |
+| `onDeliveryFailure` | function | `null` | Called once per lost send with the error and `{ trigger, rowsLost, abandoned, probe }`. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported once as a `CALLBACK_FAILED` console line |
 
 The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_PG_URL` environment variables when omitted. See [Environment Variables](../environment-variables.md).
 
@@ -522,6 +522,10 @@ column 'temp' is wrong-typed (expected float64, received string) in insightType 
 ```
 
 **Strict mode.** An `onWarning` that throws turns every warning into a refusal: the row is rejected before the writer touches it, and the sender stays clean. Use this when a partial row is worse than no row. For this reason `onWarning` is deliberately not guarded. Your throw is the instruction, so composer never contains it.
+
+**When QuestDB stops answering, delivery pauses.** A send that fails or passes its deadline makes the adapter probe the ILP address with one TCP connect. If the probe fails, the adapter stops sending and holds new rows in memory, up to `bufferCeilingRows`. One console line marked `CIRCUIT_OPEN` reports the pause and the held count. Every `flushIntervalMs` the adapter probes again, and prints nothing until a probe passes. Then one line reports the resume, and one send carries everything held.
+
+A QuestDB restart therefore costs only the send that was on the wire when the port closed. While paused, health reads red with `connected: false` and a `pausedSince` time. A send the server answered and refused, such as a full disk, does not pause delivery. That send is reported lost, with the probe's finding, and the next send proceeds.
 
 **Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain — the final flush failed, or a hung flush outlived the shutdown budget — shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Inside a flow, the framework catches this rejection and logs it — one classified line naming the storage, the code, and the count — so the flow's own shutdown still completes for the other sinks.
 

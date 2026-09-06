@@ -36,7 +36,10 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createQuestDBStorage, buildSenderConfig } from '../index.js';
-import { makeMockSender, makeMockDeps, NEVER_SETTLES } from './test-helpers.js';
+import { makeMockSender, makeMockDeps, NEVER_SETTLES, ILP_ADDRESS, probeOutcomeFor } from './test-helpers.js';
+
+/** The probe finding a failed flush carries here: the endpoint answers. */
+const PROBE_ANSWERS = probeOutcomeFor( ILP_ADDRESS, 'answers' );
 
 const TEST_ASSET_CLASS = {
     name: 'pump',
@@ -364,7 +367,7 @@ describe( 'QuestDB flush engine (ADR-029)', function () {
             expect( onDeliveryFailure.callCount ).to.equal( 1 );
             const [ err, ctx ] = onDeliveryFailure.firstCall.args;
             expect( err ).to.equal( flushError );
-            expect( ctx ).to.deep.equal( { trigger: 'rows', rowsLost: 2, abandoned: false } );
+            expect( ctx ).to.deep.equal( { trigger: 'rows', rowsLost: 2, abandoned: false, probe: PROBE_ANSWERS } );
             expect( storage.getPressure() ).to.equal( 0 );
 
             await storage.shutdown();
@@ -380,7 +383,9 @@ describe( 'QuestDB flush engine (ADR-029)', function () {
             await clock.tickAsync( 100 );
 
             expect( onDeliveryFailure.callCount ).to.equal( 1 );
-            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( { trigger: 'timer', rowsLost: 1, abandoned: false } );
+            expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( {
+                trigger: 'timer', rowsLost: 1, abandoned: false, probe: PROBE_ANSWERS
+            } );
 
             await storage.shutdown();
         } );

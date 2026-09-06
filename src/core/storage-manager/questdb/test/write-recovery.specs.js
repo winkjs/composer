@@ -39,7 +39,10 @@ import sinon from 'sinon';
 import { Sender } from '@questdb/nodejs-client';
 
 import { createQuestDBStorage } from '../index.js';
-import { makeMockSender, makeMockDeps, PASSING_PROBE } from './test-helpers.js';
+import { makeMockSender, makeMockDeps, PASSING_PROBE, ILP_ADDRESS, probeOutcomeFor } from './test-helpers.js';
+
+/** The probe finding a failed recovery flush carries here: the endpoint answers. */
+const PROBE_ANSWERS = probeOutcomeFor( ILP_ADDRESS, 'answers' );
 
 const TEST_ASSET_CLASS = {
     name: 'pump',
@@ -146,7 +149,9 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
 
             expect( failures ).to.have.lengthOf( 1 );
             expect( failures[ 0 ].err ).to.equal( flushError );
-            expect( failures[ 0 ].ctx ).to.deep.equal( { trigger: 'recovery', rowsLost: 1, abandoned: false } );
+            expect( failures[ 0 ].ctx ).to.deep.equal( {
+                trigger: 'recovery', rowsLost: 1, abandoned: false, probe: PROBE_ANSWERS
+            } );
         } );
 
         it( 'prints one DELIVERY_FAILED line when the recovery flush fails with no onDeliveryFailure', async function () {

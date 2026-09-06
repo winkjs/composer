@@ -15,9 +15,10 @@
  * - A HUNG final flush (the client's retry loop never settles against an
  *   unreachable server) blocked shutdown forever. Now: the flush is raced
  *   against the `{ timeout }` the caller already passes (ADR-018), and
- *   an overrun is SHUTDOWN_TIMEOUT with the same `dropped` shape. No
- *   timeout supplied = no enforcement (unbounded), preserving
- *   direct-caller behavior.
+ *   an overrun is SHUTDOWN_TIMEOUT with the same `dropped` shape. With
+ *   no timeout, the flush's own deadline (ADR-029) bounds the drain:
+ *   the abandoned flush counts as dropped and shutdown rejects with
+ *   DELIVERY_FAILED at the deadline.
  * - A HUNG timer flush piled up a new flush call every tick (each one a
  *   fresh never-settling send). Now: the single-flight guard keeps one
  *   engine flush in flight (ADR-029). A hung flush surfaces as rising
@@ -186,31 +187,36 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
 
     } );
 
-    describe( 'M7 — no timeout means wait indefinitely (documented limitation)', function () {
+    describe( 'no timeout means the flush deadline bounds the drain (ADR-029)', function () {
 
-        it( 'shutdown() without a timeout stays pending on a hung final flush until it settles', async function () {
-            // The adapter documents that a shutdown with no timeout waits
-            // forever on a hung flush. Pin it: race the shutdown against a
-            // short timer, then release the flush so the test ends clean.
-            let releaseFlush;
-            const gate = new Promise( ( resolve ) => {
-                releaseFlush = resolve;
-            } );
-            const storage = await makeStorage();
-            mockSender.flush.returns( gate );
-            storage.write( 'monitoring', GOOD_MSG, 'p1' );
+        it( 'shutdown() without a timeout waits on a hung final flush until its deadline, then rejects', async function () {
+            // Until ADR-029 a shutdown with no timeout waited for ever on a
+            // hung flush (the retired M7 limitation). Now the flush's own
+            // deadline abandons it, and the drain reports the loss.
+            const clock = sinon.useFakeTimers();
+            try {
+                const storage = await makeStorage( { flushDeadlineMs: 300 } );
+                mockSender.flush.returns( NEVER_SETTLES );
+                storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
-            let settled = false;
-            const shutdownPromise = storage.shutdown().then( () => {
-                settled = true;
-            } );
+                let settled = false;
+                const outcome = storage.shutdown().then( () => null, ( err ) => err ).then( ( value ) => {
+                    settled = true;
+                    return value;
+                } );
 
-            await new Promise( ( r ) => setTimeout( r, 100 ) );
-            expect( settled, 'no-timeout shutdown must still be waiting on the hung flush' ).to.equal( false );
+                await clock.tickAsync( 299 );
+                expect( settled, 'the drain waits while the flush is within its deadline' ).to.equal( false );
 
-            releaseFlush();
-            await shutdownPromise;
-            expect( settled ).to.equal( true );
+                await clock.tickAsync( 1 );
+                const err = await outcome;
+                expect( err ).to.be.an( 'error' );
+                expect( err.code ).to.equal( 'DELIVERY_FAILED' );
+                expect( err.dropped ).to.deep.equal( { count: 1 } );
+                expect( err.cause.message ).to.include( 'flush abandoned, 1 row(s) lost' );
+            } finally {
+                clock.restore();
+            }
         } );
 
     } );
