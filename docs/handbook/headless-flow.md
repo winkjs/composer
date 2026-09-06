@@ -58,7 +58,7 @@ socket.on( 'close',   () => handle.shutdown() );   // drain when the input ends
 
 Two things are easy to get wrong when you feed a flow by hand. The driver gets them right.
 
-**Awaiting at the right time.** The flow processes most messages and returns nothing. Once in a while it returns a Promise, which is the flow pausing to let other work run, such as storage writes. The driver awaits only on that pause, never on the common case. Awaiting every message would add a cost to every message, and at high rates that adds up.
+**Awaiting at the right time.** The flow processes most messages and returns nothing. Once in a while it returns a Promise, which is the flow pausing to let other work run, such as storage writes. The driver awaits only on that pause, never on the common case. Awaiting every message would add a cost to every message, and at high rates that adds up. A feed that writes to QuestDB faster than about 100,000 rows a second needs a lower [yield threshold](./nodes/configuration.md#yield) than the default 500 ms.
 
 **Catching faults.** A message can make a node throw. An example is a reading whose field cannot be parsed. The driver catches the fault, so one bad message never stops the feed. It hands the fault to your `onError` function and counts it in `failed`. If you give no `onError`, the driver logs each fault.
 

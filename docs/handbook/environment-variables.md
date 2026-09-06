@@ -38,11 +38,15 @@ redirect plus logrotate anywhere else.
 
 ### The yield threshold: when it matters
 
-A flow processes messages synchronously. Background work — QuestDB flushes, MQTT delivery, console output — runs only when the event loop gets a turn.
+A flow processes messages synchronously. Background work, such as QuestDB flushes, MQTT delivery, and console output, runs only when the event loop gets a turn.
 
-Some callers feed messages in a tight loop and wait on each one. Two examples are a CSV replay at full speed and the [headless driver](./headless-flow.md) over an in-memory array. For them, the flow offers that turn itself. Once this many milliseconds have passed, the current message finishes processing and the caller receives a Promise. Awaiting it gives the event loop one full turn. The default, 500 ms, keeps those turns frequent enough that storage flush timers never wait long, and costs at most two deferred messages per second.
+Some callers feed messages in a tight loop and wait on each one. The [headless driver](./headless-flow.md) over an in-memory array is the common case. For such a caller the flow offers the turn itself. Once this many milliseconds have passed, the current message finishes and the caller receives a Promise. Awaiting it gives the event loop one turn.
 
-Flows fed by the MQTT source do not need this. Each incoming message already arrives through the event loop, so background work runs between messages on its own. For such flows the setting is inert — any value behaves the same. Set it to `Infinity` only where you deliberately want no yielding at all, such as a benchmark measuring raw pipeline speed.
+One turn lets a flush finish once its answer has arrived. It does not wait for the flush. So between two breaths the QuestDB adapter holds at most `bufferCeilingRows` rows and refuses the rest with `STORAGE_FULL`. At the defaults that is 50,000 rows every 500 ms, so a tight loop delivers at most 100,000 rows a second. A caller that writes faster than that sets a threshold of 1 ms. In one measurement, a tight loop feeding 3,000,000 rows landed 50,000 of them at 500 ms and all of them at 1 ms.
+
+The cost of a breath is one event-loop turn, a few microseconds, and the background work it runs is the point. The CSV source does not need a low threshold. It reads its file in chunks, and each chunk read gives the event loop a turn on its own.
+
+Flows fed by the MQTT source do not need this at all. Each incoming message already arrives through the event loop, so background work runs between messages on its own. For such flows the setting is inert. Set it to `Infinity` only where you deliberately want no yielding at all, such as a benchmark measuring raw pipeline speed.
 
 ## MQTT
 

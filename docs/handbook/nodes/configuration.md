@@ -761,9 +761,9 @@ if ( !result.valid ) {
 
 ### yield
 
-Sets how long the pipeline may process messages before offering the event loop a breath. After the threshold passes, the current message finishes processing and the flow hands its caller a Promise; awaiting it gives Node.js one full turn to run background work — storage flushes, MQTT delivery, console output. The message is always processed first; the pause comes after, so message order is never affected.
+Sets how long the pipeline may process messages before offering the event loop a breath. After the threshold passes, the current message finishes processing and the flow hands its caller a Promise. Awaiting it gives Node.js one turn to run background work: storage flushes, MQTT delivery, console output. The message is always processed first, and the pause comes after, so message order is never affected.
 
-This matters only when something feeds the flow in a tight loop and waits on each message: a CSV replay at full speed, or the [headless driver](../headless-flow.md) over in-memory data. A flow fed by the MQTT source gets its event-loop turns naturally, one per incoming message — for such flows this setting changes nothing.
+This matters only when something feeds the flow in a tight loop and waits on each message. The [headless driver](../headless-flow.md) over in-memory data is the common case. A flow fed by the MQTT source gets its event-loop turns naturally, one per incoming message, so this setting changes nothing there. The CSV source reads its file in chunks. Each chunk read gives the event loop a turn, so the default serves a replay at full speed.
 
 ```javascript
 .yield( { threshold } )
@@ -773,12 +773,23 @@ This matters only when something feeds the flow in a tight loop and waits on eac
 |--------|------|---------|-------------|
 | `threshold` | number | `500` | Milliseconds between event-loop breaths; `Infinity` disables yielding |
 
-The default comes from the `YIELD_TIME_THRESHOLD_MS` environment variable (see [Environment Variables](../environment-variables.md)); `.yield()` overrides it for one flow. Most flows never need either — the default keeps replays healthy and costs at most two briefly deferred messages per second. Set `Infinity` only where you deliberately want no yielding at all, such as a benchmark measuring raw pipeline speed:
+The default comes from the `YIELD_TIME_THRESHOLD_MS` environment variable (see [Environment Variables](../environment-variables.md)). `.yield()` overrides it for one flow. A breath lets a flush finish once its answer has arrived, but it does not wait for the flush.
+
+The rule for a tight loop that writes to QuestDB follows from that. Between two breaths the QuestDB adapter holds at most `bufferCeilingRows` rows and refuses the rest with `STORAGE_FULL`. At the defaults that is 50,000 rows every 500 ms, so a tight loop delivers at most 100,000 rows a second. A caller that writes faster than that sets a low threshold, and pays one event-loop turn per breath, a few microseconds:
+
+```javascript
+flow('bulk-load')
+    .yield({ threshold: 1 })    // a tight loop feeds this flow by hand
+    .esMean('smooth', 'temperature', { mean: 'avg' })
+    .run();
+```
+
+Set `Infinity` only where you deliberately want no yielding at all, such as a benchmark measuring raw pipeline speed:
 
 ```javascript
 flow('replay-benchmark')
     .yield({ threshold: Infinity })
-    .source(csv, { filePath: './readings.csv' })
+    .source(csv, { path: './readings.csv' })
     .esMean('smooth', 'temperature', { mean: 'avg' })
     .run();
 ```
