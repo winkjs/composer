@@ -266,9 +266,10 @@ const HEALTH_PRESSURE_RED_THRESHOLD = 1;
  * @param {Object} parts.settings - Resolved settings (`flushRows`, `flushIntervalMs`, `bufferCeilingRows`, deadline inputs)
  * @param {function} [parts.onDeliveryFailure] - The caller's handler, already validated by the plan builder
  * @param {Object} parts.probe - The ADR-030 probe bound to `ilpUrl`: `{ run, describe }` (see `delivery-gate.js`)
+ * @param {function} parts.closeTransport - `() => Promise<void>`: closes the sender and destroys the agent the factory owns
  * @returns {{write: function, flush: function, shutdown: function, getPressure: function, getHealth: function}}
  */
-const createFlushEngine = function ( { sender, persistPlans, settings, onDeliveryFailure, probe } ) {
+const createFlushEngine = function ( { sender, persistPlans, settings, onDeliveryFailure, probe, closeTransport } ) {
     const { flushRows, flushIntervalMs, bufferCeilingRows } = settings;
 
     // Arm the delivery-failure callback for this module's report sites:
@@ -699,7 +700,8 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
 
     // The drain (see `shutdown-drain.js`). It takes the buffered count
     // through a function. So the copy-out and the zeroing happen in the
-    // same breath, the way every flush start does here.
+    // same breath, the way every flush start does here. The transport
+    // close is the factory's, because the factory owns the agent.
     const drain = createShutdownDrain( {
         sender,
         ledger,
@@ -708,7 +710,8 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
             const rows = bufferedRows;
             bufferedRows = 0;
             return rows;
-        }
+        },
+        closeTransport
     } );
 
     /**

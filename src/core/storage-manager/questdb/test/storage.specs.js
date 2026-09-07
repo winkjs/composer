@@ -24,16 +24,16 @@ describe( 'QuestDB Storage Adapter', function () {
         // The client's own flush trigger is always off (ADR-029): composer
         // starts every flush itself.
 
-        it( 'builds the HTTP address and turns the client flush trigger off', function () {
+        it( 'builds the HTTP address, turns the client flush trigger off, and selects the transport', function () {
             const config = buildSenderConfig( { ilpUrl: '127.0.0.1:9000' } );
 
-            expect( config ).to.equal( 'http::addr=127.0.0.1:9000;auto_flush=off;' );
+            expect( config ).to.equal( 'http::addr=127.0.0.1:9000;auto_flush=off;stdlib_http=on;' );
         } );
 
-        it( 'adds init_buf_size when maxBufSize is given', function () {
+        it( 'adds max_buf_size when maxBufSize is given', function () {
             const config = buildSenderConfig( { ilpUrl: '127.0.0.1:9000', maxBufSize: 1048576 } );
 
-            expect( config ).to.include( 'init_buf_size=1048576;' );
+            expect( config ).to.include( 'max_buf_size=1048576;' );
         } );
 
         it( 'adds retry_timeout when retryTimeout is given', function () {
@@ -50,7 +50,7 @@ describe( 'QuestDB Storage Adapter', function () {
             } );
 
             expect( config ).to.equal(
-                'http::addr=questdb.example.com:9000;auto_flush=off;init_buf_size=2097152;retry_timeout=60000;'
+                'http::addr=questdb.example.com:9000;auto_flush=off;stdlib_http=on;max_buf_size=2097152;retry_timeout=60000;'
             );
         } );
 

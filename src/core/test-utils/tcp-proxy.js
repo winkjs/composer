@@ -14,6 +14,10 @@
  * "service unreachable" without coupling tests to docker daemon
  * access. The pattern is identical for any TCP-based service.
  *
+ * `startBlackHole()` models the other dead-endpoint shape: a server
+ * that accepts the connection and never answers. The QuestDB exit test
+ * uses it to hold a request on the wire while the process shuts down.
+ *
  * Cross-cutting test infrastructure mirrors `src/core/source-manager/test-harness/`
  * — both live under `src/core/` because they're shared across adapter
  * modules.
@@ -58,6 +62,14 @@ export const startProxy = function ( listenPort, targetPort ) {
             clientSocket.pipe( targetSocket );
             targetSocket.pipe( clientSocket );
         } );
+        // The target side is tracked too. A destroyed client socket does
+        // not end its pipe partner. Without this, the proxy's own sockets
+        // to the service outlive `stopProxy()` and hold the process open.
+        // The QuestDB exit test found that.
+        sockets.add( targetSocket );
+        targetSocket.on( 'close', function () {
+            sockets.delete( targetSocket );
+        } );
         // See file-header note on swallowed errors.
         clientSocket.on( 'error', function () {} );
         targetSocket.on( 'error', function () {} );
@@ -76,7 +88,8 @@ export const startProxy = function ( listenPort, targetPort ) {
 
 /**
  * Stop a proxy started via `startProxy()`. Force-destroys every
- * tracked client socket first (sending RST so clients see the
+ * tracked socket first, both the client side and the proxy's own
+ * side toward the service (sending RST so clients see the
  * disconnect immediately, not at next keepalive timeout), then
  * waits for the server to close cleanly.
  *
@@ -101,6 +114,39 @@ export const stopProxy = function ( server ) {
         sockets.clear();
         server.close( function () {
             resolve();
+        } );
+    } );
+};
+
+/**
+ * Start a black hole on `port`: a server that accepts every connection
+ * and never answers. It reads and discards whatever the client sends,
+ * so the client's write completes and the client then waits for a
+ * response that never comes. That is the shape of an endpoint whose
+ * process is alive but wedged. A closed port has a different shape:
+ * it refuses at once. Returns the `net.Server` once it is listening;
+ * pass it to `stopProxy()` to tear down, sockets included.
+ *
+ * @param {number} port
+ * @returns {Promise<net.Server>}
+ */
+export const startBlackHole = function ( port ) {
+    const sockets = new Set();
+    const server = net.createServer( function ( clientSocket ) {
+        sockets.add( clientSocket );
+        clientSocket.on( 'close', function () {
+            sockets.delete( clientSocket );
+        } );
+        // See file-header note on swallowed errors.
+        clientSocket.on( 'error', function () {} );
+        // Consume the request bytes so the client's write completes.
+        clientSocket.resume();
+    } );
+    // eslint-disable-next-line no-underscore-dangle
+    server._sockets = sockets;
+    return new Promise( function ( resolve ) {
+        server.listen( port, '127.0.0.1', function () {
+            resolve( server );
         } );
     } );
 };

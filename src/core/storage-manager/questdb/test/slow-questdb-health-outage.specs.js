@@ -26,23 +26,34 @@
  * themselves, and the loss is taken from the `onDeliveryFailure`
  * callback, an event that cannot be missed.
  *
- * Two facts the first live run taught (2026-09-06). First, rows an
- * abandonment reported lost can still land: the client keeps retrying
- * the abandoned request, and when the endpoint returns inside that
- * window the rows arrive. So the reported loss is a ceiling on the
- * real loss, and the accounting here is a bound: rows landed lie
- * between rows accepted minus rows reported lost and rows accepted.
- * Composer never resends an abandoned batch, so the upper
- * bound also proves no duplicates. Second, with both triggers armed,
- * either one can start the flush that meets the outage, so the first
- * leg accepts both and only the second leg pins the timer.
+ * The flush that meets the outage fails at once. The standard-library
+ * transport, the default since ADR-029 item 9 was built, rejects a
+ * refused or reset connection without retrying it. So the batch on
+ * the wire is reported lost with `abandoned: false`, the failure count
+ * reads exactly one, and delivery pauses on the probe's finding. The
+ * deadline stays a backstop and never fires here. Until 2026-09-06
+ * the undici transport retried the connection inside the client, the
+ * flush hung until the deadline, and this spec asserted an
+ * abandonment. That shape is gone with the default.
+ *
+ * Two facts the live runs taught. First, rows reported lost can still
+ * land: the server may have committed the batch before the client saw
+ * the reset. So the reported loss is a ceiling on the real loss, and
+ * the accounting here is a bound: rows landed lie between rows
+ * accepted minus rows reported lost and rows accepted. Composer never
+ * resends a failed batch, so the upper bound also proves no
+ * duplicates. Second, with both triggers armed, either one can start
+ * the flush that meets the outage, so the first leg accepts both and
+ * only the second leg pins the timer.
  *
  * The log is asserted too. Every change of delivery state prints one
- * line through the facade, so a live outage must read, in order: red
- * at the abandonment, paused, resumed, restored, and nothing else from
- * the adapter. The restored line names the rows reported lost, which
- * must equal the sum the callback received. That makes the log an
- * event-driven record of the outage, not a sampled one.
+ * line through the facade, so a live outage must read, in order:
+ * degraded at the failed batch, paused, resumed, restored, and nothing
+ * else from the adapter. Health reads red throughout the pause, from
+ * the pause itself, while the ladder sits at yellow with one failure.
+ * The restored line names the rows reported lost, which must equal
+ * the sum the callback received. That makes the log an event-driven
+ * record of the outage, not a sampled one.
  */
 
 /* eslint-disable no-process-env, no-await-in-loop, no-invalid-this */
@@ -333,22 +344,25 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         expect( baseline.consecutiveFlushFailures ).to.equal( 0 );
 
         // During the outage: red, not connected, paused, and the last
-        // error is the abandonment. The pause is a sustained state, so
-        // the samples must contain it.
+        // error is the one fast failure of the batch on the wire. The
+        // pause is a sustained state, so the samples must contain it.
         const red = samples.filter( ( h ) => h.status === 'red' );
         expect( red.length, 'red samples during the outage' ).to.be.greaterThan( 0 );
         const last = red[ red.length - 1 ];
         expect( last.connected ).to.equal( false );
         expect( last.pausedSince ).to.be.a( 'number' );
-        expect( last.consecutiveFlushFailures ).to.be.greaterThan( 0 );
-        expect( last.lastFlushError.abandoned ).to.equal( true );
-        expect( last.lastFlushError.message ).to.include( 'no answer within 800 ms' );
+        expect( last.consecutiveFlushFailures ).to.equal( 1 );
+        expect( last.abandonedFlushes ).to.equal( 0 );
+        expect( last.lastFlushError.abandoned ).to.equal( false );
 
-        // The loss reached the callback, as an abandonment with a row count.
-        expect( deliveryFailures.length ).to.be.greaterThan( 0 );
-        const abandoned = deliveryFailures.filter( ( f ) => f.ctx.abandoned === true );
-        expect( abandoned.length ).to.be.greaterThan( 0 );
-        expect( opts.expectedTriggers ).to.include( abandoned[ 0 ].ctx.trigger );
+        // The loss reached the callback once, as a fast failure with a
+        // row count, its trigger, and the probe's finding.
+        expect( deliveryFailures ).to.have.lengthOf( 1 );
+        const failure = deliveryFailures[ 0 ];
+        expect( failure.ctx.abandoned ).to.equal( false );
+        expect( failure.ctx.rowsLost ).to.be.greaterThan( 0 );
+        expect( opts.expectedTriggers ).to.include( failure.ctx.trigger );
+        expect( failure.ctx.probe.ok ).to.equal( false );
 
         // After the endpoint returned: green again, connected, not
         // paused, the failure count reset, and a newer successful flush.
@@ -358,7 +372,7 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         expect( recovered.consecutiveFlushFailures ).to.equal( 0 );
         expect( recovered.lastFlushAt ).to.be.greaterThan( baseline.lastFlushAt );
         // The last error stays readable after recovery.
-        expect( recovered.lastFlushError.abandoned ).to.equal( true );
+        expect( recovered.lastFlushError.abandoned ).to.equal( false );
 
         // Accounting: every accepted row either landed or was reported
         // lost, and a row reported lost may still land (see the header).
@@ -368,19 +382,19 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         expect( landed ).to.be.at.least( opts.messageCount - rowsLost );
         expect( landed ).to.be.at.most( opts.messageCount );
 
-        // The log carries every edge once, in order: red at the
-        // abandonment, paused, resumed, restored. Nothing else from the
-        // adapter, whatever the outage length. The restored line's row
-        // count is the same sum the callback received.
+        // The log carries every edge once, in order: degraded at the
+        // failed batch, paused, resumed, restored. Nothing else from
+        // the adapter, whatever the outage length. The restored line's
+        // row count is the same sum the callback received.
         const adapterLines = result.lines.filter( ( l ) => l.text.includes( 'winkComposer/questdb' ) );
-        expect( adapterLines.map( ( l ) => l.level ) ).to.deep.equal( [ 'error', 'warn', 'warn', 'warn' ] );
-        expect( adapterLines[ 0 ].text ).to.include( 'delivery red after 1 failed flush(es) [DELIVERY_HEALTH]' );
+        expect( adapterLines.map( ( l ) => l.level ) ).to.deep.equal( [ 'warn', 'warn', 'warn', 'warn' ] );
+        expect( adapterLines[ 0 ].text ).to.include( 'delivery degraded, 1 flush failed [DELIVERY_HEALTH]' );
         expect( adapterLines[ 1 ].text ).to.include( 'delivery paused' ).and.include( '[CIRCUIT_OPEN]' );
         expect( adapterLines[ 2 ].text ).to.include( 'delivery resumed' ).and.include( '[CIRCUIT_OPEN]' );
         expect( adapterLines[ 3 ].text ).to.include( `${rowsLost} row(s) reported lost meanwhile [DELIVERY_HEALTH]` );
     };
 
-    it( 'producer at rate: reads red with pausedSince while the endpoint is dead, green after it returns', async function () {
+    it( 'producer at rate: one fast failure, red with pausedSince while the endpoint is dead, green after it returns', async function () {
         const opts = {
             flowName: 'healthOutageRows',
             tablePrefix: `${RUN_PREFIX}_rows`,

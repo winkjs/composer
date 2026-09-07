@@ -220,15 +220,22 @@ const NETWORK_ERROR_CODES = new Set( [
  * anything else `INVALID_CONFIG`, the same split as the PostgreSQL
  * connect wrap in the factory. The client's error stays on `err.cause`.
  *
+ * The agent goes to the client as its `extraOptions.agent` when one is
+ * given (the standard-library transport, ADR-029). With `null` the
+ * client keeps its own agent, which is the undici case.
+ *
  * @param {Object} SenderClass - The client's Sender class
  * @param {string} senderConfig - The sender configuration string
  * @param {string} ilpUrl - The configured `ilpUrl`, for the message
+ * @param {Object|null} agent - The `http.Agent` the adapter owns, or null
  * @returns {Promise<Object>} The connected sender
  * @throws {Error} TRANSPORT_UNREACHABLE or INVALID_CONFIG, cause attached
  */
-const buildSender = async function ( SenderClass, senderConfig, ilpUrl ) {
+const buildSender = async function ( SenderClass, senderConfig, ilpUrl, agent ) {
     try {
-        return await SenderClass.fromConfig( senderConfig );
+        return ( agent === null ) ?
+            await SenderClass.fromConfig( senderConfig ) :
+            await SenderClass.fromConfig( senderConfig, { agent } );
     } catch ( buildErr ) {
         const code = NETWORK_ERROR_CODES.has( buildErr.code ) ? 'TRANSPORT_UNREACHABLE' : 'INVALID_CONFIG';
         const err = new Error(

@@ -111,7 +111,7 @@ describe( 'QuestDB flush engine (ADR-029)', function () {
         it( 'buildSenderConfig carries the buffer and retry settings when given', function () {
             const config = buildSenderConfig( { ilpUrl: '127.0.0.1:9000', maxBufSize: 1048576, retryTimeout: 30000 } );
 
-            expect( config ).to.include( 'init_buf_size=1048576;' );
+            expect( config ).to.include( 'max_buf_size=1048576;' );
             expect( config ).to.include( 'retry_timeout=30000;' );
         } );
 

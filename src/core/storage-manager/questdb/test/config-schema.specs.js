@@ -84,6 +84,10 @@ describe( 'QuestDB Storage — configSchema Export', function () {
         expect( configSchema ).to.have.property( 'flushDeadlineMs' );
         expect( configSchema ).to.have.property( 'maxBufSize' );
         expect( configSchema ).to.have.property( 'retryTimeout' );
+        // The transport settings (ADR-029).
+        expect( configSchema ).to.have.property( 'stdlibHttp' );
+        expect( configSchema ).to.have.property( 'requestTimeout' );
+        expect( configSchema ).to.have.property( 'initBufSize' );
         expect( configSchema ).to.have.property( 'partitionBy' );
         expect( configSchema ).to.have.property( 'onWarning' );
     } );
@@ -321,6 +325,50 @@ describe( 'QuestDB Storage — Buffer/Retry Fields Validation', function () {
 
 } );
 
+/**
+ * The five cases every positive-integer setting must pass.
+ *
+ * @param {string} key - The config key under test
+ */
+const describePositiveInteger = function ( key ) {
+
+    describe( key, function () {
+
+        it( 'accepts a positive integer', function () {
+            const result = validate( { ...minimalValidConfig, [ key ]: 250 } );
+
+            expect( result.valid ).to.equal( true );
+        } );
+
+        it( 'rejects zero', function () {
+            const result = validate( { ...minimalValidConfig, [ key ]: 0 } );
+
+            expect( result.valid ).to.equal( false );
+            expect( result.errors[ 0 ] ).to.include( key );
+        } );
+
+        it( 'rejects a negative value', function () {
+            const result = validate( { ...minimalValidConfig, [ key ]: -1 } );
+
+            expect( result.valid ).to.equal( false );
+        } );
+
+        it( 'rejects a fractional value', function () {
+            const result = validate( { ...minimalValidConfig, [ key ]: 250.5 } );
+
+            expect( result.valid ).to.equal( false );
+        } );
+
+        it( 'rejects a string', function () {
+            const result = validate( { ...minimalValidConfig, [ key ]: '250' } );
+
+            expect( result.valid ).to.equal( false );
+        } );
+
+    } );
+
+}; // describePositiveInteger()
+
 describe( 'QuestDB Storage — Flush Settings Validation (ADR-029)', function () {
 
     // The four settings composer's own flush engine reads. Each is a
@@ -328,44 +376,37 @@ describe( 'QuestDB Storage — Flush Settings Validation (ADR-029)', function ()
     // threshold is checked by the resolver, not the schema.
     const FLUSH_KEYS = [ 'flushRows', 'flushIntervalMs', 'bufferCeilingRows', 'flushDeadlineMs' ];
 
-    FLUSH_KEYS.forEach( function ( key ) {
+    FLUSH_KEYS.forEach( describePositiveInteger );
 
-        describe( key, function () {
+} );
 
-            it( 'accepts a positive integer', function () {
-                const result = validate( { ...minimalValidConfig, [ key ]: 250 } );
+describe( 'QuestDB Storage — Transport Fields Validation (ADR-029)', function () {
 
-                expect( result.valid ).to.equal( true );
-            } );
+    // The transport choice is a boolean. The request timeout and the
+    // initial buffer size go to the client as positive integers.
+    describe( 'stdlibHttp', function () {
 
-            it( 'rejects zero', function () {
-                const result = validate( { ...minimalValidConfig, [ key ]: 0 } );
+        it( 'accepts true and false', function () {
+            expect( validate( { ...minimalValidConfig, stdlibHttp: true } ).valid ).to.equal( true );
+            expect( validate( { ...minimalValidConfig, stdlibHttp: false } ).valid ).to.equal( true );
+        } );
 
-                expect( result.valid ).to.equal( false );
-                expect( result.errors[ 0 ] ).to.include( key );
-            } );
+        it( 'rejects the environment words on and off', function () {
+            const result = validate( { ...minimalValidConfig, stdlibHttp: 'on' } );
 
-            it( 'rejects a negative value', function () {
-                const result = validate( { ...minimalValidConfig, [ key ]: -1 } );
+            expect( result.valid ).to.equal( false );
+            expect( result.errors[ 0 ] ).to.include( 'stdlibHttp' );
+        } );
 
-                expect( result.valid ).to.equal( false );
-            } );
+        it( 'rejects a number', function () {
+            const result = validate( { ...minimalValidConfig, stdlibHttp: 1 } );
 
-            it( 'rejects a fractional value', function () {
-                const result = validate( { ...minimalValidConfig, [ key ]: 250.5 } );
-
-                expect( result.valid ).to.equal( false );
-            } );
-
-            it( 'rejects a string', function () {
-                const result = validate( { ...minimalValidConfig, [ key ]: '250' } );
-
-                expect( result.valid ).to.equal( false );
-            } );
-
+            expect( result.valid ).to.equal( false );
         } );
 
     } );
+
+    [ 'requestTimeout', 'initBufSize' ].forEach( describePositiveInteger );
 
 } );
 

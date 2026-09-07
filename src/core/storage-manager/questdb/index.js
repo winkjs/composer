@@ -64,8 +64,11 @@
  *   | `flushIntervalMs`   | 1000             | `QUESTDB_FLUSH_INTERVAL_MS`  |
  *   | `bufferCeilingRows` | 10 × `flushRows` | `QUESTDB_BUFFER_CEILING_ROWS`|
  *   | `flushDeadlineMs`   | derived per flush| `QUESTDB_FLUSH_DEADLINE_MS`  |
- *   | `maxBufSize`        | client default   | `QUESTDB_MAX_BUF_SIZE`       |
+ *   | `stdlibHttp`        | true             | `QUESTDB_STDLIB_HTTP`        |
+ *   | `requestTimeout`    | client default   | `QUESTDB_REQUEST_TIMEOUT`    |
  *   | `retryTimeout`      | client default   | `QUESTDB_RETRY_TIMEOUT`      |
+ *   | `initBufSize`       | client default   | `QUESTDB_INIT_BUF_SIZE`      |
+ *   | `maxBufSize`        | client default   | `QUESTDB_MAX_BUF_SIZE`       |
  *
  *   `resolve-options.js` merges the config and the environment and
  *   explains each default. `ilpUrl` and `pgUrl` fall back to
@@ -78,6 +81,20 @@
  * nothing beyond the one derived promise `persist-plan.js` documents.
  * Reconnection and request retries belong to the client. No listeners
  * are attached. `flush-engine.js` carries the detail.
+ *
+ * The transport (ADR-029). The client's default HTTP library, undici,
+ * retries a refused connection without end, and its abort cannot end
+ * that retry. So the adapter selects the client's standard-library
+ * transport (`stdlib_http=on`) unless `stdlibHttp` is false. With it, a refused connection rejects at once and every
+ * request ends within `retryTimeout` plus one request timeout. The
+ * adapter owns one `http.Agent` for that transport, keep-alive on one
+ * socket, and destroys it after the sender closes on every shutdown
+ * path. Destroying the agent ends a request still on its socket, so
+ * the process can exit. The agent also closes its socket after 4
+ * seconds idle, before QuestDB's own idle close at 5 minutes, so no
+ * flush meets a socket the server has just closed. An operator who
+ * selects undici accepts that an abandoned flush can keep the process
+ * alive.
  *
  * Health (ADR-018 §8). `status` is `red` when not connected or at
  * capacity. It is `yellow` at `pressure >= 0.66`, on an outstanding
@@ -301,6 +318,8 @@
  * @see ADR-029
  */
 
+import http from 'node:http';
+
 import { Sender } from '@questdb/nodejs-client';
 import pg from 'pg';
 
@@ -332,21 +351,32 @@ import { createFlushEngine } from './flush-engine.js';
 /**
  * Build the QuestDB Sender configuration string. The client's own flush
  * trigger is always off (ADR-029): composer starts every flush itself,
- * so the client never sends a batch this module did not ask for.
+ * so the client never sends a batch this module did not ask for. The
+ * transport is stated either way, `stdlib_http=on` unless `stdlibHttp`
+ * is false, so a printed config reads the same however it was set.
  *
  * @param {Object} options - Resolved settings
  * @param {string} options.ilpUrl - ILP endpoint (host:port)
- * @param {number} [options.maxBufSize] - Initial buffer size in bytes
+ * @param {boolean} [options.stdlibHttp] - False selects undici; anything else the standard library
+ * @param {number} [options.initBufSize] - Initial client buffer size in bytes
+ * @param {number} [options.maxBufSize] - Byte ceiling of the client buffer
+ * @param {number} [options.requestTimeout] - Client request timeout in ms
  * @param {number} [options.retryTimeout] - Client retry window in ms
  * @returns {string} Configuration string for Sender.fromConfig()
  */
 const buildSenderConfig = function ( options ) {
-    const { ilpUrl, maxBufSize, retryTimeout } = options;
+    const { ilpUrl, stdlibHttp, initBufSize, maxBufSize, requestTimeout, retryTimeout } = options;
 
-    let config = `http::addr=${ilpUrl};auto_flush=off;`;
+    let config = `http::addr=${ilpUrl};auto_flush=off;stdlib_http=${( stdlibHttp === false ) ? 'off' : 'on'};`;
 
+    if ( initBufSize !== undefined ) {
+        config += `init_buf_size=${initBufSize};`;
+    }
     if ( maxBufSize !== undefined ) {
-        config += `init_buf_size=${maxBufSize};`;
+        config += `max_buf_size=${maxBufSize};`;
+    }
+    if ( requestTimeout !== undefined ) {
+        config += `request_timeout=${requestTimeout};`;
     }
     if ( retryTimeout !== undefined ) {
         config += `retry_timeout=${retryTimeout};`;
@@ -354,6 +384,86 @@ const buildSenderConfig = function ( options ) {
 
     return config;
 }; // buildSenderConfig()
+
+// ============================================================================
+// THE TRANSPORT
+// ============================================================================
+
+/**
+ * How long an idle socket stays open before the adapter closes it.
+ * QuestDB closes an idle connection after 300 seconds and announces no
+ * keep-alive timeout, so Node gets no hint. A flush that starts in the
+ * moment between the server's close and Node's notice of it writes
+ * into a dead socket, and this transport does not retry a reset. That
+ * would report one batch lost for an outage that never happened.
+ * Closing first removes that moment (ADR-029). The value sits below
+ * QuestDB's advertised keep-alive of 5 seconds and below the 5-second
+ * timeout of Node's own default agent. Node applies it to free sockets
+ * only; a request in flight keeps the client's own request timeout.
+ */
+const IDLE_SOCKET_TIMEOUT_MS = 4000;
+
+/**
+ * Builds the one HTTP agent the standard-library transport uses. One
+ * socket is enough, because composer starts one flush at a time
+ * (ADR-029). Keep-alive reuses that socket from flush to flush, and
+ * the adapter closes it after `IDLE_SOCKET_TIMEOUT_MS` without a flush.
+ * The adapter destroys the agent at shutdown, which ends any request
+ * still on the socket.
+ *
+ * @returns {http.Agent} The agent
+ */
+const createKeepAliveAgent = function () {
+    return new http.Agent( { keepAlive: true, maxSockets: 1, timeout: IDLE_SOCKET_TIMEOUT_MS } );
+}; // createKeepAliveAgent()
+
+/**
+ * Opens the ILP transport: the agent when the standard-library
+ * transport is selected, then the sender. Returns the sender and the
+ * function that closes both at the end of the drain. A failed sender
+ * build destroys the agent before the classified error goes on, so no
+ * agent outlives a failed setup.
+ *
+ * `closeTransport` closes the sender first, then destroys the agent
+ * whatever the sender's close did. Destroying the agent ends any
+ * request still on its socket, so the process can exit (ADR-029). With
+ * undici there is no agent, and `closeTransport` is the sender's close.
+ *
+ * @param {Object} parts - The transport inputs
+ * @param {Object} parts.SenderClass - The client's Sender class
+ * @param {string} parts.senderConfig - The sender configuration string
+ * @param {string} parts.ilpUrl - The configured `ilpUrl`, for messages
+ * @param {boolean} parts.stdlibHttp - Whether the standard-library transport is selected
+ * @param {function} parts.createAgent - Builds the agent
+ * @returns {Promise<{sender: Object, closeTransport: function}>} The sender and its close
+ * @throws {Error} TRANSPORT_UNREACHABLE or INVALID_CONFIG from `buildSender`
+ */
+const openTransport = async function ( { SenderClass, senderConfig, ilpUrl, stdlibHttp, createAgent } ) {
+    if ( stdlibHttp === false ) {
+        const sender = await buildSender( SenderClass, senderConfig, ilpUrl, null );
+        const closeTransport = function () {
+            return sender.close();
+        }; // closeTransport()
+        return { sender, closeTransport };
+    }
+
+    const agent = createAgent();
+    let sender;
+    try {
+        sender = await buildSender( SenderClass, senderConfig, ilpUrl, agent );
+    } catch ( err ) {
+        agent.destroy();
+        throw err;
+    }
+    const closeTransport = async function () {
+        try {
+            await sender.close();
+        } finally {
+            agent.destroy();
+        }
+    }; // closeTransport()
+    return { sender, closeTransport };
+}; // openTransport()
 
 // ============================================================================
 // STORAGE FACTORY
@@ -376,8 +486,11 @@ const buildSenderConfig = function ( options ) {
  * @param {number} [options.flushIntervalMs=1000] - Period of the flush timer
  * @param {number} [options.bufferCeilingRows] - Most rows held; default ten times flushRows
  * @param {number} [options.flushDeadlineMs] - Fixed deadline per flush; derived from the rows when unset
- * @param {number} [options.maxBufSize] - Initial client buffer size in bytes
+ * @param {boolean} [options.stdlibHttp=true] - The standard-library transport; false selects undici
+ * @param {number} [options.requestTimeout] - Client request timeout in ms
  * @param {number} [options.retryTimeout] - Client retry window in ms
+ * @param {number} [options.initBufSize] - Initial client buffer size in bytes
+ * @param {number} [options.maxBufSize] - Byte ceiling of the client buffer
  * @param {string} [options.partitionBy='DAY'] - Table partition interval
  * @param {function} [options.onWarning] - Warning callback for skipped values
  * @param {function} [options.onDeliveryFailure] - Called once per lost flush
@@ -385,13 +498,17 @@ const buildSenderConfig = function ( options ) {
  * @param {Object} [deps.SenderClass] - QuestDB Sender class (default: @questdb/nodejs-client Sender)
  * @param {Object} [deps.PgClientClass] - PostgreSQL Client class (default: pg.Client)
  * @param {function} [deps.probeFn] - Setup probe (default: `probeAddress`, ADR-030)
+ * @param {function} [deps.createAgent] - Builds the transport agent (default: `createKeepAliveAgent`)
  * @returns {Promise<Object>} Storage adapter with write, flush, shutdown, getPressure, getHealth
  */
 const createQuestDBStorage = async function ( assetClass, tablePrefix, options, deps = {} ) {
     // Options become settings here, once (ADR-029). A ceiling below the
     // threshold fails setup inside the resolver with INVALID_CONFIG.
     const { settings, deprecations } = resolveOptions( options, ENV_VARS );
-    const { ilpUrl, pgUrl, maxBufSize, retryTimeout, partitionBy, onWarning, onDeliveryFailure } = settings;
+    const {
+        ilpUrl, pgUrl, stdlibHttp, requestTimeout, retryTimeout, initBufSize, maxBufSize,
+        partitionBy, onWarning, onDeliveryFailure
+    } = settings;
 
     // One line names every legacy key in use and what happened to it.
     if ( deprecations.length > 0 ) {
@@ -425,7 +542,8 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     const {
         SenderClass = Sender,
         PgClientClass = pg.Client,
-        probeFn = probeAddress
+        probeFn = probeAddress,
+        createAgent = createKeepAliveAgent
     } = deps;
 
     // Build persist plans (pre-compiled closures). The callbacks go in
@@ -482,17 +600,23 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
         await pgClient.end();
     }
 
-    // Create ILP sender. The client trigger is off: see buildSenderConfig.
-    const senderConfig = buildSenderConfig( { ilpUrl, maxBufSize, retryTimeout } );
+    // The sender config. The client trigger is off and the transport is
+    // stated: see buildSenderConfig.
+    const senderConfig = buildSenderConfig( {
+        ilpUrl, stdlibHttp, initBufSize, maxBufSize, requestTimeout, retryTimeout
+    } );
 
     // Setup probe, ILP side (ADR-030 item 4). Before this change the
     // write path was never opened at setup; the first sign of a dead
     // endpoint was the first flush.
     await assertReachable( 'ilpUrl', ilpAddress, probeFn );
 
-    // fromConfig returns a Promise that resolves to a connected sender;
-    // a failure there is classified, cause attached (see buildSender).
-    const sender = await buildSender( SenderClass, senderConfig, ilpUrl );
+    // The agent, when the standard-library transport is selected, then
+    // the sender. A failure is classified, cause attached (see
+    // buildSender), and leaves no agent behind (see openTransport).
+    const { sender, closeTransport } = await openTransport( {
+        SenderClass, senderConfig, ilpUrl, stdlibHttp, createAgent
+    } );
 
     // The probe the engine runs after a failed flush (ADR-029 hold and
     // probe), bound to the ILP address so the engine knows nothing
@@ -507,8 +631,9 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     };
 
     // Everything after setup is the engine's: the hot path, the
-    // flushes, the counters, the drain.
-    const engine = createFlushEngine( { sender, persistPlans, settings, onDeliveryFailure, probe } );
+    // flushes, the counters, the drain. The transport close stays the
+    // factory's, because the factory owns the agent.
+    const engine = createFlushEngine( { sender, persistPlans, settings, onDeliveryFailure, probe, closeTransport } );
 
     return {
         write: engine.write,
@@ -554,8 +679,11 @@ const configSchema = {
         'flushIntervalMs',
         'bufferCeilingRows',
         'flushDeadlineMs',
-        'maxBufSize',
+        'stdlibHttp',
+        'requestTimeout',
         'retryTimeout',
+        'initBufSize',
+        'maxBufSize',
         'partitionBy',
         'onWarning',
         'onDeliveryFailure'
@@ -643,17 +771,34 @@ const configSchema = {
         validator: validators.positiveInteger,
         error: 'flushDeadlineMs must be a positive integer'
     },
-    maxBufSize: {
+    stdlibHttp: {
+        type: 'boolean',
+        required: false,
+        error: 'stdlibHttp must be a boolean'
+    },
+    requestTimeout: {
         type: 'number',
         required: false,
         validator: validators.positiveInteger,
-        error: 'maxBufSize must be a positive integer'
+        error: 'requestTimeout must be a positive integer'
     },
     retryTimeout: {
         type: 'number',
         required: false,
         validator: validators.positiveInteger,
         error: 'retryTimeout must be a positive integer'
+    },
+    initBufSize: {
+        type: 'number',
+        required: false,
+        validator: validators.positiveInteger,
+        error: 'initBufSize must be a positive integer'
+    },
+    maxBufSize: {
+        type: 'number',
+        required: false,
+        validator: validators.positiveInteger,
+        error: 'maxBufSize must be a positive integer'
     },
     partitionBy: {
         type: 'string',
@@ -731,8 +876,11 @@ const semanticsRequirement = {
  * @param {number} [config.flushIntervalMs=1000] - Period of the flush timer
  * @param {number} [config.bufferCeilingRows] - Most rows held; default ten times flushRows
  * @param {number} [config.flushDeadlineMs] - Fixed deadline per flush
- * @param {number} [config.maxBufSize] - Initial client buffer size in bytes
+ * @param {boolean} [config.stdlibHttp=true] - The standard-library transport; false selects undici
+ * @param {number} [config.requestTimeout] - Client request timeout in ms
  * @param {number} [config.retryTimeout] - Client retry window in ms
+ * @param {number} [config.initBufSize] - Initial client buffer size in bytes
+ * @param {number} [config.maxBufSize] - Byte ceiling of the client buffer
  * @param {string} [config.partitionBy='DAY'] - Table partition interval
  * @param {function} [config.onWarning] - Warning callback for skipped values
  * @param {function} [config.onDeliveryFailure] - Called once per lost flush

@@ -131,8 +131,9 @@ const makeScriptedProbe = function () {
 
 /**
  * Builds the `_deps` injection bundle around a mock sender: the Sender
- * class whose fromConfig resolves it, an inert pg client, and the
- * passing probe.
+ * class whose fromConfig resolves it, an inert pg client, the passing
+ * probe, and an agent factory that hands out a fake agent. The fake
+ * records `destroy()` and opens no socket.
  *
  * @param {Object} mockSender - The sender fromConfig should resolve
  * @returns {Object} Deps bundle for createQuestDBStorage
@@ -145,7 +146,10 @@ const makeMockDeps = function ( mockSender ) {
             query: sinon.stub().resolves(),
             end: sinon.stub().resolves()
         } ),
-        probeFn: PASSING_PROBE
+        probeFn: PASSING_PROBE,
+        createAgent: sinon.stub().callsFake( function () {
+            return { destroy: sinon.stub() };
+        } )
     };
 }; // makeMockDeps()
 

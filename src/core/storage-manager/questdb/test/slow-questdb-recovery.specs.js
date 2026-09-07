@@ -16,13 +16,16 @@
  * Composer owns every flush (ADR-029). The buffer ceiling is the
  * outage budget: rows written during an outage are held in memory up
  * to `bufferCeilingRows`, and past it a write is refused with
- * `STORAGE_FULL`. The flush that meets the outage hangs until the
- * endpoint returns or its deadline passes, whichever comes first.
- * Two legs pin that model:
+ * `STORAGE_FULL`. The flush that meets the outage fails at once on the
+ * standard-library transport, the default since ADR-029 item 9 was
+ * built. Its rows are reported lost, delivery pauses, and each
+ * interval tick probes the endpoint. When a probe passes, one flush
+ * carries everything held. Two legs pin that model:
  *
- *   1. **Ceiling sized to the outage, deadline longer than it.** Every
- *      row lands, no loss is reported, and the ceiling is never hit.
- *      The outage costs nothing.
+ *   1. **Ceiling sized to the outage.** The outage costs one batch,
+ *      the one on the wire when the endpoint died. Every other row
+ *      lands, exactly one loss is reported, and the ceiling is never
+ *      hit.
  *
  *   2. **Ceiling smaller than the outage.** Rows past the ceiling are
  *      shed, visibly: pressure reads 1 while the endpoint is dead.
@@ -31,11 +34,14 @@
  *      `buffer-ceiling.specs.js`; a live run can bound it, not count
  *      it, because a refusal leaves no mark in the flow's counters.
  *
- * Until 2026-09-05 this file asserted the old promise, that the
- * client's own retries land every row of a 5 s outage. Under the
- * bounded buffer that promise holds only when the ceiling is sized
- * for the outage, which leg 1 states in its settings. Health during
- * the outage, the pause, and the resume are proven in
+ * The harness produces for longer than the outage lasts, so the flow
+ * is still running when the endpoint returns and the tick resumes
+ * delivery. A flow that completes while the endpoint is dead drains
+ * at once: its final flush fails fast, and the rows are reported
+ * dropped through shutdown, not landed. Until 2026-09-06 the undici
+ * transport's own retry bridged that drain, so this file could let
+ * the harness finish inside the outage. Health during the outage, the
+ * pause, and the resume are proven in
  * `slow-questdb-health-outage.specs.js`.
  */
 
@@ -197,15 +203,19 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
     } );
 
     // Runs one outage with the given storage settings. The harness
-    // produces 600 rows at 5 ms, about 200 rows a second, so a 5 s
-    // outage covers about 1,000 rows. Returns every fact the
-    // assertions need, including pressure samples taken during the
-    // outage (a sustained state, so sampling may assert it).
+    // produces 1,400 rows at 5 ms, about 200 rows a second. So a 5 s
+    // outage covers about 1,000 rows, and the harness outlasts the
+    // outage by more than a second. That matters. The flow drains its
+    // sinks the moment the source completes. A harness that finished
+    // inside the outage would drain into the dead endpoint. Returns
+    // every fact the assertions need, including pressure samples
+    // taken during the outage (a sustained state, so sampling may
+    // assert it).
     const runOutageScenario = async function ( opts ) {
         const tableName = `${opts.tablePrefix}_samples`;
         tablesToCleanUp.push( tableName );
 
-        const messageCount = 600;
+        const messageCount = 1400;
         const intervalMs = 5;
 
         // Start the proxy and connect the flow to it.
@@ -225,7 +235,8 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix: opts.tablePrefix,
                 flushRows: 50,
-                flushIntervalMs: 600000,
+                // The tick is the probe cadence during a pause.
+                flushIntervalMs: 500,
                 ...opts.storage,
                 onDeliveryFailure: function ( err, ctx ) {
                     deliveryFailures.push( {
@@ -309,12 +320,14 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
         console.log( `    outage window:        ~${result.outageMs} ms` );
     };
 
-    it( 'ceiling sized to the outage: every row lands and nothing is reported', async function () {
+    it( 'ceiling sized to the outage: the outage costs one batch, every other row lands', async function () {
         // A 5 s outage at about 200 rows a second needs a ceiling of
-        // about 1,000 rows. 2,000 leaves room. The derived deadline
-        // for a 50-row batch at retryTimeout 15 s is about 30 s. So
-        // the flush that meets the outage hangs, and it completes
-        // when the proxy returns. The outage costs nothing.
+        // about 1,000 rows. 2,000 leaves room. The flush that meets
+        // the outage fails at once and its rows are reported lost.
+        // Everything else is held, and lands when the tick resumes
+        // delivery. A row reported lost may still land, when the
+        // server committed the batch before the client saw the reset.
+        // So the count is bounded, not exact.
         const result = await runOutageScenario( {
             flowName: 'recoveryCeilingHolds',
             tablePrefix: `${RUN_PREFIX}_holds`,
@@ -323,8 +336,12 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
         } );
         printSummary( 'ceiling holds', result );
 
-        expect( result.finalCount ).to.equal( result.messageCount );
-        expect( result.deliveryFailures ).to.deep.equal( [] );
+        expect( result.deliveryFailures ).to.have.lengthOf( 1 );
+        expect( result.deliveryFailures[ 0 ].abandoned ).to.equal( false );
+        const rowsLost = result.deliveryFailures[ 0 ].rowsLost;
+        expect( rowsLost ).to.be.greaterThan( 0 );
+        expect( result.finalCount ).to.be.at.least( result.messageCount - rowsLost );
+        expect( result.finalCount ).to.be.at.most( result.messageCount );
         expect( Math.max( ...result.pressureSamples ), 'the ceiling was never reached' ).to.be.lessThan( 1 );
     } );
 
@@ -332,7 +349,8 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
         // The same outage against a 500-row ceiling. About 1,000 rows
         // arrive while the endpoint is dead, so about half are refused
         // with STORAGE_FULL. Pressure reads 1 for the rest of the
-        // outage, which a sampler cannot miss.
+        // outage, which a sampler cannot miss. The batch on the wire
+        // fails at once, as in the first leg.
         const result = await runOutageScenario( {
             flowName: 'recoveryCeilingSheds',
             tablePrefix: `${RUN_PREFIX}_sheds`,
@@ -344,20 +362,25 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
         // The ceiling was reached and held.
         expect( Math.max( ...result.pressureSamples ) ).to.equal( 1 );
 
+        // The batch on the wire failed at once and left the tally.
+        expect( result.deliveryFailures ).to.have.lengthOf( 1 );
+        expect( result.deliveryFailures[ 0 ].abandoned ).to.equal( false );
+        const rowsLost = result.deliveryFailures[ 0 ].rowsLost;
+
         // The room left under the ceiling when the endpoint died is
-        // what the outage could hold. Every row past it was refused
-        // until the held rows drained after the endpoint returned.
-        // So the shed count lies between the rows past the room at
-        // recovery and the rows past the room at drain time. Both
-        // ends are counts, not samples.
-        const room = 500 - result.heldAtOutageStart;
+        // what the outage could hold, plus the slots the failed batch
+        // gave back. Every row past it was refused until the held rows
+        // drained after the endpoint returned. So the shed count lies
+        // between the rows past the room at recovery and the rows past
+        // the room at drain time. Both ends are counts, not samples.
+        // The rows reported lost may or may not have landed, so they
+        // widen the lower bound.
+        const room = ( 500 - result.heldAtOutageStart ) + rowsLost;
         const shedAtLeast = result.producedDuringOutage - room;
         const shedAtMost = result.producedUntilDrained - room;
         expect( shedAtLeast, 'the outage overran the room' ).to.be.greaterThan( 0 );
         expect( result.finalCount ).to.be.at.most( result.messageCount - shedAtLeast );
-        expect( result.finalCount ).to.be.at.least( result.messageCount - shedAtMost );
-        // No batch was abandoned: the outage was shorter than the deadline.
-        expect( result.deliveryFailures ).to.deep.equal( [] );
+        expect( result.finalCount ).to.be.at.least( result.messageCount - shedAtMost - rowsLost );
     } );
 
 } );

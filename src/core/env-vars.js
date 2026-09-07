@@ -135,6 +135,17 @@ const ENV_VARS = {
     questdbFlushDeadlineMs: process.env.QUESTDB_FLUSH_DEADLINE_MS ?
         parseInt( process.env.QUESTDB_FLUSH_DEADLINE_MS, 10 ) : undefined,
 
+    // QuestDB transport settings (ADR-029). QUESTDB_STDLIB_HTTP takes
+    // the client's own words for `stdlib_http`, `on` or `off`. The
+    // adapter's option resolver maps them to a boolean and supplies the
+    // default, so each field here carries a value only when set.
+    questdbStdlibHttp: process.env.QUESTDB_STDLIB_HTTP ?
+        process.env.QUESTDB_STDLIB_HTTP.trim() : undefined,
+    questdbRequestTimeout: process.env.QUESTDB_REQUEST_TIMEOUT ?
+        parseInt( process.env.QUESTDB_REQUEST_TIMEOUT, 10 ) : undefined,
+    questdbInitBufSize: process.env.QUESTDB_INIT_BUF_SIZE ?
+        parseInt( process.env.QUESTDB_INIT_BUF_SIZE, 10 ) : undefined,
+
     // QuestDB Credentials
     questdbDatabase: ( process.env.QUESTDB_DATABASE ?? 'qdb' ).trim(),
     questdbUser: ( process.env.QUESTDB_USER ?? 'admin' ).trim(),
@@ -212,6 +223,15 @@ const validators = {
         const validModes = [ 'auto', 'manual' ];
         if ( !validModes.includes( value ) ) {
             return `Must be one of ${validModes.join( ', ' )}, got: "${value}"`;
+        }
+        return null;
+    },
+
+    questdbStdlibHttp: function ( value ) {
+        if ( value === undefined ) return null;
+        const validWords = [ 'on', 'off' ];
+        if ( !validWords.includes( value ) ) {
+            return `Must be one of ${validWords.join( ', ' )}, got: "${value}"`;
         }
         return null;
     },
@@ -304,6 +324,9 @@ const validationConfig = [
     { field: 'questdbFlushIntervalMs', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_FLUSH_INTERVAL_MS' },
     { field: 'questdbBufferCeilingRows', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_BUFFER_CEILING_ROWS' },
     { field: 'questdbFlushDeadlineMs', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_FLUSH_DEADLINE_MS' },
+    { field: 'questdbStdlibHttp', validator: validators.questdbStdlibHttp, label: 'QUESTDB_STDLIB_HTTP' },
+    { field: 'questdbRequestTimeout', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_REQUEST_TIMEOUT' },
+    { field: 'questdbInitBufSize', validator: validators.positiveIntOrUndefined, originalEnv: 'QUESTDB_INIT_BUF_SIZE' },
     // QuestDB Credentials
     { field: 'questdbDatabase', validator: validators.nonEmptyString, label: 'QUESTDB_DATABASE' },
     { field: 'questdbUser', validator: validators.nonEmptyString, label: 'QUESTDB_USER' }

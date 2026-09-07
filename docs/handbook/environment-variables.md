@@ -109,8 +109,11 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 | `QUESTDB_IDLE_FLUSH_CHECK_MS` | unset | Deprecated, removed in 0.8.0. Maps to `QUESTDB_FLUSH_INTERVAL_MS` |
 | `QUESTDB_AUTO_FLUSH_ROWS` | unset | Deprecated, removed in 0.8.0. Maps to `QUESTDB_FLUSH_ROWS` |
 | `QUESTDB_AUTO_FLUSH_INTERVAL_MS` | unset | Deprecated, removed in 0.8.0. Accepted and ignored |
-| `QUESTDB_MAX_BUF_SIZE` | unset | ILP send-buffer size, bytes (client default when unset) |
-| `QUESTDB_RETRY_TIMEOUT` | unset | Write-retry timeout (client default when unset) |
+| `QUESTDB_STDLIB_HTTP` | unset | The HTTP transport, `on` or `off`. `on` is Node's standard library, the default; `off` is the client's undici transport. See [Configuration](./nodes/configuration.md#storage) for what the choice costs |
+| `QUESTDB_REQUEST_TIMEOUT` | unset | How long one send may wait for an answer, milliseconds (the client uses 10 seconds when unset) |
+| `QUESTDB_RETRY_TIMEOUT` | unset | How long the client retries a failed send, milliseconds (the client uses 10 seconds when unset) |
+| `QUESTDB_INIT_BUF_SIZE` | unset | Initial size of the client's send buffer, bytes (client default when unset) |
+| `QUESTDB_MAX_BUF_SIZE` | unset | Largest size the client's send buffer may grow to, bytes (client default when unset) |
 | `QUESTDB_FLUSH_ROWS` | unset | Rows that start a send; the adapter uses 5000 when unset |
 | `QUESTDB_FLUSH_INTERVAL_MS` | unset | The send timer; the adapter uses 1000 when unset |
 | `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset |

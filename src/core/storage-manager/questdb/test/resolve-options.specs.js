@@ -209,6 +209,24 @@ describe( 'flushDeadlineFor — the deadline of one flush', function () {
         expect( flushDeadlineFor( 1, settings ) ).to.equal( 17005 );
     } );
 
+    it( 'grows with an explicit requestTimeout in place of the client default', function () {
+        // 10000 retry + 30000 request + 5 transfer + 5000 margin.
+        const { settings } = resolveOptions( { requestTimeout: 30000 }, BASE_ENV );
+
+        expect( flushDeadlineFor( 1, settings ) ).to.equal( 45005 );
+    } );
+
+    it( 'shrinks with both timeouts set short, from the environment', function () {
+        // 1000 retry + 2000 request + 5 transfer + 5000 margin.
+        const { settings } = resolveOptions( {}, {
+            ...BASE_ENV,
+            questdbRetryTimeout: 1000,
+            questdbRequestTimeout: 2000
+        } );
+
+        expect( flushDeadlineFor( 1, settings ) ).to.equal( 8005 );
+    } );
+
     it( 'uses a fixed flushDeadlineMs for every flush, whatever its size', function () {
         const { settings } = resolveOptions( { retryTimeout: 30000, flushDeadlineMs: 4000 }, BASE_ENV );
 
@@ -221,6 +239,67 @@ describe( 'flushDeadlineFor — the deadline of one flush', function () {
 
         expect( settings.flushDeadlineMs ).to.equal( 6000 );
         expect( flushDeadlineFor( 50000, settings ) ).to.equal( 6000 );
+    } );
+
+} );
+
+// ============================================================================
+// THE TRANSPORT SETTINGS
+// ============================================================================
+
+describe( 'resolveOptions — the transport settings (ADR-029)', function () {
+
+    it( 'selects the standard-library transport by default, with no timeout or buffer sizes', function () {
+        const { settings } = resolveOptions( {}, BASE_ENV );
+
+        expect( settings.stdlibHttp ).to.equal( true );
+        expect( settings.requestTimeout ).to.equal( undefined );
+        expect( settings.initBufSize ).to.equal( undefined );
+    } );
+
+    it( 'reads QUESTDB_STDLIB_HTTP as the words on and off', function () {
+        const off = resolveOptions( {}, { ...BASE_ENV, questdbStdlibHttp: 'off' } ).settings;
+        const on = resolveOptions( {}, { ...BASE_ENV, questdbStdlibHttp: 'on' } ).settings;
+
+        expect( off.stdlibHttp ).to.equal( false );
+        expect( on.stdlibHttp ).to.equal( true );
+    } );
+
+    it( 'lets an explicit stdlibHttp win over the environment, in both directions', function () {
+        const optOut = resolveOptions( { stdlibHttp: false }, { ...BASE_ENV, questdbStdlibHttp: 'on' } ).settings;
+        const optIn = resolveOptions( { stdlibHttp: true }, { ...BASE_ENV, questdbStdlibHttp: 'off' } ).settings;
+
+        expect( optOut.stdlibHttp ).to.equal( false );
+        expect( optIn.stdlibHttp ).to.equal( true );
+    } );
+
+    it( 'passes requestTimeout and initBufSize through from the config', function () {
+        const { settings } = resolveOptions( { requestTimeout: 2000, initBufSize: 65536 }, BASE_ENV );
+
+        expect( settings.requestTimeout ).to.equal( 2000 );
+        expect( settings.initBufSize ).to.equal( 65536 );
+    } );
+
+    it( 'takes requestTimeout and initBufSize from the environment when the config omits them', function () {
+        const { settings } = resolveOptions( {}, {
+            ...BASE_ENV,
+            questdbRequestTimeout: 3000,
+            questdbInitBufSize: 131072
+        } );
+
+        expect( settings.requestTimeout ).to.equal( 3000 );
+        expect( settings.initBufSize ).to.equal( 131072 );
+    } );
+
+    it( 'lets the config win over the environment for both', function () {
+        const { settings } = resolveOptions( { requestTimeout: 2000, initBufSize: 65536 }, {
+            ...BASE_ENV,
+            questdbRequestTimeout: 3000,
+            questdbInitBufSize: 131072
+        } );
+
+        expect( settings.requestTimeout ).to.equal( 2000 );
+        expect( settings.initBufSize ).to.equal( 65536 );
     } );
 
 } );

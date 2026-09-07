@@ -477,8 +477,11 @@ flow('pipeline')
 | `flushIntervalMs` | number | `1000` | The send timer. Whatever is buffered is sent this often, so rows land within about a second |
 | `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1000 rows a second, hours at plant rate |
 | `flushDeadlineMs` | number | derived per send | Longest wait for one send before it is declared failed. Derived from the rows it carries, from 25 seconds for one row to 275 seconds for a full catch-up send. Set it to fix one value for every send |
-| `maxBufSize` | number | client default | ILP send-buffer size in bytes |
-| `retryTimeout` | number | client default | How long the client retries a failed send |
+| `stdlibHttp` | boolean | `true` | The HTTP transport. `true` is Node's standard library, whose requests always end. `false` is the client's undici transport. See the transport note below |
+| `requestTimeout` | number | client default | How long one send may wait for an answer, in milliseconds. The client uses 10 seconds when unset. A longer value lengthens the derived deadline with it |
+| `retryTimeout` | number | client default | How long the client retries a failed send, in milliseconds. The client uses 10 seconds when unset |
+| `initBufSize` | number | client default | Initial size of the client's send buffer, in bytes |
+| `maxBufSize` | number | client default | Largest size the client's send buffer may grow to, in bytes. A row that would exceed it is refused |
 | `partitionBy` | string | — | Partitioning when the adapter creates a table: `NONE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR` |
 | `onWarning` | function | `null` | Called with non-fatal storage warnings |
 | `onDeliveryFailure` | function | `null` | Called once per lost send with the error and `{ trigger, rowsLost, abandoned, probe }`. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported once as a `CALLBACK_FAILED` console line |
@@ -488,6 +491,10 @@ The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_
 **Addresses.** Write both as a literal IP address. `localhost` is refused when the flow is defined, with `INVALID_CONFIG` and a message that names the literal to use. The name stands for two addresses, and the service may answer on only one.
 
 Any other name is accepted with one startup warning, marked `ADDRESS_IS_NAME`. The adapter then checks both endpoints before it opens a client: every address a name resolves to must answer. See [Resilience](../resilience.md#addresses-use-a-literal-never-a-name) for the reasons.
+
+**Transport.** The QuestDB client can send over two HTTP libraries. The adapter uses Node's standard library by default, because every request it makes ends. A refused connection fails at once, and a send that gets no answer ends within `retryTimeout` plus one `requestTimeout`. The adapter holds one connection open between sends and closes it when the flow shuts down, so a send still on the wire cannot keep the process alive. It also closes that connection itself after 4 seconds without a send. QuestDB closes an idle connection after 5 minutes, and a send that started at that exact moment would be lost. Closing first removes that moment. A flow that sends less often than every 4 seconds opens a new connection per send, which costs well under a millisecond on a local network.
+
+Set `stdlibHttp: false` to use the client's own default, the undici library. Its retry never gives up on a refused connection, so a send to a stopped server never ends. A flow that shuts down with such a send in flight then stays alive until something kills it. Choose undici only if you have measured a need for it.
 
 Config is checked when the flow is defined, before anything connects. A
 misspelled option name (say `illpUrl` instead of `ilpUrl`) is rejected with an

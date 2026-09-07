@@ -32,12 +32,13 @@
  * entry's rows to delivered or failed. The wrapped promises never
  * reject, so the only rejection the race can surface is the timeout.
  *
- * The transport close is attempted on both loss paths. On the HTTP
- * transport the client's `close()` is an empty function (a 4.2.0
- * fact), so nothing here can abort an abandoned flush's retries. In a
- * flow, the shutdown manager's forced exit is the final backstop. A
- * close failure on a loss path is logged, because the loss report
- * matters more than the close.
+ * The transport close runs on every path, clean or lossy. The client's
+ * own `close()` is an empty function on its HTTP transports (a 4.2.0
+ * fact). What ends a request still on the wire is the agent the
+ * factory owns: `closeTransport` closes the sender and then destroys
+ * that agent (ADR-029). In a flow, the shutdown manager's forced exit
+ * is the final backstop. A close failure on a loss path is logged,
+ * because the loss report matters more than the close.
  *
  * @see ADR-018
  * @see ADR-029
@@ -87,9 +88,10 @@ const raceTimeout = function ( drain, timeoutMs ) {
  * @param {{entries: Set}} parts.ledger - The tracker's ledger of flushes in flight
  * @param {function} parts.track - The tracker's `track`, for the final flush
  * @param {function} parts.takeBufferedRows - `() => number`: returns the buffered count and zeroes it
+ * @param {function} parts.closeTransport - `() => Promise<void>`: closes the sender, then destroys the factory's agent
  * @returns {function} `drain( timeoutMs ) => Promise<void>`
  */
-const createShutdownDrain = function ( { sender, ledger, track, takeBufferedRows } ) {
+const createShutdownDrain = function ( { sender, ledger, track, takeBufferedRows, closeTransport } ) {
 
     /**
      * Best-effort transport close on the lossy path.
@@ -97,7 +99,7 @@ const createShutdownDrain = function ( { sender, ledger, track, takeBufferedRows
      * @returns {Promise<void>} Resolves whether or not the close worked
      */
     const closeQuietly = function () {
-        return sender.close().catch( function ( closeErr ) {
+        return closeTransport().catch( function ( closeErr ) {
             logger.error( `winkComposer/questdb: transport close failed during lossy shutdown: ${closeErr.message}` );
         } );
     }; // closeQuietly()
@@ -170,7 +172,7 @@ const createShutdownDrain = function ( { sender, ledger, track, takeBufferedRows
             }
         }
 
-        await sender.close();
+        await closeTransport();
     }; // drain()
 
     return drain;

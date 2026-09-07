@@ -40,12 +40,56 @@ const FLUSH_VARS = [
     { field: 'questdbFlushDeadlineMs', envVar: 'QUESTDB_FLUSH_DEADLINE_MS', sample: '30000' }
 ];
 
+// The two positive-integer transport variables (ADR-029 items 9 and 11).
+const TRANSPORT_INT_VARS = [
+    { field: 'questdbRequestTimeout', envVar: 'QUESTDB_REQUEST_TIMEOUT', sample: '2000' },
+    { field: 'questdbInitBufSize', envVar: 'QUESTDB_INIT_BUF_SIZE', sample: '65536' }
+];
+
 // The legacy variables and one value each of them accepted before.
 const LEGACY_VARS = [
     { field: 'questdbFlushMode', envVar: 'QUESTDB_FLUSH_MODE', sample: 'manual' },
     { field: 'questdbIdleFlushAfterMs', envVar: 'QUESTDB_IDLE_FLUSH_AFTER_MS', sample: '0' },
     { field: 'questdbIdleFlushCheckMs', envVar: 'QUESTDB_IDLE_FLUSH_CHECK_MS', sample: '250' }
 ];
+
+/**
+ * The three cases every positive-integer variable must pass: a value
+ * is parsed, zero is refused, and a word is refused, each failure
+ * naming the variable.
+ *
+ * @param {{envVar: string, sample: string}} row - The variable and one good value
+ */
+const itParsesPositiveInteger = function ( row ) {
+
+    it( `parses ${row.envVar} when set`, async function () {
+        const result = await runWithEnv( {
+            NODE_ENV: 'test',
+            [ row.envVar ]: row.sample
+        } );
+        expect( result.code ).to.equal( 0 );
+        expect( result.stderr ).to.equal( '' );
+    } );
+
+    it( `rejects a non-positive ${row.envVar}, naming the variable`, async function () {
+        const result = await runWithEnv( {
+            NODE_ENV: 'test',
+            [ row.envVar ]: '0'
+        } );
+        expect( result.code ).to.equal( 1 );
+        expect( result.stderr ).to.include( `${row.envVar}: Must be positive integer, got: "0"` );
+    } );
+
+    it( `rejects a non-numeric ${row.envVar}`, async function () {
+        const result = await runWithEnv( {
+            NODE_ENV: 'test',
+            [ row.envVar ]: 'many'
+        } );
+        expect( result.code ).to.equal( 1 );
+        expect( result.stderr ).to.include( `${row.envVar}: Must be positive integer, got: "many"` );
+    } );
+
+}; // itParsesPositiveInteger()
 
 describe( 'env-vars — QuestDB flush settings (ADR-029)', function () {
 
@@ -58,35 +102,52 @@ describe( 'env-vars — QuestDB flush settings (ADR-029)', function () {
         } );
     } );
 
-    FLUSH_VARS.forEach( function ( row ) {
+    FLUSH_VARS.forEach( itParsesPositiveInteger );
 
-        it( `parses ${row.envVar} when set`, async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                [ row.envVar ]: row.sample
-            } );
-            expect( result.code ).to.equal( 0 );
-            expect( result.stderr ).to.equal( '' );
+} );
+
+describe( 'env-vars — QuestDB transport settings (ADR-029)', function () {
+
+    // `QUESTDB_STDLIB_HTTP` takes the client's own words for
+    // `stdlib_http`, `on` or `off`. The option resolver maps them to the
+    // boolean `stdlibHttp` and supplies the default, so the field here
+    // carries a value only when the operator set one.
+
+    it( 'the three fields are undefined when their variables are unset', async function () {
+        const { ENV_VARS } = await import( '../env-vars.js' );
+
+        [ 'questdbStdlibHttp', 'questdbRequestTimeout', 'questdbInitBufSize' ].forEach( function ( field ) {
+            expect( ENV_VARS ).to.have.property( field );
+            expect( ENV_VARS[ field ], field ).to.equal( undefined );
         } );
+    } );
 
-        it( `rejects a non-positive ${row.envVar}, naming the variable`, async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                [ row.envVar ]: '0'
-            } );
-            expect( result.code ).to.equal( 1 );
-            expect( result.stderr ).to.include( `${row.envVar}: Must be positive integer, got: "0"` );
-        } );
+    TRANSPORT_INT_VARS.forEach( itParsesPositiveInteger );
 
-        it( `rejects a non-numeric ${row.envVar}`, async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                [ row.envVar ]: 'many'
-            } );
-            expect( result.code ).to.equal( 1 );
-            expect( result.stderr ).to.include( `${row.envVar}: Must be positive integer, got: "many"` );
-        } );
+    it( 'accepts QUESTDB_STDLIB_HTTP=on and QUESTDB_STDLIB_HTTP=off', async function () {
+        const on = await runWithEnv( { NODE_ENV: 'test', QUESTDB_STDLIB_HTTP: 'on' } );
+        const off = await runWithEnv( { NODE_ENV: 'test', QUESTDB_STDLIB_HTTP: 'off' } );
 
+        expect( on.code ).to.equal( 0 );
+        expect( on.stderr ).to.equal( '' );
+        expect( off.code ).to.equal( 0 );
+        expect( off.stderr ).to.equal( '' );
+    } );
+
+    it( 'rejects any other word for QUESTDB_STDLIB_HTTP, naming the variable and the two words', async function () {
+        const result = await runWithEnv( { NODE_ENV: 'test', QUESTDB_STDLIB_HTTP: 'yes' } );
+
+        expect( result.code ).to.equal( 1 );
+        expect( result.stderr ).to.include( 'QUESTDB_STDLIB_HTTP: Must be one of on, off, got: "yes"' );
+    } );
+
+    it( 'the questdbStdlibHttp validator accepts undefined and keeps the words as set', async function () {
+        const { validators } = await import( '../env-vars.js' );
+
+        expect( validators.questdbStdlibHttp( undefined ) ).to.equal( null );
+        expect( validators.questdbStdlibHttp( 'on' ) ).to.equal( null );
+        expect( validators.questdbStdlibHttp( 'off' ) ).to.equal( null );
+        expect( validators.questdbStdlibHttp( 'ON' ) ).to.include( 'Must be one of on, off, got: "ON"' );
     } );
 
 } );

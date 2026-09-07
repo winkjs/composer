@@ -59,7 +59,15 @@
  * The client constants used in the deadline are `@questdb/nodejs-client`
  * 4.2.0 facts: `request_timeout` and `retry_timeout` both default to
  * 10 s, and `request_min_throughput` to 100 KiB per second. Re-verify
- * them on a client upgrade.
+ * them on a client upgrade. A configured `requestTimeout` or
+ * `retryTimeout` replaces its default in the sum, so an operator who
+ * lengthens a timeout lengthens the deadline with it.
+ *
+ * The transport setting has two vocabularies. In config, `stdlibHttp`
+ * is a boolean. In the environment, `QUESTDB_STDLIB_HTTP` takes the
+ * client's own words `on` and `off`. This module maps the words to the
+ * boolean, and the default is the standard-library transport
+ * (`DEFAULT_STDLIB_HTTP` explains why).
  *
  * @see ADR-029
  */
@@ -94,6 +102,17 @@ const DEFAULT_FLUSH_INTERVAL_MS = 1000;
  * @type {number}
  */
 const DEFAULT_CEILING_MULTIPLIER = 10;
+
+/**
+ * The client's standard-library HTTP transport is selected unless the
+ * operator opts out. It is the transport whose requests end: a refused
+ * connection rejects at once, and a stalled request ends within the
+ * retry window plus one request timeout. The client's own default,
+ * undici, retries a refused connection without end, and its abort
+ * cannot end that retry (ADR-029).
+ * @type {boolean}
+ */
+const DEFAULT_STDLIB_HTTP = true;
 
 /**
  * The client's default `request_timeout` (4.2.0 fact).
@@ -231,6 +250,22 @@ const collectDeprecations = function ( options, envVars, winners ) {
 }; // collectDeprecations()
 
 /**
+ * Maps the words of `QUESTDB_STDLIB_HTTP` to a boolean. The words are
+ * the client's own for `stdlib_http`, `on` and `off`, so an operator
+ * reads one vocabulary in the variable and in the config string.
+ * `env-vars.js` has already refused any other word.
+ *
+ * @param {string|undefined} word - `'on'`, `'off'`, or undefined when unset
+ * @returns {boolean|undefined} The boolean, or undefined when unset
+ */
+const onOffToBoolean = function ( word ) {
+    if ( word === undefined ) {
+        return undefined;
+    }
+    return word === 'on';
+}; // onOffToBoolean()
+
+/**
  * Resolves the storage options into the adapter's settings and the
  * deprecation report. `settings.flushDeadlineMs` is undefined unless the
  * operator set it; the engine then derives each flush's deadline with
@@ -277,8 +312,11 @@ const resolveOptions = function ( options, envVars ) {
         flushIntervalMs: interval.value,
         bufferCeilingRows,
         flushDeadlineMs: options.flushDeadlineMs ?? envVars.questdbFlushDeadlineMs,
-        maxBufSize: options.maxBufSize ?? envVars.questdbMaxBufSize,
+        stdlibHttp: options.stdlibHttp ?? onOffToBoolean( envVars.questdbStdlibHttp ) ?? DEFAULT_STDLIB_HTTP,
+        requestTimeout: options.requestTimeout ?? envVars.questdbRequestTimeout,
         retryTimeout: options.retryTimeout ?? envVars.questdbRetryTimeout,
+        initBufSize: options.initBufSize ?? envVars.questdbInitBufSize,
+        maxBufSize: options.maxBufSize ?? envVars.questdbMaxBufSize,
         partitionBy: options.partitionBy ?? 'DAY',
         onWarning: options.onWarning,
         onDeliveryFailure: options.onDeliveryFailure
@@ -293,7 +331,8 @@ const resolveOptions = function ( options, envVars ) {
  * wins. Otherwise it is the client's own bound for a batch of this many
  * rows plus a margin: the retry window, the request timeout, and the
  * transfer time at the planning speed and row size (see the header).
- * One multiply per flush, nothing per row.
+ * A configured `retryTimeout` or `requestTimeout` replaces the client
+ * default in that sum. One multiply per flush, nothing per row.
  *
  * @param {number} rows - Rows the flush carries
  * @param {Object} settings - The resolved settings
@@ -304,8 +343,9 @@ const flushDeadlineFor = function ( rows, settings ) {
         return settings.flushDeadlineMs;
     }
     const retryTimeout = settings.retryTimeout ?? CLIENT_DEFAULT_RETRY_TIMEOUT_MS;
+    const requestTimeout = settings.requestTimeout ?? CLIENT_DEFAULT_REQUEST_TIMEOUT_MS;
     const transferMs = Math.ceil( ( rows * ROW_BYTES_PLANNING * 1000 ) / CLIENT_DEFAULT_MIN_THROUGHPUT_BPS );
-    return retryTimeout + CLIENT_DEFAULT_REQUEST_TIMEOUT_MS + transferMs + FLUSH_DEADLINE_MARGIN_MS;
+    return retryTimeout + requestTimeout + transferMs + FLUSH_DEADLINE_MARGIN_MS;
 }; // flushDeadlineFor()
 
 /**

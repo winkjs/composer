@@ -1,23 +1,40 @@
 /**
- * @fileoverview QuestDB Write Benchmark
+ * @fileoverview QuestDB write benchmark.
  *
- * Measures QuestDB storage adapter write performance with configurable
- * message counts and flush modes.
+ * Measures the QuestDB storage adapter end to end: the cost of one
+ * `write()` call on the hot path, and the rate at which rows are
+ * accepted and land in QuestDB while composer runs every flush
+ * (ADR-029). Each run selects the transport, so the client's two
+ * transports can be compared on the same machine.
  *
- * Requires running QuestDB instance:
- *   docker run -p 9000:9000 -p 8812:8812 questdb/questdb
+ * The producer is a tight loop, so it follows the handbook's rule for
+ * tight loops. Every thousand rows it reads the adapter's pressure.
+ * When the buffer is nearly full it breathes, one event-loop turn at a
+ * time, until the send in flight has landed. A loop that never breathes
+ * would fill the buffer ceiling and have its rows refused with
+ * `STORAGE_FULL`. The run reports every refusal and every row reported
+ * lost, and reads the row count back over the PostgreSQL wire. So the
+ * table also proves exact accounting: accepted equals landed.
+ *
+ * Requires a running QuestDB instance:
+ *   docker compose up -d
  *
  * Usage:
- *   node benchmark/questdb-write.js [messages] [flushMode] [autoFlushRows]
- *   node benchmark/questdb-write.js 100000 manual
- *   node benchmark/questdb-write.js 100000 auto 1000
+ *   node benchmark/questdb-write.js [messages] [flushRows] [transport]
+ *   node benchmark/questdb-write.js 100000
+ *   node benchmark/questdb-write.js 1000000 50000 undici
+ *
+ * `messages` defaults to 100000, `flushRows` to the adapter's default
+ * of 5000, and `transport` to `stdlib`. The other transport is
+ * `undici`, the client's own default, selected with `stdlibHttp: false`.
  *
  * Metrics collected:
- * - Total write time (excluding flush)
- * - Flush time (for manual mode)
- * - Messages per second (throughput)
- * - Nanoseconds per message (latency)
- * - Memory usage (heap before/after)
+ * - Write time: the producer loop, breaths included
+ * - Final flush time
+ * - Messages accepted per second, and messages landed per second
+ * - Nanoseconds per `write()` call
+ * - Rows refused, rows reported lost, rows counted in the table
+ * - Heap before and after
  */
 
 import pg from 'pg';
@@ -31,12 +48,27 @@ const QUESTDB_ILP_URL = process.env.QUESTDB_ILP_URL || '127.0.0.1:9000'; // esli
 const QUESTDB_PG_URL = process.env.QUESTDB_PG_URL || '127.0.0.1:8812'; // eslint-disable-line no-process-env
 
 const MESSAGE_COUNT = parseInt( process.argv[ 2 ], 10 ) || 100000;
-const FLUSH_MODE = process.argv[ 3 ] || 'manual';
-const AUTO_FLUSH_ROWS = parseInt( process.argv[ 4 ], 10 ) || 1000;
+const FLUSH_ROWS = parseInt( process.argv[ 3 ], 10 ) || 5000;
+const TRANSPORT = process.argv[ 4 ] || 'stdlib';
 
 const TABLE_PREFIX = `bench_${Date.now()}`;
 const PARTITION_COUNT = 10;
 const WARMUP_MESSAGES = 1000;
+
+/** The producer reads the adapter's pressure this often. */
+const PRESSURE_CHECK_EVERY = 1000;
+
+/** The producer breathes while the buffer is this full or fuller. */
+const PRESSURE_CEILING = 0.9;
+
+/** How long to wait for the last rows to become visible over SQL. */
+const LANDING_WAIT_MS = 10000;
+const LANDING_POLL_MS = 100;
+
+if ( ( TRANSPORT !== 'stdlib' ) && ( TRANSPORT !== 'undici' ) ) {
+    console.error( `transport must be stdlib or undici, got: ${TRANSPORT}` );
+    process.exit( 1 );
+}
 
 // ============================================================================
 // TEST ASSET CLASS
@@ -65,21 +97,30 @@ const benchAssetClass = {
 // ============================================================================
 
 /**
+ * Opens one PostgreSQL client at the configured address.
+ *
+ * @param {number} [connectionTimeoutMillis] - Connect timeout, when a check must not hang
+ * @returns {pg.Client} The client, not yet connected
+ */
+const pgClient = function ( connectionTimeoutMillis ) {
+    const [ host, port ] = QUESTDB_PG_URL.split( ':' );
+    return new pg.Client( {
+        host,
+        port: parseInt( port, 10 ),
+        database: 'qdb',
+        user: 'admin',
+        password: process.env.QUESTDB_PASSWORD ?? 'quest', // eslint-disable-line no-process-env
+        connectionTimeoutMillis
+    } );
+}; // pgClient()
+
+/**
  * Check if QuestDB is available.
  *
  * @returns {Promise<boolean>} True if QuestDB is reachable
  */
 const isQuestDBAvailable = async function () {
-    const [ host, port ] = QUESTDB_PG_URL.split( ':' );
-    const client = new pg.Client( {
-        host,
-        port: parseInt( port, 10 ),
-        database: 'qdb',
-        user: 'admin',
-        password: process.env.QUESTDB_PASSWORD ?? 'quest',
-        connectionTimeoutMillis: 3000
-    } );
-
+    const client = pgClient( 3000 );
     try {
         await client.connect();
         await client.query( 'SELECT 1' );
@@ -88,7 +129,43 @@ const isQuestDBAvailable = async function () {
     } catch ( _err ) { // eslint-disable-line no-unused-vars
         return false;
     }
-};
+}; // isQuestDBAvailable()
+
+/**
+ * Counts the rows in the run's table.
+ *
+ * @param {string} prefix - Table prefix
+ * @returns {Promise<number>} The row count, or -1 when the query failed
+ */
+const countRows = async function ( prefix ) {
+    const client = pgClient();
+    try {
+        await client.connect();
+        const result = await client.query( `SELECT count(*) AS n FROM ${prefix}_telemetry` );
+        await client.end();
+        return parseInt( result.rows[ 0 ].n, 10 );
+    } catch ( _err ) { // eslint-disable-line no-unused-vars
+        return -1;
+    }
+}; // countRows()
+
+/**
+ * Waits until the table holds the expected rows, or the wait runs out.
+ * ILP rows become visible over SQL a moment after the send lands.
+ *
+ * @param {string} prefix - Table prefix
+ * @param {number} expected - Rows accepted
+ * @returns {Promise<number>} The last count seen
+ */
+const waitForLanding = async function ( prefix, expected ) {
+    const deadline = Date.now() + LANDING_WAIT_MS;
+    let landed = await countRows( prefix );
+    while ( ( landed !== expected ) && ( Date.now() < deadline ) ) {
+        await new Promise( ( resolve ) => setTimeout( resolve, LANDING_POLL_MS ) ); // eslint-disable-line no-await-in-loop
+        landed = await countRows( prefix ); // eslint-disable-line no-await-in-loop
+    }
+    return landed;
+}; // waitForLanding()
 
 /**
  * Drop test table (cleanup).
@@ -96,19 +173,7 @@ const isQuestDBAvailable = async function () {
  * @param {string} prefix - Table prefix
  */
 const dropTestTable = async function ( prefix ) {
-    // Wait for QuestDB eventual consistency before dropping
-    // ILP writes may not be immediately visible via SQL
-    await new Promise( ( resolve ) => setTimeout( resolve, 500 ) );
-
-    const [ host, port ] = QUESTDB_PG_URL.split( ':' );
-    const client = new pg.Client( {
-        host,
-        port: parseInt( port, 10 ),
-        database: 'qdb',
-        user: 'admin',
-        password: process.env.QUESTDB_PASSWORD ?? 'quest'
-    } );
-
+    const client = pgClient();
     try {
         await client.connect();
         await client.query( `DROP TABLE IF EXISTS ${prefix}_telemetry` );
@@ -116,7 +181,7 @@ const dropTestTable = async function ( prefix ) {
     } catch ( _err ) { // eslint-disable-line no-unused-vars
         // Ignore cleanup errors
     }
-};
+}; // dropTestTable()
 
 /**
  * Captures heap memory usage.
@@ -126,7 +191,7 @@ const dropTestTable = async function ( prefix ) {
 const getHeapMB = function () {
     const mem = process.memoryUsage();
     return Math.round( ( mem.heapUsed / 1024 / 1024 ) * 100 ) / 100;
-};
+}; // getHeapMB()
 
 /**
  * Formats duration in human-readable form.
@@ -138,7 +203,16 @@ const formatDuration = function ( ns ) {
     const ms = Number( ns ) / 1e6;
     if ( ms < 1000 ) return `${ms.toFixed( 2 )}ms`;
     return `${( ms / 1000 ).toFixed( 2 )}s`;
-};
+}; // formatDuration()
+
+/**
+ * One event-loop turn, so the send in flight can land.
+ *
+ * @returns {Promise<void>}
+ */
+const breathe = function () {
+    return new Promise( ( resolve ) => setImmediate( resolve ) );
+}; // breathe()
 
 // ============================================================================
 // DATA GENERATION (zero-allocation hot path)
@@ -173,7 +247,7 @@ const fillMessage = function ( index ) {
     msg.active = ( index % 10 ) !== 0;
     msg.mode = MODES[ index % 5 ];
     return msg;
-};
+}; // fillMessage()
 
 /**
  * Get partition ID for message (round-robin).
@@ -183,7 +257,7 @@ const fillMessage = function ( index ) {
  */
 const getPartitionId = function ( index ) {
     return `sensor-${String( index % PARTITION_COUNT ).padStart( 3, '0' )}`;
-};
+}; // getPartitionId()
 
 // ============================================================================
 // BENCHMARK EXECUTION
@@ -197,41 +271,34 @@ const runBenchmark = async function () {
     // Check QuestDB availability
     const available = await isQuestDBAvailable();
     if ( !available ) {
-        console.log( '❌ QuestDB not available!' );
-        console.log( '   Run: docker run -p 9000:9000 -p 8812:8812 questdb/questdb' );
+        console.log( 'FAIL: QuestDB not available' );
+        console.log( '   Run: docker compose up -d' );
         console.log( '' );
         return null;
     }
 
     console.log( 'Configuration:' );
     console.log( `  Messages:        ${MESSAGE_COUNT.toLocaleString()}` );
-    console.log( `  Flush mode:      ${FLUSH_MODE}` );
-    if ( FLUSH_MODE === 'auto' ) {
-        console.log( `  Auto flush rows: ${AUTO_FLUSH_ROWS}` );
-    }
+    console.log( `  Flush rows:      ${FLUSH_ROWS.toLocaleString()} (ceiling ${( FLUSH_ROWS * 10 ).toLocaleString()})` );
+    console.log( `  Transport:       ${TRANSPORT}` );
     console.log( `  Partitions:      ${PARTITION_COUNT}` );
     console.log( `  Warmup:          ${WARMUP_MESSAGES.toLocaleString()} messages` );
     console.log( `  Table:           ${TABLE_PREFIX}_telemetry` );
     console.log( '' );
 
-    // Create storage
+    // Create storage. Every loss is counted, so the table can say so.
+    let rowsLost = 0;
     console.log( 'Initializing storage...' );
-    const storageOptions = {
+    const storage = await createQuestDBStorage( benchAssetClass, TABLE_PREFIX, {
         ilpUrl: QUESTDB_ILP_URL,
         pgUrl: QUESTDB_PG_URL,
-        flushMode: FLUSH_MODE
-    };
-
-    if ( FLUSH_MODE === 'auto' ) {
-        storageOptions.autoFlushRows = AUTO_FLUSH_ROWS;
-        storageOptions.autoFlushIntervalMs = 100;
-    }
-
-    const storage = await createQuestDBStorage(
-        benchAssetClass,
-        TABLE_PREFIX,
-        storageOptions
-    );
+        flushRows: FLUSH_ROWS,
+        stdlibHttp: TRANSPORT === 'stdlib',
+        onDeliveryFailure: function ( err, info ) {
+            rowsLost += info.rowsLost;
+            console.log( `  delivery failure: ${err.message}` );
+        }
+    } );
     console.log( '  Done.\n' );
 
     // ========================================================================
@@ -255,23 +322,36 @@ const runBenchmark = async function () {
     // ========================================================================
     console.log( 'Running benchmark...' );
 
+    let accepted = 0;
+    let refused = 0;
+    let breaths = 0;
     const heapBefore = getHeapMB();
     const startTime = process.hrtime.bigint();
 
-    // Write all messages
     for ( let i = 0; i < MESSAGE_COUNT; i += 1 ) {
         fillMessage( i );
-        storage.write( 'telemetry', msg, getPartitionId( i ) );
+        if ( storage.write( 'telemetry', msg, getPartitionId( i ) ).ok ) {
+            accepted += 1;
+        } else {
+            refused += 1;
+        }
+
+        if ( ( i % PRESSURE_CHECK_EVERY ) === 0 ) {
+            while ( storage.getPressure() >= PRESSURE_CEILING ) {
+                await breathe(); // eslint-disable-line no-await-in-loop
+                breaths += 1;
+            }
+        }
 
         // Progress indicator
-        if ( ( i + 1 ) % 10000 === 0 ) {
+        if ( ( i + 1 ) % 100000 === 0 ) {
             process.stdout.write( `  ${( i + 1 ).toLocaleString()}/${MESSAGE_COUNT.toLocaleString()} messages\r` );
         }
     }
 
     const writeEndTime = process.hrtime.bigint();
 
-    // Flush (for manual mode, measures network latency)
+    // The final flush carries whatever is still buffered.
     const flushStartTime = process.hrtime.bigint();
     await storage.flush();
     const flushEndTime = process.hrtime.bigint();
@@ -292,27 +372,38 @@ const runBenchmark = async function () {
     const totalDurationMs = Number( totalDurationNs ) / 1e6;
 
     const writePerSec = Math.round( MESSAGE_COUNT / ( writeDurationMs / 1000 ) );
-    const totalPerSec = Math.round( MESSAGE_COUNT / ( totalDurationMs / 1000 ) );
+    const landedPerSec = Math.round( accepted / ( totalDurationMs / 1000 ) );
     const nsPerWrite = Number( writeDurationNs ) / MESSAGE_COUNT;
+
+    await storage.shutdown();
+    const expectedRows = WARMUP_MESSAGES + accepted;
+    const landed = await waitForLanding( TABLE_PREFIX, expectedRows );
 
     console.log( '========================================' );
     console.log( '  RESULTS' );
     console.log( '========================================\n' );
 
     console.log( 'Timing:' );
-    console.log( `  Write time:      ${formatDuration( writeDurationNs )}` );
-    console.log( `  Flush time:      ${formatDuration( flushDurationNs )}` );
+    console.log( `  Write time:      ${formatDuration( writeDurationNs )} (${breaths.toLocaleString()} breaths)` );
+    console.log( `  Final flush:     ${formatDuration( flushDurationNs )}` );
     console.log( `  Total time:      ${formatDuration( totalDurationNs )}` );
     console.log( '' );
 
     console.log( 'Throughput:' );
-    console.log( `  Write only:      ${writePerSec.toLocaleString()} msg/sec` );
-    console.log( `  Including flush: ${totalPerSec.toLocaleString()} msg/sec` );
+    console.log( `  Write loop:      ${writePerSec.toLocaleString()} msg/sec` );
+    console.log( `  Landed:          ${landedPerSec.toLocaleString()} msg/sec` );
     console.log( '' );
 
     console.log( 'Latency:' );
     console.log( `  Per write:       ${nsPerWrite.toFixed( 0 )} ns/msg` );
     console.log( `  Per write:       ${( nsPerWrite / 1000 ).toFixed( 2 )} µs/msg` );
+    console.log( '' );
+
+    console.log( 'Accounting:' );
+    console.log( `  Accepted:        ${accepted.toLocaleString()}` );
+    console.log( `  Refused:         ${refused.toLocaleString()}` );
+    console.log( `  Reported lost:   ${rowsLost.toLocaleString()}` );
+    console.log( `  In the table:    ${landed.toLocaleString()} (warmup included, expected ${expectedRows.toLocaleString()})` );
     console.log( '' );
 
     console.log( 'Memory:' );
@@ -324,40 +415,47 @@ const runBenchmark = async function () {
     // ========================================================================
     // ASSESSMENT
     // ========================================================================
+    const exact = ( refused === 0 ) && ( rowsLost === 0 ) && ( landed === expectedRows );
     console.log( 'Assessment:' );
-    if ( writePerSec >= 1000000 ) {
-        console.log( `  ✓ Excellent: ${( writePerSec / 1000000 ).toFixed( 2 )}M writes/sec` );
-    } else if ( writePerSec >= 100000 ) {
-        console.log( `  ✓ Good: ${( writePerSec / 1000 ).toFixed( 0 )}K writes/sec` );
-    } else if ( writePerSec >= 10000 ) {
-        console.log( `  ⚠ Acceptable: ${( writePerSec / 1000 ).toFixed( 0 )}K writes/sec` );
+    console.log( `  Accounting:      ${exact ? 'EXACT' : 'MISMATCH'}` );
+    if ( landedPerSec >= 100000 ) {
+        console.log( `  Rate:            GOOD, ${( landedPerSec / 1000 ).toFixed( 0 )}K landed/sec` );
+    } else if ( landedPerSec >= 10000 ) {
+        console.log( `  Rate:            ACCEPTABLE, ${( landedPerSec / 1000 ).toFixed( 0 )}K landed/sec` );
     } else {
-        console.log( `  ❌ Slow: ${writePerSec.toLocaleString()} writes/sec` );
+        console.log( `  Rate:            SLOW, ${landedPerSec.toLocaleString()} landed/sec` );
     }
 
     console.log( '\n========================================\n' );
 
-    // Cleanup
-    await storage.shutdown();
     await dropTestTable( TABLE_PREFIX );
 
     // Return results for programmatic use
     return {
         config: {
             messages: MESSAGE_COUNT,
-            flushMode: FLUSH_MODE,
-            autoFlushRows: AUTO_FLUSH_ROWS,
+            flushRows: FLUSH_ROWS,
+            transport: TRANSPORT,
             partitions: PARTITION_COUNT
         },
         timing: {
             writeDurationMs,
             flushDurationMs,
-            totalDurationMs
+            totalDurationMs,
+            breaths
         },
         throughput: {
             writePerSec,
-            totalPerSec,
+            landedPerSec,
             nsPerWrite
+        },
+        accounting: {
+            accepted,
+            refused,
+            rowsLost,
+            landed,
+            expectedRows,
+            exact
         },
         memory: {
             heapBefore,
@@ -365,7 +463,7 @@ const runBenchmark = async function () {
             delta: heapAfter - heapBefore
         }
     };
-};
+}; // runBenchmark()
 
 // ============================================================================
 // ENTRY POINT
