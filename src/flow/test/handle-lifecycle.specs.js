@@ -393,9 +393,100 @@ describe( 'flow handle — drain stages are isolated', function () {
         await handle.whenComplete();
 
         expect( storageShutdown.called, 'storages must still drain after an emitter adapter failure' ).to.equal( true );
-        expect( thrown, 'the adapter failure is absorbed and logged at the wire layer' ).to.equal( null );
+        // The wire layer absorbs the throw so the siblings drain, logs
+        // it, and hands it back as that adapter's rejection. After
+        // every stage has run, the loss reaches the caller (ADR-018 §7).
+        expect( thrown, 'the adapter failure still reaches the caller' ).to.be.an( 'error' );
+        expect( thrown.message ).to.equal( 'emitter sync boom' );
         const all = errorSpy.args.map( ( a ) => a[ 0 ] ).join( '\n' );
         expect( all ).to.include( 'emitter sync boom' );
+    } );
+
+    it( 'a storage that lost rows at drain rejects the handle with its code and dropped count', async function () {
+        // The adapter says so with a classified error (ADR-018 §7). The
+        // process exit code depends on the handle carrying it: the
+        // shutdown manager counts rejected drains and refuses a clean
+        // exit over a loss.
+        const adapter = {
+            id: 'stopClean',
+            durabilityClass: 'best-effort',
+            start: () => () => Promise.resolve()
+        };
+        const loss = Object.assign( new Error( 'flush failed during shutdown: connect ECONNREFUSED' ), {
+            code: 'DELIVERY_FAILED',
+            dropped: { count: 286 }
+        } );
+        const emitterShutdown = sinon.stub().resolves();
+        const storageShutdown = sinon.stub().rejects( loss );
+        const { mockEmitter, mockStorage } = buildSinkAdapters( emitterShutdown, storageShutdown );
+
+        handle = await buildFullFlow( 'drainStorageLoss', adapter, mockEmitter, mockStorage ).run();
+
+        const errorSpy = sinon.spy( console, 'error' );
+        let thrown = null;
+        await handle.shutdown().catch( ( err ) => {
+            thrown = err;
+        } );
+        errorSpy.restore();
+
+        expect( emitterShutdown.called, 'emitters drained first' ).to.equal( true );
+        expect( thrown, 'the loss reaches the caller as the adapter raised it' ).to.equal( loss );
+        expect( thrown.code ).to.equal( 'DELIVERY_FAILED' );
+        expect( thrown.dropped.count ).to.equal( 286 );
+        const all = errorSpy.args.map( ( a ) => a[ 0 ] ).join( '\n' );
+        expect( all ).to.include( 'storage \'mockS\' shutdown failed [DELIVERY_FAILED]' );
+        expect( all ).to.include( 'storage drain stage failed [DELIVERY_FAILED]' );
+    } );
+
+    it( 'an emitter that lost messages at drain rejects the handle, and storages still drain', async function () {
+        const adapter = {
+            id: 'stopClean',
+            durabilityClass: 'best-effort',
+            start: () => () => Promise.resolve()
+        };
+        const loss = Object.assign( new Error( '3 message(s) unacknowledged at the deadline' ), {
+            code: 'SHUTDOWN_TIMEOUT',
+            dropped: { count: 3 }
+        } );
+        const emitterShutdown = sinon.stub().rejects( loss );
+        const storageShutdown = sinon.stub().resolves();
+        const { mockEmitter, mockStorage } = buildSinkAdapters( emitterShutdown, storageShutdown );
+
+        handle = await buildFullFlow( 'drainEmitterLoss', adapter, mockEmitter, mockStorage ).run();
+
+        let thrown = null;
+        await handle.shutdown().catch( ( err ) => {
+            thrown = err;
+        } );
+
+        expect( storageShutdown.called, 'storages drain after an emitter loss' ).to.equal( true );
+        expect( thrown ).to.equal( loss );
+        expect( thrown.code ).to.equal( 'SHUTDOWN_TIMEOUT' );
+    } );
+
+    it( 'the earliest loss wins when a source stop and a sink drain both fail', async function () {
+        const adapter = {
+            id: 'stopRejects',
+            durabilityClass: 'best-effort',
+            start: () => () => Promise.reject( new Error( 'stop failed' ) )
+        };
+        const loss = Object.assign( new Error( 'rows dropped' ), {
+            code: 'DELIVERY_FAILED',
+            dropped: { count: 1 }
+        } );
+        const emitterShutdown = sinon.stub().resolves();
+        const storageShutdown = sinon.stub().rejects( loss );
+        const { mockEmitter, mockStorage } = buildSinkAdapters( emitterShutdown, storageShutdown );
+
+        handle = await buildFullFlow( 'drainEarliestLossWins', adapter, mockEmitter, mockStorage ).run();
+
+        let thrown = null;
+        await handle.shutdown().catch( ( err ) => {
+            thrown = err;
+        } );
+
+        expect( storageShutdown.called ).to.equal( true );
+        expect( thrown.message, 'the source stop failed first' ).to.equal( 'stop failed' );
     } );
 
 } );

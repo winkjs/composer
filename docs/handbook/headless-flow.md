@@ -100,7 +100,7 @@ The stop also sets the process exit code. Exit 0 means every flow drained clean.
 
 Either path runs the same drain: stop the source if there is one, flush the emitters, then flush the storage.
 
-**A delivery failure during the drain is loud, not fatal.** Each sink gets its full chance to deliver what it holds. When one cannot finish in time, the framework logs one classified line naming the sink, the reason, and the exact count. The drain still completes for the other sinks. `handle.shutdown()` itself still resolves; it rejects only when a drain stage as a whole fails, such as a source that refuses to stop. The log line looks like this:
+**A delivery failure during the drain is loud, and it fails the stop.** Each sink gets its full chance to deliver what it holds. When one cannot finish in time, the framework logs one classified line naming the sink, the reason, and the exact count. The drain still completes for the other sinks. Then `handle.shutdown()` rejects with that sink's error, so a program that awaits it learns of the loss, and the signal path exits 1. The log line looks like this:
 
 ```text
 winkComposer/wiring: emitter 'mqtt' shutdown failed [SHUTDOWN_TIMEOUT]: winkComposer/mqttEmitter: shutdown closed with 2 message(s) unacknowledged dropped={"count":2}

@@ -18,6 +18,11 @@
  * that accepts the connection and never answers. The QuestDB exit test
  * uses it to hold a request on the wire while the process shuts down.
  *
+ * `startHttpResponder()` models a service that is up but answers an
+ * error. It forwards to the real service or answers a status code,
+ * switched on the live server so no request is reset. The HTTP-error
+ * hardening spec uses it.
+ *
  * Cross-cutting test infrastructure mirrors `src/core/source-manager/test-harness/`
  * — both live under `src/core/` because they're shared across adapter
  * modules.
@@ -31,6 +36,7 @@
  * @module test-utils/tcp-proxy
  */
 
+import http from 'node:http';
 import net from 'node:net';
 
 /**
@@ -141,6 +147,95 @@ export const startBlackHole = function ( port ) {
         clientSocket.on( 'error', function () {} );
         // Consume the request bytes so the client's write completes.
         clientSocket.resume();
+    } );
+    // eslint-disable-next-line no-underscore-dangle
+    server._sockets = sockets;
+    return new Promise( function ( resolve ) {
+        server.listen( port, '127.0.0.1', function () {
+            resolve( server );
+        } );
+    } );
+};
+
+/**
+ * Start an HTTP responder on `port`. It has two modes, switched on the
+ * live server, so the port never closes between them. In answer mode
+ * it reads every request and answers it with `statusCode` and a short
+ * plain-text body. That is the shape of a service that is up but
+ * refuses the request, such as a 400 for a malformed row or a 500 for
+ * an internal failure. In forward mode it relays each request to a
+ * real service on `127.0.0.1:<upstreamPort>` and returns that
+ * service's answer. Every answer closes the connection.
+ *
+ * Why a mode switch and not a port bounce: closing a server destroys
+ * its sockets, so a request on the wire at that instant reads a reset
+ * instead of an answer. A switch on a live server resets nothing. Each
+ * request gets the mode that was active when it arrived.
+ *
+ * The QuestDB client treats some codes as retryable and the rest as
+ * final; the HTTP-error hardening spec pins both against this
+ * responder. Returns the server once it is listening, with two extra
+ * methods: `answerWith( statusCode )` and `forwardTo( upstreamPort )`.
+ * Pass the server to `stopProxy()` to tear down, sockets included.
+ *
+ * @param {number} port
+ * @param {number} statusCode - answered until `forwardTo()` is called
+ * @returns {Promise<http.Server>}
+ */
+export const startHttpResponder = function ( port, statusCode ) {
+    const sockets = new Set();
+    let mode = { answer: statusCode, forward: null };
+
+    const answer = function ( req, res, code ) {
+        req.resume();
+        req.on( 'end', function () {
+            res.writeHead( code, { 'Content-Type': 'text/plain', Connection: 'close' } );
+            res.end( `responder answered ${code}` );
+        } );
+    };
+
+    const forward = function ( req, res, upstreamPort ) {
+        const headers = Object.assign( {}, req.headers );
+        delete headers.connection;
+        const upstream = http.request( {
+            host: '127.0.0.1',
+            port: upstreamPort,
+            method: req.method,
+            path: req.url,
+            headers,
+            agent: false
+        }, function ( upstreamRes ) {
+            res.writeHead( upstreamRes.statusCode, Object.assign( {}, upstreamRes.headers, { connection: 'close' } ) );
+            upstreamRes.pipe( res );
+        } );
+        // See file-header note on swallowed errors.
+        upstream.on( 'error', function () {
+            res.destroy();
+        } );
+        req.pipe( upstream );
+    };
+
+    const server = http.createServer( function ( req, res ) {
+        const current = mode;
+        if ( current.forward === null ) {
+            answer( req, res, current.answer );
+            return;
+        }
+        forward( req, res, current.forward );
+    } );
+    server.answerWith = function ( code ) {
+        mode = { answer: code, forward: null };
+    };
+    server.forwardTo = function ( upstreamPort ) {
+        mode = { answer: null, forward: upstreamPort };
+    };
+    server.on( 'connection', function ( socket ) {
+        sockets.add( socket );
+        socket.on( 'close', function () {
+            sockets.delete( socket );
+        } );
+        // See file-header note on swallowed errors.
+        socket.on( 'error', function () {} );
     } );
     // eslint-disable-next-line no-underscore-dangle
     server._sockets = sockets;

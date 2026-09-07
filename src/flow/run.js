@@ -272,6 +272,21 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
         }
     }; // runDrainStage()
 
+    // A sink stage returns `Promise.allSettled` results. The wiring
+    // logs each adapter whose drain rejected and lets its siblings
+    // finish, so one failing sink never strands another's data. The
+    // loss must still reach this handle's caller. A rejected drain is
+    // how the shutdown manager knows to exit 1 (ADR-018 §7). So once
+    // every adapter in the stage has drained, the stage throws the
+    // first rejected reason, code and dropped count intact.
+    const throwFirstRejection = function ( results ) {
+        for ( let i = 0; i < results.length; i += 1 ) {
+            if ( results[ i ].status === 'rejected' ) {
+                throw results[ i ].reason;
+            }
+        }
+    }; // throwFirstRejection()
+
     const drainAll = async function () {
         const stageErrors = [];
         try {
@@ -281,9 +296,9 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
                     () => stopSource( { timeout: STAGE_TIMEOUT_MS } ) );
             }
             await runDrainStage( 'emitter', stageErrors,
-                () => emitters.shutdown( { timeout: STAGE_TIMEOUT_MS } ) );
+                async () => throwFirstRejection( await emitters.shutdown( { timeout: STAGE_TIMEOUT_MS } ) ) );
             await runDrainStage( 'storage', stageErrors,
-                () => storages.shutdown( { timeout: STAGE_TIMEOUT_MS } ) );
+                async () => throwFirstRejection( await storages.shutdown( { timeout: STAGE_TIMEOUT_MS } ) ) );
         } finally {
             // Whatever the path here — clean drain or a stage that threw —
             // the source has stopped producing, so unblock any
