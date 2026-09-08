@@ -71,6 +71,11 @@
  *       configuration, not in the data, so every row would repeat it.
  *       The field is ignored either way; the column stores the
  *       partition id.
+ *       The wording of the lines, the default handler, and the bound
+ *       on that default live in `skip-warnings.js`. The default is
+ *       bounded per column (ADR-029): two full lines per episode,
+ *       then one summary a minute. A user `onWarning` hears every
+ *       skip, and a throwing one is strict mode (ADR-027).
  *     - `onDeliveryFailure` — hard data loss: the row the client
  *       refused. Default behaviour: one DELIVERY_FAILED console line.
  *
@@ -92,6 +97,7 @@
 import { SenderBufferV1 } from '@questdb/nodejs-client';
 
 import { QUEST_WRITERS, writeAsString, createFloat64Writer } from './writers.js';
+import { defaultOnWarning, makeColumnWarning, makeRowWarning } from './skip-warnings.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
 import { logger } from '../../logger/index.js';
 
@@ -105,33 +111,6 @@ const reportCallbackFault = function ( severity, name, detail ) {
         `winkComposer/questdb: user callback ${name} failed [CALLBACK_FAILED]: ${detail}`
     );
 }; // reportCallbackFault()
-
-// ============================================================================
-// DEFAULT WARNING HANDLER
-// ============================================================================
-
-/**
- * Default warning handler for invalid column values.
- * Logs to console in winkComposer format.
- *
- * Validation behavior:
- * - null/undefined columns: skip column only (QuestDB stores NULL)
- * - NaN/Infinity in numeric columns: skip column only (QuestDB stores NULL)
- * - Wrong-typed column values (e.g. a number where the column is string-typed):
- *   skip column only, never coerce — the warning names the expected and
- *   received types
- * - Invalid designatedTimestamp: skip entire row
- *
- * For strict mode (throw on any invalid), provide:
- *   { onWarning: (msg) => { throw new Error(msg); } }
- *
- * Future extension: return value may control skip-row vs skip-column behavior.
- *
- * @param {string} message - Warning message describing the issue
- */
-const defaultOnWarning = function ( message ) {
-    logger.warn( `winkComposer/questdb: ${message}` );
-};
 
 /**
  * Check if column type requires numeric validation (NaN/Infinity check).
@@ -174,29 +153,6 @@ ACCEPTS.bool = ( value ) => typeof value === 'boolean';
  * @returns {boolean} always true
  */
 const acceptAny = () => true;
-
-/**
- * Builds the reason text for a value that failed its phase-1 acceptance
- * check. Called only on the rare skip path, so its allocations are
- * acceptable (same budget as the error returns in index.js).
- *
- * @param {*} rawValue - the rejected value
- * @param {boolean} isNumeric - whether the column type is numeric
- * @param {string} expectedType - declared column type, named in the message
- * @returns {string} plain reason text for the skip warning
- */
-const skipReason = function ( rawValue, isNumeric, expectedType ) {
-    if ( rawValue === null ) return 'null';
-    if ( rawValue === undefined ) return 'undefined';
-    if ( isNumeric && typeof rawValue === 'number' ) {
-        if ( Number.isNaN( rawValue ) ) return 'NaN';
-        // A finite number can only be rejected by the integer-required
-        // types (int64/timestamp/designated timestamp) — float64 accepts
-        // every finite number.
-        return Number.isFinite( rawValue ) ? 'non-integer' : 'non-finite';
-    }
-    return `wrong-typed (expected ${expectedType}, received ${typeof rawValue})`;
-}; // skipReason()
 
 /**
  * Asserts every ILP name a plan will write — the table name and each column
@@ -273,7 +229,8 @@ const assertIlpNames = function ( tableName, columnNames ) {
  * @param {string} tablePrefix - Prefix for table names (typically assetClass.name)
  * @param {Object} [options] - Optional configuration
  * @param {function} [options.onWarning] - Soft per-row warning callback for
- *   invalid values (NaN, null, invalid timestamp). Default: console.warn.
+ *   invalid values (NaN, null, invalid timestamp). Default: one
+ *   `logger.warn` line per skip, bounded per column (see the file header).
  * @param {function} [options.onDeliveryFailure] - Called as
  *   `( err, { tableName } )` when `sender.at()` rejects (the client's
  *   byte ceiling). Default: one classified DELIVERY_FAILED console line.
@@ -295,16 +252,19 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         throw err;
     }
 
-    const onWarning = providedOnWarning || defaultOnWarning;
     // onWarning stays raw on purpose. A strict-mode onWarning throws,
     // and that throw is the instruction that rejects the row. ADR-027
     // keeps such callbacks — ones whose throw or return the adapter
-    // acts on — out of the guard's scope. onDeliveryFailure only
-    // notifies, so the shared guard arms it. It was validated raw
-    // above and is wrapped once here (ADR-018: a broken handler costs
-    // its own output, never the flush chain). Absent stays null, so
-    // the no-handler DELIVERY_FAILED escape hatch below keeps its
-    // exact meaning.
+    // acts on — out of the guard's scope. The skip sites reach it
+    // through the pre-built warnings (`skip-warnings.js`); this raw
+    // handler serves the once-per-type mismatch warning below.
+    const onWarning = providedOnWarning || defaultOnWarning;
+    //
+    // onDeliveryFailure only notifies, so the shared guard arms it. It
+    // was validated raw above and is wrapped once here (ADR-018: a
+    // broken handler costs its own output, never the flush chain).
+    // Absent stays null, so the no-handler DELIVERY_FAILED escape
+    // hatch below keeps its exact meaning.
     const onDeliveryFailure = wrapCallback( providedOnDeliveryFailure || null, {
         name: 'onDeliveryFailure', severity: 'red', report: reportCallbackFault
     } );
@@ -324,10 +284,12 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         // column itself, from the partition id. A persisted column with
         // the same name would make the CREATE TABLE ask for 'assetId'
         // twice. That happens whether the name appears in the columns
-        // list or as the designated timestamp. Fail fast here and name
-        // the fix; otherwise QuestDB answers at table creation with its
-        // raw "Duplicate column" error. A dictionary column named
-        // 'assetId' that no insightType persists stays legal.
+        // list or as the designated timestamp.
+        //
+        // Fail fast here and name the fix. Otherwise QuestDB answers at
+        // table creation with its raw "Duplicate column" error. A
+        // dictionary column named 'assetId' that no insightType
+        // persists stays legal.
         if ( persistedColumnNames.includes( 'assetId' ) || designatedTimestamp === 'assetId' ) {
             const err = new Error(
                 `winkComposer/questdb: insightType '${insightTypeName}' uses reserved column name 'assetId' — ` +
@@ -343,9 +305,10 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         // its type-specific writer.
         const stepNames = [];
         const stepWriters = [];
-        const stepIsNumeric = [];
-        const stepTypes = [];
         const stepAccepts = [];
+        // One skip warning per column, pre-built here so the per-row
+        // path only calls it (see the file header for the bound).
+        const stepWarnings = [];
 
         for ( let j = 0; j < persistedColumnNames.length; j += 1 ) {
             const columnName = persistedColumnNames[ j ];
@@ -357,9 +320,10 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
                 const columnType = columnSpec ? columnSpec.type : 'string';
 
                 stepNames.push( columnName );
-                stepIsNumeric.push( isNumericType( columnType ) );
-                stepTypes.push( columnType );
                 stepAccepts.push( ACCEPTS[ columnType ] || acceptAny );
+                stepWarnings.push( makeColumnWarning(
+                    providedOnWarning, insightTypeName, columnName, isNumericType( columnType ), columnType
+                ) );
 
                 // float64 columns use the resolution-aware writer factory.
                 // columnSpec exists here: columnType is 'float64' only when
@@ -374,6 +338,7 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
 
         const stepCount = stepNames.length;
         const tableName = tablePrefix + '_' + insightTypeName;
+        const warnRowSkipped = makeRowWarning( providedOnWarning, insightTypeName, designatedTimestamp );
 
         // One rejection handler and one shared context per insight
         // type, built here so the per-row path allocates nothing. See
@@ -412,34 +377,27 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         // Interface: persistRow(sender, message, partitionId) -> boolean.
         // It returns true when a row was opened and completed on the
         // sender. It returns false when phase 1 skipped the whole row,
-        // so the sender was never touched. The caller's buffered-row
-        // accounting keys off this: a skipped row must not count as
-        // buffered. Note: partitionId is the internal name; it is written
-        // as the 'assetId' column in QuestDB.
+        // so the sender was never touched.
+        //
+        // The caller's buffered-row accounting keys off that return. A
+        // skipped row must not count as buffered. Note that partitionId
+        // is the internal name. It is written as the 'assetId' column
+        // in QuestDB.
         plansByInsightType[ insightTypeName ] = function ( sender, message, partitionId ) {
             // ---- Phase 1: validate. No sender calls — nothing irreversible
             // happens until every value has been checked (see file header).
 
-            // The designated timestamp first. When it is invalid, skip the
-            // entire row.
+            // The designated timestamp first. When it is missing or not
+            // an integer, skip the entire row. Integer or bigint matches
+            // the client's own .at() validation. Probe-verified: at(
+            // ...000.5, 'ms' ) throws "Designated timestamp must be an
+            // integer or BigInt". It throws AFTER the whole row is
+            // written, so catching it here is the only place the row
+            // survives intact. A null or undefined value fails the same
+            // check, and the warning names which it was.
             const tsValue = message[ designatedTimestamp ];
-            if ( tsValue === undefined || tsValue === null ) {
-                onWarning(
-                    `designatedTimestamp '${designatedTimestamp}' is ${tsValue === null ? 'null' : 'undefined'} ` +
-                    `in insightType '${insightTypeName}' (asset: ${partitionId}) - row skipped`
-                );
-                return false;
-            }
-            // Integer or bigint, matching the client's own .at() validation.
-            // Probe-verified: at( ...000.5, 'ms' ) throws "Designated
-            // timestamp must be an integer or BigInt". It throws AFTER the
-            // whole row is written, so catching it here is the only place
-            // the row survives intact.
             if ( !Number.isInteger( tsValue ) && typeof tsValue !== 'bigint' ) {
-                onWarning(
-                    `designatedTimestamp '${designatedTimestamp}' is ${skipReason( tsValue, true, 'timestamp' )} ` +
-                    `in insightType '${insightTypeName}' (asset: ${partitionId}) - row skipped`
-                );
+                warnRowSkipped( tsValue, partitionId );
                 return false;
             }
 
@@ -447,9 +405,10 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
             // That column always stores the partition id. A record value
             // that differs is almost always one mistake: trying to relabel
             // identity in the record. It is reported once per insightType,
-            // never silently dropped (ADR-018 no-silent-failures). The
-            // flag advances only after onWarning returns. So under strict
-            // mode, where onWarning throws, every mismatched row is
+            // never silently dropped (ADR-018 no-silent-failures).
+            //
+            // The flag advances only after onWarning returns. So under
+            // strict mode, where onWarning throws, every mismatched row is
             // rejected here with the sender untouched.
             if ( !assetIdMismatchWarned && message.assetId !== undefined && message.assetId !== partitionId ) {
                 onWarning(
@@ -465,18 +424,16 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
             // QuestDB stores NULL. That is the treatment null already gets.
             // The warning fires HERE, before the row opens. So an onWarning
             // that throws (documented strict mode) rejects the row with the
-            // sender untouched instead of wedging it mid-row. Composer's
-            // NaN propagation ends here exactly as before. A NaN in a
-            // numeric column fails its acceptance check and lands as a
-            // NULL column while the row survives.
+            // sender untouched instead of wedging it mid-row.
+            //
+            // Composer's NaN propagation ends here exactly as before. A
+            // NaN in a numeric column fails its acceptance check and lands
+            // as a NULL column while the row survives.
             for ( let k = 0; k < stepCount; k += 1 ) {
                 const rawValue = message[ stepNames[ k ] ];
                 stepValueOk[ k ] = ( rawValue !== null ) && ( rawValue !== undefined ) && stepAccepts[ k ]( rawValue );
                 if ( !stepValueOk[ k ] ) {
-                    onWarning(
-                        `column '${stepNames[ k ]}' is ${skipReason( rawValue, stepIsNumeric[ k ], stepTypes[ k ] )} ` +
-                        `in insightType '${insightTypeName}' (asset: ${partitionId}) — column skipped`
-                    );
+                    stepWarnings[ k ]( rawValue, partitionId );
                 }
             }
 
@@ -513,4 +470,4 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
 // EXPORTS
 // ============================================================================
 
-export { buildPersistPlans, defaultOnWarning };
+export { buildPersistPlans };

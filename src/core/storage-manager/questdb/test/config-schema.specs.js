@@ -655,6 +655,34 @@ describe( 'QuestDB Storage — tablePrefix Validation', function () {
         expect( result.valid ).to.equal( false );
     } );
 
+    // The prefix is the first part of an unquoted table name in the
+    // adapter's CREATE TABLE. It follows the identifier rule the
+    // semantics schema applies to asset class, insight type, and column
+    // names: letters, digits, `_` and `$`, not starting with a digit.
+    // QuestDB parses an unquoted name as one token, so a hyphen, a
+    // space, or a dot ends the statement early (verified live on 9.4.3).
+
+    it( 'accepts letters, digits, underscore and dollar in any position but the first', function () {
+        for ( const prefix of [ 'plant_A1', '_lead', 'a$b', 'x' ] ) {
+            const result = validate( { ...minimalValidConfig, tablePrefix: prefix } );
+            expect( result.valid, prefix ).to.equal( true );
+        }
+    } );
+
+    it( 'rejects a prefix QuestDB cannot parse unquoted: hyphen, space, dot, semicolon, backtick, equals', function () {
+        for ( const prefix of [ 'plant-a', 'plant a', 'plant.a', 'a;b', 'a`b', 'a=b' ] ) {
+            const result = validate( { ...minimalValidConfig, tablePrefix: prefix } );
+            expect( result.valid, prefix ).to.equal( false );
+            expect( result.errors[ 0 ], prefix ).to.include( 'tablePrefix' );
+        }
+    } );
+
+    it( 'rejects a prefix that starts with a digit', function () {
+        const result = validate( { ...minimalValidConfig, tablePrefix: '1abc' } );
+
+        expect( result.valid ).to.equal( false );
+    } );
+
 } );
 
 describe( 'QuestDB Storage — DSL-Time Enforcement (flow.storage hook)', function () {

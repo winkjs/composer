@@ -7,7 +7,10 @@
  * `onStatus`. Per ADR-018, a bug inside that callback must cost only
  * its own output: generation continues, every message still reaches
  * `onMessage`, and the completion status is still produced. Each
- * fault becomes one classified console line in this source's family.
+ * fault is contained and reported as a classified console line in this
+ * source's family. The guard bounds the report per callback (ADR-029):
+ * the first two faults of an episode print in full, later ones are
+ * counted.
  */
 
 import { expect } from 'chai';
@@ -96,8 +99,9 @@ describe( 'testHarness source — a broken user onStatus is contained (ADR-018)'
         const completeCall = onStatus.getCalls()
             .find( ( call ) => call.args[ 0 ].phase === 'complete' );
         expect( completeCall.args[ 0 ].count ).to.equal( 3 );
+        // Three contained faults, two lines: the bound prints the first two.
         const lines = faultLines( spy );
-        expect( lines ).to.have.lengthOf( 3 );
+        expect( lines ).to.have.lengthOf( 2 );
         expect( lines[ 0 ] ).to.contain( 'winkComposer/testHarness' );
         expect( lines[ 0 ] ).to.contain( 'reporter down' );
         expect( unhandled ).to.have.lengthOf( 0 );
@@ -142,8 +146,9 @@ describe( 'testHarness source — a broken user onStatus is contained (ADR-018)'
         await settle();
 
         expect( messages ).to.have.lengthOf( 3 );
+        // Three rejections, two lines: the bound prints the first two.
         const lines = faultLines( spy );
-        expect( lines ).to.have.lengthOf( 3 );
+        expect( lines ).to.have.lengthOf( 2 );
         expect( lines[ 0 ] ).to.contain( 'async reporter down' );
         expect( unhandled ).to.have.lengthOf( 0 );
         await stop();

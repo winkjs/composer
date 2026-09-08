@@ -22,11 +22,20 @@ import { expect } from 'chai';
 import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
-import { wrapCallback, wrapTransform, TRANSFORM_THREW } from '../index.js';
+import {
+    wrapCallback,
+    wrapTransform,
+    TRANSFORM_THREW,
+    FULL_FAULT_LINES_PER_EPISODE,
+    FAULT_SUMMARY_INTERVAL_MS
+} from '../index.js';
 
 const settle = function () {
     return new Promise( ( resolve ) => setImmediate( resolve ) );
 };
+
+/** A fixed wall clock, so every duration has a value the spec can name. */
+const NOW = 1735500000000;
 
 describe( 'callback guard — wrapCallback', function () {
 
@@ -256,6 +265,129 @@ describe( 'callback guard — wrapCallback', function () {
                 .map( ( c ) => String( c.args[ 0 ] ) )
                 .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) );
             expect( lines.length ).to.equal( 1 );
+        } );
+
+    } );
+
+    describe( 'the fault report is bounded per callback (ADR-029, the bounded loss line)', function () {
+
+        let clock;
+
+        beforeEach( function () {
+            clock = sinon.useFakeTimers( { now: NOW } );
+        } );
+
+        afterEach( function () {
+            clock.restore();
+        } );
+
+        const throwing = function ( report ) {
+            return wrapCallback( () => {
+                throw new Error( 'boom' );
+            }, { name: 'onStatus', severity: 'red', report } );
+        };
+
+        /** Fires the wrapped callback `count` times, one per second. */
+        const faultEverySecond = function ( wrapped, count ) {
+            for ( let i = 0; i < count; i += 1 ) {
+                wrapped( {} );
+                clock.tick( 1000 );
+            }
+        }; // faultEverySecond()
+
+        it( 'the first two faults of an episode report in full, the rest of the minute report nothing', function () {
+            const report = sinon.spy();
+            const wrapped = throwing( report );
+
+            faultEverySecond( wrapped, 60 );
+
+            expect( report.callCount ).to.equal( 2 );
+            expect( report.firstCall.args ).to.deep.equal( [ 'red', 'onStatus', 'boom' ] );
+            expect( report.secondCall.args ).to.deep.equal( [ 'red', 'onStatus', 'boom' ] );
+        } );
+
+        it( 'one summary per minute carries the count since the last line, on the same channel', function () {
+            const report = sinon.spy();
+            const wrapped = throwing( report );
+
+            // Full lines at 0 s and 1 s. The 59 faults at 2 s to 60 s are
+            // counted. The fault at 61 s is a minute after the last line,
+            // so it reports the summary and is the 60th counted.
+            faultEverySecond( wrapped, 62 );
+
+            expect( report.callCount ).to.equal( 3 );
+            expect( report.thirdCall.args ).to.deep.equal( [
+                'red', 'onStatus', 'boom; 60 more fault(s) in the last 60 s'
+            ] );
+        } );
+
+        it( 'a quiet minute ends the episode, so the next fault reports in full again', function () {
+            const report = sinon.spy();
+            const wrapped = throwing( report );
+
+            faultEverySecond( wrapped, 2 );
+            clock.tick( FAULT_SUMMARY_INTERVAL_MS );
+            wrapped( {} );
+
+            expect( report.callCount ).to.equal( 3 );
+            expect( report.thirdCall.args ).to.deep.equal( [ 'red', 'onStatus', 'boom' ] );
+        } );
+
+        it( 'each wrapped callback has its own bound', function () {
+            const reportA = sinon.spy();
+            const reportB = sinon.spy();
+            const a = throwing( reportA );
+            const b = throwing( reportB );
+
+            faultEverySecond( a, 10 );
+            faultEverySecond( b, 10 );
+
+            expect( reportA.callCount ).to.equal( 2 );
+            expect( reportB.callCount ).to.equal( 2 );
+        } );
+
+        it( 'async faults share the same bound', async function () {
+            const report = sinon.spy();
+            const wrapped = wrapCallback(
+                () => Promise.reject( new Error( 'late boom' ) ),
+                { name: 'onMetrics', severity: 'yellow', report }
+            );
+
+            for ( let i = 0; i < 5; i += 1 ) {
+                wrapped( {} );
+                await clock.tickAsync( 1000 ); // eslint-disable-line no-await-in-loop
+            }
+
+            expect( report.callCount ).to.equal( 2 );
+            expect( report.firstCall.args ).to.deep.equal( [ 'yellow', 'onMetrics', 'late boom' ] );
+            expect( unhandled.length ).to.equal( 0 );
+        } );
+
+        it( 'a throwing report on the summary is contained like one on a full line', function () {
+            const errorSpy = sinon.spy( console, 'error' );
+            const wrapped = wrapCallback( () => {
+                throw new Error( 'boom' );
+            }, {
+                name: 'onStatus',
+                severity: 'red',
+                report: () => {
+                    throw new Error( 'reporter also broken' );
+                }
+            } );
+
+            expect( () => faultEverySecond( wrapped, 62 ) ).to.not.throw();
+
+            errorSpy.restore();
+            const lines = errorSpy.getCalls()
+                .map( ( c ) => String( c.args[ 0 ] ) )
+                .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) );
+            // Two full lines and one summary, each falling back once.
+            expect( lines.length ).to.equal( 3 );
+        } );
+
+        it( 'exposes the bound as two constants', function () {
+            expect( FULL_FAULT_LINES_PER_EPISODE ).to.equal( 2 );
+            expect( FAULT_SUMMARY_INTERVAL_MS ).to.equal( 60000 );
         } );
 
     } );

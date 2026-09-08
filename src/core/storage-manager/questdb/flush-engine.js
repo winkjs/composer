@@ -115,10 +115,15 @@
  *   client documents that an unfinished row stays behind), then reset()
  *   clears the buffer — at that point holding only the broken stub — and
  *   lowers the client's row-in-progress flags.
- * - The recovery flush carries real data and is tracked like every
- *   flush. If it fails, the loss is reported like any other:
+ * - The recovery flush runs only when completed rows are buffered. It
+ *   carries real data and is tracked like every flush. If it fails, the
+ *   loss is reported like any other:
  *   `onDeliveryFailure( err, { trigger: 'recovery', rowsLost, abandoned, probe } )`,
  *   or one `DELIVERY_FAILED` line.
+ * - With nothing buffered, reset() alone clears the broken row. An empty
+ *   flush sends nothing and resolves at once, so tracking it would stamp
+ *   a success the endpoint never gave (the 2026-09-08 review found the
+ *   ladder climbing to yellow on exactly that).
  * - While delivery is paused, a mid-row throw still runs this flush.
  *   The held rows go into the dead endpoint and are lost. The client
  *   offers no other way to clear the broken row. A row-cancel call
@@ -350,6 +355,7 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
     // So the accept branch never looks at it.
     let shedding = false;
     let shedRows = 0;
+
     // The loss-line summary during a streak with no handler: when the
     // last line printed, and the losses counted since.
     let summarySince = 0;
@@ -527,29 +533,38 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
      * starts clean (see "Mid-row recovery" in the file header for the full
      * account and the upstream issue link).
      *
-     * flush() copies every completed row out of the buffer synchronously and
-     * sends them in the background; the unfinished row stays behind. reset()
-     * then clears the buffer — only the broken stub remains at that point —
-     * and lowers the client's row-in-progress flags. Net effect: the broken
-     * row vanishes, every good row is on its way, the sender accepts the
-     * next write.
+     * When completed rows are buffered, flush() copies them out of the
+     * buffer synchronously and sends them in the background; the
+     * unfinished row stays behind. reset() then clears the buffer — only
+     * the broken stub remains at that point — and lowers the client's
+     * row-in-progress flags. Net effect: the broken row vanishes, every
+     * good row is on its way, the sender accepts the next write.
+     *
+     * When nothing is buffered, reset() alone is the recovery. A flush of
+     * an empty buffer sends nothing and resolves at once (the client
+     * returns false), so tracking it would record a delivery that never
+     * happened: the ledger would read a fresh success while the endpoint
+     * is still dead, and health would climb the ladder on no evidence.
      *
      * The early flush carries real data. If its send fails, that loss is
      * reported like any other (see `handleFlushFailure`). Never silent.
      */
     const recoverSender = function () {
         try {
-            // flush() is an async function: it can never throw synchronously,
-            // and the rows it sends live in its own copy of the buffer.
-            // Tracked like every flush, so shutdown settles it and its
-            // rows stay visible as pressure until it settles. It does not
-            // own the single-flight guard, so its failure releases nothing.
             const rows = bufferedRows;
-            track( sender.flush(), rows, function ( err, abandoned ) {
-                if ( err ) {
-                    handleFlushFailure( err, 'recovery', rows, abandoned, NOOP );
-                }
-            } );
+            if ( rows > 0 ) {
+                // flush() is an async function: it can never throw
+                // synchronously, and the rows it sends live in its own copy
+                // of the buffer. Tracked like every flush, so shutdown
+                // settles it and its rows stay visible as pressure until it
+                // settles. It does not own the single-flight guard, so its
+                // failure releases nothing.
+                track( sender.flush(), rows, function ( err, abandoned ) {
+                    if ( err ) {
+                        handleFlushFailure( err, 'recovery', rows, abandoned, NOOP );
+                    }
+                } );
+            }
             sender.reset();
             bufferedRows = 0;
         } catch ( recoveryErr ) {

@@ -24,6 +24,7 @@ import { expect } from 'chai';
 import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 import net from 'node:net';
+import { EventEmitter } from 'node:events';
 
 import { createQuestDBStorage } from '../index.js';
 import { makeMockSender, makeMockDeps } from './test-helpers.js';
@@ -170,15 +171,31 @@ describe( 'QuestDB setup probe', function () {
         await storage.shutdown();
     } );
 
-    it( 'uses the real probe by default: a listener on 127.0.0.1 passes both endpoints', async function () {
-        const server = net.createServer();
-        await new Promise( ( resolve ) => server.listen( 0, '127.0.0.1', resolve ) );
-        const { port } = server.address();
-        delete deps.probeFn;
-        const storage = await create( { ilpUrl: `127.0.0.1:${port}`, pgUrl: `127.0.0.1:${port}` } );
-        await storage.shutdown();
-        await new Promise( ( resolve ) => server.close( resolve ) );
-        expect( deps.SenderClass.fromConfig.calledOnce ).to.equal( true );
+    it( 'uses the real probe by default: it dials each endpoint with net.connect, and an answer passes', async function () {
+        // The default probe dials with `net.connect`. That one call is
+        // stubbed with a socket that answers on the next tick, so the
+        // default wiring runs with no listener and no real I/O in the
+        // fast tier. The probe's own socket handling is pinned in
+        // utils/address/test/probe.specs.js.
+        const connectFn = sinon.stub( net, 'connect' ).callsFake( () => {
+            const socket = new EventEmitter();
+            socket.destroy = sinon.stub();
+            socket.setTimeout = sinon.stub();
+            setImmediate( () => socket.emit( 'connect' ) );
+            return socket;
+        } );
+        try {
+            delete deps.probeFn;
+            const storage = await create( { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' } );
+            await storage.shutdown();
+
+            expect( connectFn.callCount ).to.equal( 2 );
+            expect( connectFn.firstCall.args[ 0 ] ).to.deep.equal( { host: '127.0.0.1', port: 8812 } );
+            expect( connectFn.secondCall.args[ 0 ] ).to.deep.equal( { host: '127.0.0.1', port: 9000 } );
+            expect( deps.SenderClass.fromConfig.calledOnce ).to.equal( true );
+        } finally {
+            connectFn.restore();
+        }
     } );
 
     describe( 'fromConfig wrap', function () {

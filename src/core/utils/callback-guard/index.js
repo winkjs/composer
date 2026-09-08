@@ -32,9 +32,22 @@
  *   thrown value. When the report closure itself fails, the guard
  *   falls back to one bare log line with no user-value
  *   interpolation.
+ * - The fault report is bounded per wrapped callback (ADR-029, the
+ *   bounded loss line). A callback that fails on every call would
+ *   print one line per call, which for a status callback on a busy
+ *   source is a line per message. So the first two faults of an
+ *   episode report in full, later faults are counted, and one summary
+ *   reports per minute with the count. A quiet minute ends the
+ *   episode. The summary goes through the site's own channel with the
+ *   count appended to the detail, so no site changes.
  */
 
 import { logger } from '../../logger/index.js';
+import { createLineBound } from '../line-rate/index.js';
+
+/** The bound on the fault report (see the file header). */
+const FULL_FAULT_LINES_PER_EPISODE = 2;
+const FAULT_SUMMARY_INTERVAL_MS = 60000;
 
 /**
  * Frozen sentinel `wrapTransform` returns when the transform threw.
@@ -92,9 +105,17 @@ const wrapCallback = function ( fn, { name, severity, report } ) {
     if ( typeof fn !== 'function' ) {
         return null;
     }
+    const bounded = createLineBound( {
+        fullLines: FULL_FAULT_LINES_PER_EPISODE,
+        intervalMs: FAULT_SUMMARY_INTERVAL_MS,
+        printFull: report,
+        printSummary: function ( count, seconds, sev, callbackName, detail ) {
+            report( sev, callbackName, `${detail}; ${count} more fault(s) in the last ${seconds} s` );
+        }
+    } );
     const faultFn = function ( err ) {
         try {
-            report( severity, name, describeFault( err ) );
+            bounded( severity, name, describeFault( err ) );
         } catch {
             reportFallback();
         }
@@ -152,4 +173,4 @@ const wrapTransform = function ( fn, onFault ) {
     };
 }; // wrapTransform()
 
-export { wrapCallback, wrapTransform, TRANSFORM_THREW };
+export { wrapCallback, wrapTransform, TRANSFORM_THREW, FULL_FAULT_LINES_PER_EPISODE, FAULT_SUMMARY_INTERVAL_MS };

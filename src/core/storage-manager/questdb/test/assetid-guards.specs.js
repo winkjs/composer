@@ -35,22 +35,9 @@
 
 import { expect } from 'chai';
 import { describe, it, beforeEach } from 'mocha';
-import sinon from 'sinon';
 
 import { buildPersistPlans } from '../persist-plan.js';
-
-const makeMockSender = function () {
-    return {
-        table: sinon.stub().returnsThis(),
-        symbol: sinon.stub().returnsThis(),
-        floatColumn: sinon.stub().returnsThis(),
-        intColumn: sinon.stub().returnsThis(),
-        booleanColumn: sinon.stub().returnsThis(),
-        stringColumn: sinon.stub().returnsThis(),
-        timestampColumn: sinon.stub().returnsThis(),
-        at: sinon.stub().returnsThis()
-    };
-};
+import { makeMockSender } from './test-helpers.js';
 
 // One clean insightType; each test mutates a fresh copy.
 const makeAssetClass = function () {

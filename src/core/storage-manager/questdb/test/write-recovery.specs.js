@@ -8,12 +8,14 @@
  * sender.table() and sender.at(), the sender is left holding a half-written row.
  * Without recovery, every later write fails with "Table name has already been
  * set" — the 2026-06-10 incident lost 98.6% of a replay's rows this way. The
- * adapter's write() catch cancels the broken row (flush + reset — see the
- * adapter file header for why those two calls), so the NEXT write succeeds.
+ * adapter's write() catch cancels the broken row (flush + reset when rows
+ * are buffered, reset alone when nothing is — see the adapter file header
+ * for why), so the NEXT write succeeds.
  *
  * Two tiers:
- * - Mock-sender tests pin the recovery calls, the classified return, the
- *   pressure-counter reset, and the loud handling of a failed recovery flush.
+ * - Mock-sender tests pin the recovery calls in both buffer states, the
+ *   classified return, the pressure-counter reset, and the loud handling
+ *   of a failed recovery flush.
  * - A real-client tier drives the genuine wedge in @questdb/nodejs-client
  *   (no server needed; protocol_version pinned so fromConfig skips its
  *   /settings probe) and proves the next row builds after recovery. The
@@ -28,9 +30,9 @@
  * client's retry loop never settles (undici RetryAgent, maxRetries: Infinity),
  * and an in-flight send would keep the process
  * alive past the test run. The real-client wedge therefore fires on the FIRST
- * write — the buffer holds no completed rows, so the recovery flush is a
- * documented no-op and nothing is ever sent. Live delivery of recovered
- * streams is the hardening tier's job (slow-questdb-recovery.specs.js).
+ * write — the buffer holds no completed rows, so recovery is a reset alone
+ * and nothing is ever sent. Live delivery of recovered streams is the
+ * hardening tier's job (slow-questdb-recovery.specs.js).
  */
 
 import { expect } from 'chai';
@@ -90,7 +92,7 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
             deps = makeMockDeps( mockSender );
         } );
 
-        it( 'recovers the sender on a mid-row throw: flush + reset called, next write succeeds', async function () {
+        it( 'recovers the sender on a mid-row throw over an empty buffer: reset alone, next write succeeds', async function () {
             const storage = await makeStorage();
             // First floatColumn call throws mid-row (after table + symbol);
             // later calls behave normally — the client error is one-shot.
@@ -99,13 +101,31 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
             const first = storage.write( 'monitoring', GOOD_MSG, 'p1' );
             expect( first.ok ).to.equal( false );
             expect( first.error.code ).to.equal( 'SEND_FAILED' );
-            // The recovery pair ran, in order.
+            // Nothing was buffered, so there is nothing to ship: no flush,
+            // one reset. An empty flush would stamp a false success.
+            expect( mockSender.flush.called ).to.equal( false );
+            expect( mockSender.reset.calledOnce ).to.equal( true );
+
+            const second = storage.write( 'monitoring', GOOD_MSG, 'p1' );
+            expect( second ).to.deep.equal( { ok: true } );
+        } );
+
+        it( 'recovers the sender on a mid-row throw with rows buffered: flush then reset, in order', async function () {
+            const storage = await makeStorage();
+            expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).ok ).to.equal( true );
+            mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'boom' ) );
+
+            const poison = storage.write( 'monitoring', { ...GOOD_MSG, temp: 99 }, 'p1' );
+            expect( poison.ok ).to.equal( false );
+            expect( poison.error.code ).to.equal( 'SEND_FAILED' );
+            // The recovery pair ran, in order: the good row ships, then
+            // the broken stub is cleared.
             expect( mockSender.flush.calledOnce ).to.equal( true );
             expect( mockSender.reset.calledOnce ).to.equal( true );
             expect( mockSender.reset.calledAfter( mockSender.flush ) ).to.equal( true );
 
-            const second = storage.write( 'monitoring', GOOD_MSG, 'p1' );
-            expect( second ).to.deep.equal( { ok: true } );
+            const next = storage.write( 'monitoring', GOOD_MSG, 'p1' );
+            expect( next ).to.deep.equal( { ok: true } );
         } );
 
         it( 'keeps the recovery flush\'s rows visible as pressure until it settles', async function () {
@@ -199,6 +219,10 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
     describe( 'with the real @questdb/nodejs-client', function () {
 
         it( 'clears the genuine wedge: mid-row throw on the real buffer, then the next write succeeds', async function () {
+            // The clock is fake, so the adapter's flush timer can never
+            // fire during this test. Nothing is ever sent to the dead
+            // address, whatever the machine's speed.
+            const clock = sinon.useFakeTimers();
             const storage = await createQuestDBStorage(
                 TEST_ASSET_CLASS,
                 'pump',
@@ -273,6 +297,7 @@ describe( 'QuestDB write recovery after a mid-row throw', function () {
                 // dead transport only when it is time-bounded (the Kind-4 work).
                 rawSender.reset();
                 await rawSender.close();
+                clock.restore();
             }
         } );
 

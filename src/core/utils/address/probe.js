@@ -21,6 +21,10 @@
  *   the same resolve path the QuestDB client takes, so the probe sees
  *   what the client will see. A shell tool cannot stand in for it:
  *   `curl` and `nc` resolve and fall back differently from Node.
+ * - The lookup has the same time limit as a connect. A resolver pool
+ *   that stalls is a real failure mode: on the run-5 rig one held
+ *   every flush open for minutes. A lookup that does not answer in
+ *   time fails the probe as `timeout`, and no address is dialled.
  * - Every address is probed in resolver order, one at a time, with a
  *   time limit each. A probe is one TCP connect; the socket is
  *   destroyed the moment it answers, fails, or times out. The socket
@@ -91,6 +95,37 @@ const makeDial = function ( connectFn, timeoutMs ) {
 }; // makeDial()
 
 /**
+ * Resolves a name within the time limit. The timer is cleared the
+ * moment the lookup settles, so a normal lookup leaves nothing behind.
+ * The timer is not `unref`'d, for the same reason as the socket above.
+ *
+ * @param {function} lookupFn - The resolver, `( host, { all: true } ) => Promise<targets>`
+ * @param {string} host - The name to resolve
+ * @param {number} timeoutMs - The time limit
+ * @returns {Promise<Array>} The resolved targets; rejects with code `timeout` at the limit
+ */
+const lookupWithin = function ( lookupFn, host, timeoutMs ) {
+    return new Promise( ( resolve, reject ) => {
+        const pending = lookupFn( host, { all: true } );
+        const timer = setTimeout( () => {
+            const err = new Error( `lookup of '${host}' did not answer within ${timeoutMs} ms` );
+            err.code = 'timeout';
+            reject( err );
+        }, timeoutMs );
+        pending.then(
+            ( targets ) => {
+                clearTimeout( timer );
+                resolve( targets );
+            },
+            ( err ) => {
+                clearTimeout( timer );
+                reject( err );
+            }
+        );
+    } );
+}; // lookupWithin()
+
+/**
  * Probes the targets one at a time, in order. Written as a recursion
  * rather than a loop so no `await` sits inside a loop body; the depth
  * is the number of resolved addresses, two or three in practice.
@@ -119,9 +154,9 @@ const probeEach = async function ( targets, port, dial, attempts ) {
  * @param {Object} [options] - Injection points
  * @param {function} [options.lookupFn=dns.promises.lookup] - The resolver
  * @param {function} [options.connectFn=net.connect] - The connect
- * @param {number} [options.timeoutMs=2000] - The time limit per address
+ * @param {number} [options.timeoutMs=2000] - The time limit per address, and for the lookup
  * @returns {Promise<Object>} `{ ok, host, port, attempts }`, or
- *   `{ ok: false, host, port, lookupError, attempts: [] }` when the name did not resolve
+ *   `{ ok: false, host, port, lookupError, attempts: [] }` when the name did not resolve in time
  */
 const probeAddress = async function ( address, options = {} ) {
     const {
@@ -136,7 +171,7 @@ const probeAddress = async function ( address, options = {} ) {
         targets = [ { address: address.host, family: address.family } ];
     } else {
         try {
-            targets = await lookupFn( address.host, { all: true } );
+            targets = await lookupWithin( lookupFn, address.host, timeoutMs );
         } catch ( err ) {
             return { ok: false, host: address.host, port: address.port, lookupError: err.code || err.message, attempts: [] };
         }

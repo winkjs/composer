@@ -111,7 +111,7 @@ flow('pipeline')
 | `onDeliveryFailure` | function | `null` | Callback when an accepted message fails to deliver. Without one, the failure surfaces as an unhandled rejection — loud by design |
 | `mqttConnectFn` | function | `mqtt.connect` | Advanced: inject a custom MQTT connect function (tests, benchmarks) |
 
-The three callbacks are guarded. If one throws or rejects, the emitter keeps publishing and the fault is reported once as a `CALLBACK_FAILED` console line. A bug in your callback costs its own output, never the emitter.
+The three callbacks are guarded. If one throws or rejects, the emitter keeps publishing and the fault is reported as a `CALLBACK_FAILED` console line. The report is bounded per callback: the first two faults of an episode print in full, then one summary a minute carries the count. A bug in your callback costs its own output, never the emitter.
 
 Config is checked when the flow is defined, before anything runs. A misspelled
 option name (say `brokerURL` instead of `brokerUrl`) — or an option retired by
@@ -467,7 +467,7 @@ flow('pipeline')
 |--------|------|---------|-------------|
 | `ilpUrl` | string | `127.0.0.1:9000` | ILP endpoint for writes (`host:port`). A literal address or a name, never `localhost`. No IPv6 literal: the QuestDB client cannot read one |
 | `pgUrl` | string | `127.0.0.1:8812` | PostgreSQL endpoint for table creation (`host:port`). A literal address or a name, never `localhost`. `[::1]:8812` is accepted |
-| `tablePrefix` | string | asset class name | Prefix for table names (`{tablePrefix}_{insightType}`) |
+| `tablePrefix` | string | asset class name | Prefix for table names (`{tablePrefix}_{insightType}`). Letters, digits, `_` and `$`, not starting with a digit: the same rule as an asset class name, because QuestDB reads the unquoted table name as one token |
 | `flushMode` | string | — | Deprecated, removed in 0.8.0. Accepted and ignored: composer owns every flush |
 | `idleFlushAfterMs` | number | — | Deprecated, removed in 0.8.0. Accepted and ignored |
 | `idleFlushCheckMs` | number | — | Deprecated, removed in 0.8.0. Maps to `flushIntervalMs` |
@@ -483,8 +483,8 @@ flow('pipeline')
 | `initBufSize` | number | client default | Initial size of the client's send buffer, in bytes |
 | `maxBufSize` | number | client default | Largest size the client's send buffer may grow to, in bytes. A row that would exceed it is refused |
 | `partitionBy` | string | — | Partitioning when the adapter creates a table: `NONE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR` |
-| `onWarning` | function | `null` | Called with non-fatal storage warnings |
-| `onDeliveryFailure` | function | `null` | Called once per lost send with the error and `{ trigger, rowsLost, abandoned, probe }`. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported once as a `CALLBACK_FAILED` console line |
+| `onWarning` | function | `null` | Called with the warning for each skipped value. When omitted, the adapter logs each warning at `warn`, bounded per column: two in full per episode, then one summary a minute. See the warnings note below |
+| `onDeliveryFailure` | function | `null` | Called once per lost send with the error and `{ trigger, rowsLost, abandoned, probe }`. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported as a `CALLBACK_FAILED` console line, two in full per episode and then one summary a minute |
 
 The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_PG_URL` environment variables when omitted. See [Environment Variables](../environment-variables.md).
 
@@ -502,7 +502,7 @@ misspelled option name (say `illpUrl` instead of `ilpUrl`) is rejected with an
 not a config option — it reaches the adapter through the flow's
 `.assetClass()` call, and supplying it here is rejected the same way.
 
-**Table naming convention:** `{tablePrefix}_{insightType}`. The table prefix defaults to `assetClass.name`; override it via `tablePrefix` in config.
+**Table naming convention:** `{tablePrefix}_{insightType}`. The table prefix defaults to `assetClass.name`; override it via `tablePrefix` in config. A prefix uses letters, digits, `_` and `$`, and does not start with a digit. Any other character fails setup with `INVALID_CONFIG`, because QuestDB reads the unquoted table name as one token.
 
 | Asset Class | Table Prefix | Insight Type | Table Name |
 |-------------|--------------|--------------|------------|
@@ -521,6 +521,8 @@ Every value is checked before the row is opened, so one bad value can never wedg
 | `bool` | booleans | column skipped, warning raised |
 
 A skipped column is simply not written for that row, so it reads as NULL in QuestDB. The rest of the row still persists. The warning goes to your `onWarning` function and names the column, the reason, the insight type, and the asset.
+
+Without an `onWarning` function, each warning prints through the framework log at `warn`, bounded per column. The first two skips of a column in an episode print in full. After that the skips are counted, and one summary line a minute names the count, the latest reason, and the latest asset. A quiet minute on that column ends the episode. So a dead sensor prints one line a minute, not one a second. Rows skipped for a bad designated timestamp share one bound per insight type. Your own `onWarning` function hears every skip.
 
 A missing or invalid designated timestamp skips the whole row — with a warning — before anything is written.
 

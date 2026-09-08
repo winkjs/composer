@@ -45,6 +45,7 @@ import * as testHarness from '../../../source-manager/test-harness/index.js';
 import { stopProxy, startHttpResponder } from '../../../test-utils/tcp-proxy.js';
 import { storages as wireStorages } from '../../../wiring/index.js';
 import questdbAdapter from '../index.js';
+import { CLIENT_MAX_RETRY_BACKOFF_MS } from '../resolve-options.js';
 import {
     QUESTDB_PG_URL, QUESTDB_REAL_PORT, buildAssetClass, buildMessageTemplate,
     isQuestDBAvailable, createPgClient, dropTable, countRows, sleep, waitForHealth,
@@ -58,6 +59,17 @@ const RUN_PREFIX        = `httperr_${Date.now()}`;
 const FLUSH_INTERVAL_MS = 300;
 const RETRY_TIMEOUT_MS  = 500;
 const REQUEST_TIMEOUT_MS = 1000;
+
+/**
+ * How long the 500 leg may take to report its first loss, measured
+ * from the responder switching to errors. The flush that meets the
+ * error starts up to one interval later. The client then retries
+ * inside its window, and checks the window only when an attempt ends,
+ * so the last attempt can start just inside it after the longest
+ * backoff and run for a full request timeout. Every term is an adapter
+ * setting of this leg or a client constant the adapter cites.
+ */
+const FIRST_REPORT_BUDGET_MS = FLUSH_INTERVAL_MS + RETRY_TIMEOUT_MS + CLIENT_MAX_RETRY_BACKOFF_MS + REQUEST_TIMEOUT_MS;
 
 /** How long the responder holds the port: enough ticks for the ladder to reach red. */
 const RESPONDER_MS = 3000;
@@ -182,7 +194,9 @@ describe( 'QuestDB Hardening — a server that answers with an HTTP error', func
             ( h ) => h.status === 'green' && h.lastFlushAt > responderStart,
             10000
         );
-        const recoveredAt = Date.now();
+        // The resume instant is the landed flush's own stamp, an event
+        // the ledger records, not the poll that found it.
+        const recoveredAt = recovered.lastFlushAt;
 
         await handle.whenComplete();
         await handle.shutdown();
@@ -270,6 +284,6 @@ describe( 'QuestDB Hardening — a server that answers with an HTTP error', func
         // After the retry budget, measured from the responder switching
         // to answers, and well before any deadline could fire.
         expect( result.firstReportAfterMs ).to.be.at.least( RETRY_TIMEOUT_MS );
-        expect( result.firstReportAfterMs ).to.be.lessThan( FLUSH_INTERVAL_MS + RETRY_TIMEOUT_MS + 1500 );
+        expect( result.firstReportAfterMs ).to.be.lessThan( FIRST_REPORT_BUDGET_MS );
     } );
 } );

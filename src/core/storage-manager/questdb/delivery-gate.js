@@ -30,8 +30,11 @@
  *   decides what happens next.
  * - Otherwise the probe runs. The engine's guard stays up meanwhile,
  *   so no new engine flush starts into an endpoint that may be dead.
- *   When the probe answers, the loss is reported with the finding, the
- *   guard is released, and a failing probe pauses delivery.
+ *   When the probe answers, the guard is released, the loss is
+ *   reported with the finding, and a failing probe pauses delivery.
+ *   The release comes first. The report runs user-facing code, and a
+ *   report that threw before the release would leave the guard up for
+ *   good, with no flush able to start again.
  *
  * Console lines (ADR-028 grammar, token `CIRCUIT_OPEN` from ADR-018
  * §9). One `logger.warn` line on pause, with the held row count and
@@ -134,9 +137,9 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
 
     /**
      * Routes a failed or abandoned engine flush (the three cases in the
-     * file header). `report( probed )` is called exactly once, with the
-     * probe result or null; `release()` exactly once, when the engine
-     * may start flushes again.
+     * file header). `release()` is called exactly once, when the engine
+     * may start flushes again, and always before `report( probed )`,
+     * which is called exactly once with the probe result or null.
      *
      * @param {function} report - `( probed|null ) => void`, reports the loss
      * @param {function} release - `() => void`, lowers the engine's guard
@@ -154,8 +157,10 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
         probing = true;
         runProbe().then( function ( probed ) {
             probing = false;
-            report( probed );
+            // Release before the report: nothing runs between the two,
+            // and a report that throws must not leave the guard up.
             release();
+            report( probed );
             if ( !isShuttingDown() && !probed.outcome.ok ) {
                 pause( probed.finding );
             }

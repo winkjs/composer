@@ -224,12 +224,21 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
     describe( 'single-flight guard on the timer flush', function () {
 
         let storage = null;
+        let clock = null;
 
-        // Teardown must survive a failed assertion (m9). Shutdown without
-        // touching the hung flush: nothing buffered ever settles, so
-        // shutdown would race its own flush. Give it a tiny budget and
-        // swallow the classified throw.
+        // The clock is fake, so "several ticks passed and nothing
+        // happened" is a statement about the fake clock, not about how
+        // fast the machine ran (a proof of absence needs a fake clock).
+        //
+        // Teardown must survive a failed assertion (m9). The clock is
+        // restored first, so the shutdown below runs on real timers.
+        // Nothing buffered ever settles, so shutdown would race its own
+        // flush: give it a tiny budget and swallow the classified throw.
         afterEach( async function () {
+            if ( clock ) {
+                clock.restore();
+                clock = null;
+            }
             if ( storage ) {
                 await storage.shutdown( { timeout: 10 } ).catch( () => undefined );
                 storage = null;
@@ -237,22 +246,22 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
         } );
 
         it( 'a hung timer flush is reported by shutdown: SHUTDOWN_TIMEOUT with the in-flight count (R6 regression)', async function () {
+            clock = sinon.useFakeTimers();
             storage = await makeStorage( { flushIntervalMs: 10, flushRows: 10 } );
             mockSender.flush.returns( NEVER_SETTLES );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
-            // Wait for the timer flush to fire and hang: the row moves from
-            // buffered to in-flight under the R1 accounting.
-            for ( let i = 0; i < 50 && mockSender.flush.callCount === 0; i += 1 ) {
-                // eslint-disable-next-line no-await-in-loop -- wait-for-condition poll
-                await new Promise( ( r ) => setTimeout( r, 10 ) );
-            }
+            // The next tick fires the timer flush, which hangs: the row
+            // moves from buffered to in-flight under the R1 accounting.
+            await clock.tickAsync( 10 );
             expect( mockSender.flush.callCount ).to.equal( 1 );
 
             let thrown = null;
-            await storage.shutdown( { timeout: 50 } ).catch( ( err ) => {
+            const pending = storage.shutdown( { timeout: 50 } ).catch( ( err ) => {
                 thrown = err;
             } );
+            await clock.tickAsync( 50 );
+            await pending;
 
             expect( thrown, 'a hung in-flight row must fail the shutdown' ).to.be.an( 'error' );
             expect( thrown.code ).to.equal( 'SHUTDOWN_TIMEOUT' );
@@ -260,18 +269,15 @@ describe( 'QuestDB lossy-shutdown reporting', function () {
         } );
 
         it( 'a hung timer flush does not pile up a new flush every tick', async function () {
+            clock = sinon.useFakeTimers();
             // flushRows 10 gives a ceiling of 100, so one row reads 0.01.
             storage = await makeStorage( { flushIntervalMs: 10, flushRows: 10 } );
             mockSender.flush.returns( NEVER_SETTLES );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
 
-            // Wait for the first timer flush to fire, then several more
-            // ticks. Without the guard each tick would call flush again.
-            for ( let i = 0; i < 50 && mockSender.flush.callCount === 0; i += 1 ) {
-                // eslint-disable-next-line no-await-in-loop -- wait-for-condition poll
-                await new Promise( ( r ) => setTimeout( r, 10 ) );
-            }
-            await new Promise( ( r ) => setTimeout( r, 60 ) );
+            // Six ticks. The first fires the timer flush, which hangs.
+            // Without the guard each later tick would call flush again.
+            await clock.tickAsync( 60 );
 
             expect( mockSender.flush.callCount ).to.equal( 1 );
 

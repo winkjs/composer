@@ -60,10 +60,22 @@ const HOLE_PORT    = 19003;
 const HOLE_ILP_URL = `127.0.0.1:${HOLE_PORT}`;
 const RUN_PREFIX   = `hole_${Date.now()}`;
 
-const SAMPLE_MS         = 100;
-const FLUSH_INTERVAL_MS = 300;
-const FLUSH_DEADLINE_MS = 1500;
-const HOLE_MS           = 8000;
+const SAMPLE_MS          = 100;
+const FLUSH_INTERVAL_MS  = 300;
+const FLUSH_DEADLINE_MS  = 1500;
+const RETRY_TIMEOUT_MS   = 500;
+const REQUEST_TIMEOUT_MS = 1000;
+const HOLE_MS            = 8000;
+
+/**
+ * How long recovery may take after the server answers again. The
+ * request in the hole holds the one socket until the client's own
+ * request timeout frees it. The guard is released at the deadline,
+ * the next tick starts a flush, and that flush lands once the socket
+ * is free. So the bound is the deadline, one interval, and one request
+ * timeout. Every term is an adapter setting of this leg.
+ */
+const RESUME_BUDGET_MS = FLUSH_DEADLINE_MS + FLUSH_INTERVAL_MS + REQUEST_TIMEOUT_MS;
 
 const assetClass = buildAssetClass( 'blackHole' );
 
@@ -136,8 +148,8 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
                 flushRows: 2000,
                 flushIntervalMs: FLUSH_INTERVAL_MS,
                 bufferCeilingRows: 4000,
-                retryTimeout: 500,
-                requestTimeout: 1000,
+                retryTimeout: RETRY_TIMEOUT_MS,
+                requestTimeout: REQUEST_TIMEOUT_MS,
                 flushDeadlineMs: FLUSH_DEADLINE_MS,
                 onDeliveryFailure: function ( err, ctx ) {
                     deliveryFailures.push( { message: err.message, ctx, at: Date.now() } );
@@ -177,7 +189,9 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
             ( h ) => h.status === 'green' && h.lastFlushAt > holeStart,
             15000
         );
-        const recoveredAt = Date.now();
+        // The resume instant is the landed flush's own stamp, an event
+        // the ledger records, not the poll that found it.
+        const recoveredAt = recovered.lastFlushAt;
 
         await handle.whenComplete();
         await handle.shutdown();
@@ -240,7 +254,7 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
         expect( recovered.status ).to.equal( 'green' );
         expect( recovered.connected ).to.equal( true );
         expect( recovered.pausedSince ).to.equal( null );
-        expect( recoveredAt - returnedAt ).to.be.at.most( 5000 );
+        expect( recoveredAt - returnedAt ).to.be.at.most( RESUME_BUDGET_MS );
 
         // Accounting: a bound, no duplicates.
         expect( landed ).to.be.at.least( produced - rowsLost );

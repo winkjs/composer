@@ -27,6 +27,8 @@
  * The five legacy keys (`flushMode`, `idleFlushAfterMs`,
  * `idleFlushCheckMs`, `autoFlushRows`, `autoFlushIntervalMs`) are
  * still accepted. One `DEPRECATED_OPTION` line names them at setup.
+ * That line and the mapped keys are pinned in
+ * deprecated-options.specs.js.
  *
  * Every case here was written before the engine and proven red.
  */
@@ -456,48 +458,6 @@ describe( 'QuestDB flush engine (ADR-029)', function () {
 
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
             expect( storage.getPressure() ).to.equal( 0.00002 );
-
-            await storage.shutdown();
-        } );
-
-    } );
-
-    describe( 'deprecated keys', function () {
-
-        it( 'prints one DEPRECATED_OPTION line naming every legacy key in use', async function () {
-            const warnSpy = sinon.stub( console, 'warn' );
-            const storage = await makeStorage( { flushMode: 'manual', autoFlushRows: 4 } );
-
-            const lines = warnSpy.getCalls()
-                .map( ( call ) => String( call.args[ 0 ] ) )
-                .filter( ( line ) => line.includes( '[DEPRECATED_OPTION]' ) );
-            expect( lines ).to.have.lengthOf( 1 );
-            expect( lines[ 0 ] ).to.include( 'flushMode is ignored' );
-            expect( lines[ 0 ] ).to.include( 'autoFlushRows maps to flushRows' );
-
-            await storage.shutdown();
-        } );
-
-        it( 'a mapped legacy autoFlushRows sets the row trigger', async function () {
-            sinon.stub( console, 'warn' );
-            const storage = await makeStorage( { autoFlushRows: 4 } );
-
-            writeRows( storage, 3 );
-            expect( mockSender.flush.called ).to.equal( false );
-            writeRows( storage, 1 );
-            expect( mockSender.flush.callCount ).to.equal( 1 );
-
-            await storage.shutdown();
-        } );
-
-        it( 'prints nothing when no legacy key is in use', async function () {
-            const warnSpy = sinon.stub( console, 'warn' );
-            const storage = await makeStorage( { flushRows: 4 } );
-
-            const lines = warnSpy.getCalls()
-                .map( ( call ) => String( call.args[ 0 ] ) )
-                .filter( ( line ) => line.includes( '[DEPRECATED_OPTION]' ) );
-            expect( lines ).to.have.lengthOf( 0 );
 
             await storage.shutdown();
         } );

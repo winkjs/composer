@@ -236,9 +236,9 @@ All user-supplied functions are guarded. A throwing function never crashes the p
 | **Predicate** (passIf, emitIf, persistIf, etc.) | Treated as `false` / skipped / invalid depending on node role | Automatic on next successful call; also cleared on reset |
 | **Tunable** (threshold, pageHinkley, etc.) | Last known-good value is retained | Automatic on next successful call; also cleared on reset |
 | **Source transform** (MQTT, CSV) | That one message is skipped and reported as `CALLBACK_FAILED`; the stream continues | Automatic on the next message |
-| **Notification callback** (`onStatus`, `onMetrics`, `onError`, `onDeliveryFailure`, `onCritical`, `onBackpressure`) | The fault is contained and reported once as `CALLBACK_FAILED`; the operation that fired the callback completes normally | Automatic on the next call |
+| **Notification callback** (`onStatus`, `onMetrics`, `onError`, `onDeliveryFailure`, `onCritical`, `onBackpressure`) | The fault is contained and reported as `CALLBACK_FAILED`, the first two of an episode in full and then one summary a minute; the operation that fired the callback completes normally | Automatic on the next call |
 
-Predicate and tunable errors are logged once per episode — not once per message — to prevent flooding at high message rates. Transform and callback faults are reported once per occurrence.
+Predicate and tunable errors are logged once per episode — not once per message — to prevent flooding at high message rates. Transform faults are reported once per occurrence. Callback faults are reported per occurrence up to two per episode, then summarized once a minute with the count.
 
 One callback is deliberately outside the guard: QuestDB's strict-mode `onWarning`. There, the throw is the feature. It is how strict mode rejects a bad row, so composer never contains it.
 

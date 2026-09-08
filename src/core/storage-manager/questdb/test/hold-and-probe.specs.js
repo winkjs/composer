@@ -257,9 +257,11 @@ describe( 'QuestDB hold and probe (ADR-029)', function () {
             await clock.tickAsync( 0 );
             expect( probe.engineCalls() ).to.equal( 1 );
 
-            // A mid-row throw starts the recovery flush, which fails while
-            // the first failure's probe is still running. Nothing was
-            // buffered, so it carries no rows.
+            // One good row is buffered, then a mid-row throw starts the
+            // recovery flush carrying it. That flush fails while the first
+            // failure's probe is still running. (Over an empty buffer
+            // recovery is a reset alone and no flush runs.)
+            storage.write( 'monitoring', GOOD_MSG, 'p1' );
             mockSender.at.onCall( mockSender.at.callCount ).throws( new Error( 'mid-row' ) );
             mockSender.flush.onSecondCall().rejects( new Error( 'boom again' ) );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
@@ -267,7 +269,7 @@ describe( 'QuestDB hold and probe (ADR-029)', function () {
 
             expect( onDeliveryFailure.callCount ).to.equal( 1 );
             expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( {
-                trigger: 'recovery', rowsLost: 0, abandoned: false, probe: null
+                trigger: 'recovery', rowsLost: 1, abandoned: false, probe: null
             } );
             expect( probe.engineCalls(), 'one probe at a time' ).to.equal( 1 );
 
@@ -598,9 +600,11 @@ describe( 'QuestDB hold and probe (ADR-029)', function () {
             } );
             probe.setResult( 'refused' );
 
-            // Flush #1 hangs and holds the guard. A mid-row throw then runs
-            // the recovery flush, which fails and pauses delivery.
+            // Flush #1 hangs and holds the guard. One good row is buffered,
+            // then a mid-row throw runs the recovery flush carrying it.
+            // That flush fails and pauses delivery.
             writeRows( storage, 2 );
+            storage.write( 'monitoring', GOOD_MSG, 'p1' );
             mockSender.at.onCall( mockSender.at.callCount ).throws( new Error( 'mid-row' ) );
             mockSender.flush.onSecondCall().rejects( new Error( 'ECONNREFUSED' ) );
             storage.write( 'monitoring', GOOD_MSG, 'p1' );

@@ -18,7 +18,7 @@
  */
 
 import { expect } from 'chai';
-import { describe, it } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
@@ -155,6 +155,73 @@ describe( 'address probe — names', function () {
         const { connectFn } = scriptedConnect( {} );
         const outcome = await probeAddress( classifyAddress( 'db.plant.local:9000', 'hostPort' ), { connectFn, lookupFn: sinon.stub().rejects( new Error( 'resolver down' ) ) } );
         expect( outcome.lookupError ).to.equal( 'resolver down' );
+    } );
+
+} );
+
+describe( 'address probe — the lookup has the same time limit as a connect', function () {
+
+    // A stalled resolver pool held the run-5 rig's flushes open for
+    // minutes (the 2026-09-07 getaddrinfo finding). The probe must not
+    // inherit that wait: a lookup that does not answer within the time
+    // limit fails the probe as a timeout, and no connect is attempted.
+
+    let clock;
+
+    beforeEach( function () {
+        clock = sinon.useFakeTimers( { now: 1735500000000 } );
+    } );
+
+    afterEach( function () {
+        clock.restore();
+    } );
+
+    it( 'a lookup that never answers fails as timeout at the limit, with no connect attempted', async function () {
+        const { connectFn } = scriptedConnect( {} );
+        const lookupFn = sinon.stub().returns( new Promise( () => undefined ) );
+        let outcome = null;
+        probeAddress( classifyAddress( 'db.plant.local:9000', 'hostPort' ), { connectFn, lookupFn, timeoutMs: 2000 } )
+            .then( ( result ) => {
+                outcome = result;
+            } );
+
+        await clock.tickAsync( 1999 );
+        expect( outcome ).to.equal( null );
+
+        await clock.tickAsync( 1 );
+        expect( outcome ).to.deep.equal( { ok: false, host: 'db.plant.local', port: 9000, lookupError: 'timeout', attempts: [] } );
+        expect( connectFn.called ).to.equal( false );
+    } );
+
+    it( 'a lookup that answers in time clears its timer, so nothing is left to hold the process', async function () {
+        const { connectFn } = scriptedConnect( { '127.0.0.1': 'answers' } );
+        const lookupFn = lookupTo( [ { address: '127.0.0.1', family: 4 } ] );
+        let outcome = null;
+        probeAddress( classifyAddress( 'db.plant.local:9000', 'hostPort' ), { connectFn, lookupFn } )
+            .then( ( result ) => {
+                outcome = result;
+            } );
+
+        await clock.tickAsync( 10 );
+
+        expect( outcome.ok ).to.equal( true );
+        expect( clock.countTimers() ).to.equal( 0 );
+    } );
+
+    it( 'a lookup that fails in time clears its timer too', async function () {
+        const notFound = new Error( 'nope' );
+        notFound.code = 'ENOTFOUND';
+        const { connectFn } = scriptedConnect( {} );
+        let outcome = null;
+        probeAddress( classifyAddress( 'db.plant.local:9000', 'hostPort' ), { connectFn, lookupFn: sinon.stub().rejects( notFound ) } )
+            .then( ( result ) => {
+                outcome = result;
+            } );
+
+        await clock.tickAsync( 10 );
+
+        expect( outcome.lookupError ).to.equal( 'ENOTFOUND' );
+        expect( clock.countTimers() ).to.equal( 0 );
     } );
 
 } );

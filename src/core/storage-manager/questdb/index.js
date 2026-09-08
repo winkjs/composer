@@ -44,6 +44,16 @@
  * delivery pauses: rows are held up to the ceiling and each tick
  * probes again. `flush-engine.js` carries the detail.
  *
+ * Row order. Rows reach QuestDB in write order. The engine runs one
+ * flush at a time, each flush carries its rows in write order, and
+ * the standard-library transport keeps one socket (`maxSockets: 1`),
+ * so a later request waits for the earlier one. Two sends can be
+ * outstanding only at shutdown, when the drain's final flush starts
+ * while an earlier flush is still on the wire. On the undici
+ * transport those two batches can land out of order. QuestDB orders
+ * each table by its designated timestamp, so a query never sees the
+ * difference.
+ *
  * Durability in plain words (ADR-018). `durabilityClass` is
  * `'in-memory'`. Rows live in the client's buffer until a flush reaches
  * the server. Three things lose rows: a process crash loses everything
@@ -118,7 +128,7 @@
  *
  * Setup-time throws (ADR-018 fail-fast setup):
  * - `INVALID_CONFIG`         — the supplied configuration does not
- *   work. Nine current sub-cases:
+ *   work. Ten current sub-cases:
  *     (a) required transport URL missing (`ilpUrl`, `pgUrl`);
  *     (b) PostgreSQL endpoint answered but rejected the connection
  *         — wrong credentials or a protocol-level refusal;
@@ -146,7 +156,25 @@
  *         reason that is not a network error (`fromConfig`);
  *     (i) `bufferCeilingRows` is below `flushRows` (ADR-029). Such a
  *         ceiling would shed rows before a row-triggered flush could
- *         start. Checked in `resolve-options.js`.
+ *         start. Checked in `resolve-options.js`;
+ *     (j) `tablePrefix` is not an identifier: letters, digits, `_`
+ *         and `$`, not starting with a digit. The prefix opens every
+ *         table name, and `ensure-tables.js` writes that name unquoted
+ *         in CREATE TABLE. QuestDB reads an unquoted name as one
+ *         token. So a hyphen, a space, a dot, a semicolon or a
+ *         backtick ends the statement early with "unexpected token"
+ *         (verified live on 9.4.3). QuestDB's own rule for a quoted
+ *         name is wider. Its CREATE TABLE reference says a name with
+ *         a space or a dot must be double-quoted. The server's
+ *         `TableUtils.isValidTableName` forbids `? , ' " \ / : ( ) +
+ *         * % ~`, control characters, and a leading or trailing dot
+ *         or space. Sources: https://questdb.com/docs/query/sql/create-table/
+ *         and https://questdb.com/docs/connect/compatibility/ilp/advanced-settings/.
+ *         The identifier rule is the one the semantics schema applies
+ *         to asset class, insight type and column names, so every
+ *         part of a table name follows one rule. Checked at the
+ *         schema and here, which covers the default prefix (the asset
+ *         class name) and a direct caller.
  *   Operator remediation: fix the supplied config or the relevant
  *   `QUESTDB_*` env var. The underlying error (sub-cases b and h) is
  *   preserved on `err.cause` for diagnostics.
@@ -528,6 +556,19 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
         throw err;
     }
 
+    // The prefix opens every table name, and CREATE TABLE writes that
+    // name unquoted (header sub-case (j)). The schema checks a flow's
+    // config. This check covers a direct caller and the default, which
+    // is the asset class name.
+    if ( !validators.identifier( tablePrefix ) ) {
+        const err = new Error(
+            `winkComposer/questdb: tablePrefix '${tablePrefix}' is not a valid table name prefix [INVALID_CONFIG]: ` +
+            'use letters, digits, _ and $ only, and do not start with a digit'
+        );
+        err.code = 'INVALID_CONFIG';
+        throw err;
+    }
+
     // Address policy (ADR-030), before any socket opens. `localhost` is
     // refused. An IPv6 literal is refused for the ILP path. A name gets
     // one warning per field. See header sub-cases (f), (g) and the
@@ -576,11 +617,12 @@ const createQuestDBStorage = async function ( assetClass, tablePrefix, options, 
     // TRANSPORT_UNREACHABLE: a Node syscall code like ECONNREFUSED (see
     // NETWORK_ERROR_CODES in address-policy.js). The remediation there
     // is "check the network, the firewall, whether the service is
-    // running", and the connection string may be fine. Everything else
-    // stays INVALID_CONFIG: an auth failure (the host answered), a
-    // protocol error, an unclassified throw. The fix there is the
-    // supplied config. The underlying error is preserved on `err.cause`
-    // for diagnostics either way.
+    // running", and the connection string may be fine.
+    //
+    // Everything else stays INVALID_CONFIG: an auth failure (the host
+    // answered), a protocol error, an unclassified throw. The fix there
+    // is the supplied config. The underlying error is preserved on
+    // `err.cause` for diagnostics either way.
     try {
         await pgClient.connect();
     } catch ( connErr ) {
@@ -708,7 +750,11 @@ const configSchema = {
         type: 'string',
         required: false,
         minLength: 1,
-        error: 'tablePrefix must be a non-empty string (defaults to assetClass.name when omitted)'
+        // The prefix opens every table name, written unquoted in CREATE
+        // TABLE. See header sub-case (j) for the rule and its sources.
+        validator: validators.identifier,
+        error: 'tablePrefix must use letters, digits, _ and $ only, and not start with a digit ' +
+            '(defaults to assetClass.name when omitted)'
     },
     // The five legacy keys (deprecated, ADR-029; removed in 0.8.0). They
     // keep their old validation so an existing flow still passes the
@@ -852,11 +898,12 @@ const durabilityClass = 'in-memory';
 // the failure surface deeper.
 //
 // `fields` lists exactly the top-level fields read. The slicing is
-// top-level only; column-internal fields (`type`, `resolution`) are
+// top-level only. Column-internal fields (`type`, `resolution`) are
 // read directly from the `columns` slice and validated by Layer 2
-// assertions inside `createStorage` below. A declarative shape for
-// column-internal capability is deferred until a second adapter
-// needs it.
+// assertions inside `createStorage` below.
+//
+// A declarative shape for column-internal capability is deferred
+// until a second adapter needs it.
 const semanticsRequirement = {
     assetClass: {
         required: true,

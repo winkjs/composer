@@ -278,6 +278,33 @@ describe( 'QuestDB health ladder (ADR-029)', function () {
             expect( health.consecutiveFlushFailures ).to.equal( 1 );
         } );
 
+        it( 'but a mid-row throw over an empty buffer sends nothing, so red stays red', async function () {
+            // Two failed flushes take the ladder to red. Then a poison
+            // write arrives with nothing buffered. Recovery must only reset
+            // the sender. A flush of an empty buffer resolves at once (the
+            // client returns false), and counting it as a success would
+            // print "delivery restored" while the endpoint is still dead.
+            mockSender.flush.rejects( new Error( 'disk full' ) );
+            mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'boom' ) );
+            const storage = await makeStorage();
+
+            await flushOnce( storage );
+            await flushOnce( storage );
+            expect( storage.getHealth().status ).to.equal( 'red' );
+            const flushesBefore = mockSender.flush.callCount;
+            mockSender.flush.resolves( false );
+
+            storage.write( 'monitoring', { ts: NOW, temp: 99 }, 'p1' );
+            await clock.tickAsync( 0 );
+
+            const health = storage.getHealth();
+            expect( mockSender.flush.callCount ).to.equal( flushesBefore );
+            expect( mockSender.reset.calledOnce ).to.equal( true );
+            expect( health.status ).to.equal( 'red' );
+            expect( health.consecutiveFlushFailures ).to.equal( 2 );
+            expect( health.lastFlushAt ).to.equal( null );
+        } );
+
         it( 'the final flush of a shutdown, with connected false from then on', async function () {
             const storage = await makeStorage( { flushRows: 100 } );
             await clock.tickAsync( 10 );

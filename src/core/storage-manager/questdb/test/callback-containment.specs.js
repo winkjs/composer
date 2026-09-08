@@ -239,24 +239,25 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
         it( 'contains a throwing handler; err and ctx still arrive unchanged', async function () {
             const flushError = new Error( 'ECONNREFUSED' );
             mockSender.flush.onFirstCall().rejects( flushError );
-            mockSender.floatColumn.onFirstCall().throws( new Error( 'mid-row boom' ) );
+            mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'mid-row boom' ) );
             const onDeliveryFailure = sinon.stub().throws( new Error( 'handler down' ) );
             const storage = await makeStorage( { onDeliveryFailure } );
             const spy = sinon.spy( console, 'error' );
 
-            const first = storage.write( 'monitoring', GOOD_MSG, 'p1' );
+            // One good row is buffered, so the recovery flush has something
+            // to ship. Over an empty buffer recovery is a reset alone.
+            expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).ok ).to.equal( true );
+            const poison = storage.write( 'monitoring', { ...GOOD_MSG, temp: 99 }, 'p1' );
             await settle();
 
-            expect( first.ok ).to.equal( false );
-            expect( first.error.code ).to.equal( 'SEND_FAILED' );
+            expect( poison.ok ).to.equal( false );
+            expect( poison.error.code ).to.equal( 'SEND_FAILED' );
             // Two-argument passthrough: the guard hands the raw error and
             // context to the handler exactly as the unguarded call did.
             expect( onDeliveryFailure.calledOnce ).to.equal( true );
             expect( onDeliveryFailure.firstCall.args[ 0 ] ).to.equal( flushError );
-            // The first write failed mid-row with nothing buffered, so the
-            // recovery flush carried no completed rows.
             expect( onDeliveryFailure.firstCall.args[ 1 ] ).to.deep.equal( {
-                trigger: 'recovery', rowsLost: 0, abandoned: false, probe: PROBE_ANSWERS
+                trigger: 'recovery', rowsLost: 1, abandoned: false, probe: PROBE_ANSWERS
             } );
             const lines = faultLines( spy );
             expect( lines ).to.have.lengthOf( 1 );
@@ -269,7 +270,7 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
 
         it( 'contains an async-rejecting handler — no unhandled rejection', async function () {
             mockSender.flush.onFirstCall().rejects( new Error( 'ECONNREFUSED' ) );
-            mockSender.floatColumn.onFirstCall().throws( new Error( 'mid-row boom' ) );
+            mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'mid-row boom' ) );
             const onDeliveryFailure = sinon.stub().callsFake(
                 () => Promise.reject( new Error( 'async handler down' ) )
             );
@@ -277,6 +278,7 @@ describe( 'QuestDB storage — a broken onDeliveryFailure is contained (ADR-018)
             const spy = sinon.spy( console, 'error' );
 
             storage.write( 'monitoring', GOOD_MSG, 'p1' );
+            storage.write( 'monitoring', { ...GOOD_MSG, temp: 99 }, 'p1' );
             await settle();
             await settle();
 

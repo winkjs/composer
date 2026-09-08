@@ -189,7 +189,7 @@ const handle = await flow('pump-monitor')
 
 ### Table Naming Convention
 
-Storage tables are named: `{tablePrefix}_{insightType}`. The table prefix defaults to `assetClass.name`; override it by passing `tablePrefix` in `.storage()` config.
+Storage tables are named: `{tablePrefix}_{insightType}`. The table prefix defaults to `assetClass.name`; override it by passing `tablePrefix` in `.storage()` config. A prefix follows the same rule as an asset class name: letters, digits, `_` and `$`, not starting with a digit.
 
 | Asset Class | Table Prefix | Insight Type | Table Name |
 |-------------|--------------|--------------|------------|

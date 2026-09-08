@@ -490,7 +490,10 @@ describe( 'MQTT Source Status Reporter — broken user callbacks are contained (
             }
         } );
         // Consume the initial health transition first — a transition
-        // emits its own metrics snapshot, which would add one fault.
+        // emits its own metrics snapshot, which adds one fault. That
+        // fault spends the first of the two full lines the guard prints
+        // per episode (ADR-029), so of the two ticks below only the
+        // first is reported in full; the second is counted.
         reporter.starting();
         statuses.length = 0;
         expect( function () {
@@ -500,7 +503,7 @@ describe( 'MQTT Source Status Reporter — broken user callbacks are contained (
         const faults = statuses.filter(
             ( s ) => s.error && ( s.error.code === 'CALLBACK_FAILED' )
         );
-        expect( faults ).to.have.length( 2 );
+        expect( faults ).to.have.length( 1 );
         expect( faults[ 0 ].status ).to.equal( 'yellow' );
         expect( faults[ 0 ].error.message ).to.contain( 'onMetrics' );
         expect( faults[ 0 ].error.message ).to.contain( 'metrics sink down' );
@@ -546,13 +549,17 @@ describe( 'MQTT Source Status Reporter — broken user callbacks are contained (
                 throw new Error( 'metrics sink down' );
             }
         } );
-        reporter.starting();
         const errorSpy = sinon.spy( console, 'error' );
+        reporter.starting();
         expect( function () {
             reporter.tick();
             reporter.tick();
         } ).to.not.throw();
         errorSpy.restore();
+        // Each guard prints the first two faults of an episode in full
+        // and counts the rest (ADR-029). The starting transition alone
+        // trips both guards, so two lines on each channel is the proof
+        // that each fault was contained on its own channel.
         expect( guardLines( errorSpy, 'onMetrics' ) ).to.have.length( 2 );
         expect( guardLines( errorSpy, 'onStatus' ) ).to.have.length( 2 );
         expect( unhandled.length ).to.equal( 0 );

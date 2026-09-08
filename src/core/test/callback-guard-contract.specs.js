@@ -22,6 +22,10 @@
  * four fault faces: a thrown Error, a rejected promise, a thrown
  * null, and a reasonless rejection. The last two pin the guard's
  * own fault reporter: it must survive an error with no message.
+ *
+ * The report is bounded per wrapped callback (ADR-029): a site that
+ * fires three times in one episode prints two lines. The rows keep
+ * their trigger counts; the assertion applies the bound.
  */
 
 /* eslint-disable no-sync, no-throw-literal, no-invalid-this */
@@ -44,6 +48,7 @@ import { createEmitter } from '../../core/emitter-manager/mqtt/emitter.js';
 import { makeMockClient, testCodec } from '../emitter-manager/mqtt/test/test-helpers.js';
 import { createQuestDBStorage } from '../storage-manager/questdb/index.js';
 import { makeMockSender, makeMockDeps } from '../storage-manager/questdb/test/test-helpers.js';
+import { FULL_FAULT_LINES_PER_EPISODE } from '../utils/callback-guard/index.js';
 
 // ---------------------------------------------------------------------------
 // Shared plumbing
@@ -461,7 +466,7 @@ const SITES = [
             // A blanket .rejects would also fail the shutdown flush
             // below and leave a rejecting stub firing into later tests.
             mockSender.flush.onFirstCall().rejects( new Error( 'ECONNREFUSED' ) );
-            mockSender.floatColumn.onFirstCall().throws( new Error( 'mid-row boom' ) );
+            mockSender.floatColumn.withArgs( 'temp', 99 ).throws( new Error( 'mid-row boom' ) );
             const storage = await createQuestDBStorage(
                 QDB_ASSET_CLASS, 'pump',
                 { ...QDB_OPTS, onDeliveryFailure: badCallback },
@@ -470,10 +475,13 @@ const SITES = [
             const spy = sinon.spy( console, 'error' );
             let completed = false;
             try {
-                const first = storage.write( 'monitoring', QDB_MSG, 'p1' );
+                // One good row first, so the recovery flush has rows to
+                // ship. Over an empty buffer recovery is a reset alone.
+                const good = storage.write( 'monitoring', QDB_MSG, 'p1' );
+                const poison = storage.write( 'monitoring', { ...QDB_MSG, temp: 99 }, 'p1' );
                 await settleTwice();
-                const second = storage.write( 'monitoring', QDB_MSG, 'p1' );
-                completed = ( first.ok === false ) && ( second.ok === true );
+                const next = storage.write( 'monitoring', QDB_MSG, 'p1' );
+                completed = ( good.ok === true ) && ( poison.ok === false ) && ( next.ok === true );
             } catch {
                 completed = false;
             }
@@ -503,11 +511,10 @@ const SITES = [
                     onStatus: badCallback,
                     onMessage: ( m ) => messages.push( m )
                 } );
-                // Wait on the fault lines themselves — the `complete`
-                // status needs one more EOF read after the last row, so
-                // a fixed settle after the message count can run ahead
-                // of it under load.
-                await waitFor( () => countConsoleFaults( spy, 'onStatus' ) === 3 );
+                // The first two faults (starting, headers) print before
+                // any row. The third (complete) is counted by the bound,
+                // not printed, so wait on the rows themselves.
+                await waitFor( () => messages.length === 3 );
                 await settleTwice();
                 // The replay survived its reporter: every row delivered.
                 completed = messages.length === 3;
@@ -520,7 +527,7 @@ const SITES = [
             }
             fs.unlinkSync( filePath );
             // starting + headers + complete = three contained faults
-            // (expectedFaults: 3).
+            // (expectedFaults: 3); the bound prints the first two.
             return { faults: countConsoleFaults( spy, 'onStatus' ), completed };
         }
     },
@@ -541,10 +548,10 @@ const SITES = [
                     onStatus: badCallback,
                     onMessage: ( m ) => messages.push( m )
                 } );
-                // Wait on the fault lines themselves — the `complete`
-                // status lands after the last message, so a fixed settle
-                // after the message count can run ahead of it.
-                await waitFor( () => countConsoleFaults( spy, 'onStatus' ) === 3 );
+                // The first two faults (starting, generating) print before
+                // any message. The third (complete) is counted by the
+                // bound, not printed, so wait on the messages themselves.
+                await waitFor( () => messages.length === 3 );
                 await settleTwice();
                 completed = messages.length === 3;
             } catch {
@@ -555,7 +562,7 @@ const SITES = [
                 await stop().catch( () => null );
             }
             // starting + generating + complete = three contained faults
-            // (expectedFaults: 3).
+            // (expectedFaults: 3); the bound prints the first two.
             return { faults: countConsoleFaults( spy, 'onStatus' ), completed };
         }
     }
@@ -610,10 +617,13 @@ describe( 'callback guard contract (cross-adapter, ADR-018)', function () {
                     const bad = mode.make( site.key );
                     const { faults, completed } = await site.run( bad );
                     await settleTwice();
-                    const expected = site.expectedFaults || 1;
+                    // One line per trigger, up to the bound: a site that
+                    // fires three times in one episode prints the first
+                    // two in full and counts the third (ADR-029).
+                    const expected = Math.min( site.expectedFaults || 1, FULL_FAULT_LINES_PER_EPISODE );
                     expect(
                         faults,
-                        `exactly ${expected} classified CALLBACK_FAILED report(s) — one per trigger`
+                        `exactly ${expected} classified CALLBACK_FAILED report(s) — one per trigger, up to the bound`
                     ).to.equal( expected );
                     expect( completed, 'the operation must complete despite the callback fault' ).to.equal( true );
                     expect( unhandled.length, 'unhandled rejection escaped the guard' ).to.equal( 0 );

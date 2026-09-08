@@ -351,7 +351,10 @@ The callbacks you hand to adapters are a third layer. An
 your code too, and they can throw or reject like any other. A
 shared guard arms every one of them. A fault inside a callback
 costs only that callback's output. The adapter keeps running, and
-the fault is reported once as `CALLBACK_FAILED` with the detail.
+the fault is reported as `CALLBACK_FAILED` with the detail.
+
+The report is bounded per callback. The first two faults of an
+episode print in full, then one summary a minute carries the count.
 Without the guard, one throwing status handler could kill a whole
 replay, and one rejecting delivery handler could end the process.
 

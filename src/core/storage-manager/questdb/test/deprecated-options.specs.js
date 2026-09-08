@@ -11,12 +11,19 @@
  * it: mapped to a new key, or ignored. One console line carries the
  * report, under the token `DEPRECATED_OPTION`. These tests pin the
  * report's content, its order, and the exact line.
+ *
+ * The last block runs the factory itself. The line prints once at
+ * setup, a mapped key drives the row trigger, and nothing prints when
+ * no legacy key is in use.
  */
 
 import { expect } from 'chai';
-import { describe, it } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'mocha';
+import sinon from 'sinon';
 
 import { resolveOptions, deprecationMessage } from '../resolve-options.js';
+import { createQuestDBStorage } from '../index.js';
+import { makeMockSender, makeMockDeps } from './test-helpers.js';
 
 // ============================================================================
 // FIXTURES
@@ -43,6 +50,31 @@ const ALL_LEGACY_ENV = {
     questdbAutoFlushRows: 1000,
     questdbAutoFlushIntervalMs: 500
 };
+
+const TEST_ASSET_CLASS = {
+    name: 'pump',
+    columns: {
+        ts: { type: 'timestamp' },
+        temp: { type: 'float64' }
+    },
+    insightTypes: {
+        monitoring: {
+            columns: [ 'ts', 'temp' ],
+            designatedTimestamp: 'ts'
+        }
+    }
+};
+
+const GOOD_MSG = { ts: 1735500000000, temp: 25.5 };
+
+const ADDRESSES = { ilpUrl: '127.0.0.1:9000', pgUrl: '127.0.0.1:8812' };
+
+/** Writes `count` good rows. */
+const writeRows = function ( storage, count ) {
+    for ( let i = 0; i < count; i += 1 ) {
+        storage.write( 'monitoring', GOOD_MSG, 'p1' );
+    }
+}; // writeRows()
 
 // ============================================================================
 // THE REPORT
@@ -198,6 +230,71 @@ describe( 'deprecationMessage', function () {
         const { deprecations } = resolveOptions( ALL_LEGACY_CONFIG, ALL_LEGACY_ENV );
 
         expect( deprecationMessage( deprecations ) ).to.not.include( '\n' );
+    } );
+
+} );
+
+// ============================================================================
+// THE FACTORY
+// ============================================================================
+
+describe( 'createQuestDBStorage — deprecated keys', function () {
+
+    let mockSender;
+    let deps;
+
+    const makeStorage = ( options = {} ) => createQuestDBStorage(
+        TEST_ASSET_CLASS,
+        'pump',
+        { ...ADDRESSES, ...options },
+        deps
+    );
+
+    beforeEach( function () {
+        mockSender = makeMockSender();
+        deps = makeMockDeps( mockSender );
+    } );
+
+    afterEach( function () {
+        sinon.restore();
+    } );
+
+    it( 'prints one DEPRECATED_OPTION line naming every legacy key in use', async function () {
+        const warnSpy = sinon.stub( console, 'warn' );
+        const storage = await makeStorage( { flushMode: 'manual', autoFlushRows: 4 } );
+
+        const lines = warnSpy.getCalls()
+            .map( ( call ) => String( call.args[ 0 ] ) )
+            .filter( ( line ) => line.includes( '[DEPRECATED_OPTION]' ) );
+        expect( lines ).to.have.lengthOf( 1 );
+        expect( lines[ 0 ] ).to.include( 'flushMode is ignored' );
+        expect( lines[ 0 ] ).to.include( 'autoFlushRows maps to flushRows' );
+
+        await storage.shutdown();
+    } );
+
+    it( 'a mapped legacy autoFlushRows sets the row trigger', async function () {
+        sinon.stub( console, 'warn' );
+        const storage = await makeStorage( { autoFlushRows: 4 } );
+
+        writeRows( storage, 3 );
+        expect( mockSender.flush.called ).to.equal( false );
+        writeRows( storage, 1 );
+        expect( mockSender.flush.callCount ).to.equal( 1 );
+
+        await storage.shutdown();
+    } );
+
+    it( 'prints nothing when no legacy key is in use', async function () {
+        const warnSpy = sinon.stub( console, 'warn' );
+        const storage = await makeStorage( { flushRows: 4 } );
+
+        const lines = warnSpy.getCalls()
+            .map( ( call ) => String( call.args[ 0 ] ) )
+            .filter( ( line ) => line.includes( '[DEPRECATED_OPTION]' ) );
+        expect( lines ).to.have.lengthOf( 0 );
+
+        await storage.shutdown();
     } );
 
 } );

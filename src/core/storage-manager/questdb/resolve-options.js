@@ -62,9 +62,17 @@
  * with `INVALID_CONFIG`.
  *
  * The client constants used in the deadline are `@questdb/nodejs-client`
- * 4.2.0 facts: `request_timeout` and `retry_timeout` both default to
- * 10 s, and `request_min_throughput` to 100 KiB per second. Re-verify
- * them on a client upgrade. A configured `requestTimeout` or
+ * 4.2.0 facts, cited by line in the client's `dist/es/index.mjs`. The
+ * defaults sit at lines 230 to 234: `request_min_throughput` 102400
+ * bytes a second, `request_timeout` 10 s, `retry_timeout` 10 s. The
+ * throughput option is documented at line 404 and read at line 275.
+ * The request timeout grows with the bytes sent at line 1142.
+ *
+ * The retry clock starts when the first attempt ends, at line 1183.
+ * The window is checked when a later attempt ends, at lines 1186 to
+ * 1188. The backoff between attempts doubles and stops at 1000 ms,
+ * with a jitter of up to 5 ms, at lines 1192 to 1194. Re-verify these
+ * lines on a client upgrade. A configured `requestTimeout` or
  * `retryTimeout` replaces its default in the sum, so an operator who
  * lengthens a timeout lengthens the deadline with it.
  *
@@ -392,4 +400,4 @@ const deprecationMessage = function ( deprecations ) {
 // EXPORTS
 // ============================================================================
 
-export { resolveOptions, flushDeadlineFor, deprecationMessage };
+export { resolveOptions, flushDeadlineFor, deprecationMessage, CLIENT_MAX_RETRY_BACKOFF_MS };

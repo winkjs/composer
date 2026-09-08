@@ -276,6 +276,31 @@ describe( 'QuestDB flush accounting (copy-out semantics)', function () {
 
     } );
 
+    describe( 'the one-row count drift on an append the client refused (deferred, ADR-029)', function () {
+
+        // The client's at() rejects after the plan has returned, so the
+        // row was already counted as buffered although it never entered
+        // the client's buffer. The count overstates the buffer by one
+        // row until the next flush settles. The fix is deferred (see the
+        // flush-engine header). This case pins the current behaviour so
+        // the limit has a test and not only a comment. Flip the two
+        // expectations to 0 when the fix lands.
+        it( 'counts the refused row as buffered until the next flush settles [pending fix]', async function () {
+            mockSender.at.callsFake( () => Promise.reject( new Error( 'buffer size exceeded' ) ) );
+            const storage = await makeStorage( { onDeliveryFailure: sinon.stub() } );
+
+            expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).ok ).to.equal( true );
+            await new Promise( ( resolve ) => setImmediate( resolve ) );
+
+            expect( storage.getHealth().bufferedRows ).to.equal( 1 );
+            expect( storage.getPressure() ).to.equal( 0.01 );
+
+            await storage.shutdown( { timeout: 1000 } );
+            expect( storage.getPressure() ).to.equal( 0 );
+        } );
+
+    } );
+
     describe( 'pressure stays visible while a flush is in flight', function () {
 
         it( 'a hung timer flush reads as pressure, not as delivered', async function () {

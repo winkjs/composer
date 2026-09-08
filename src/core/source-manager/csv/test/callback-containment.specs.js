@@ -7,9 +7,11 @@
  * the user's `onStatus`. Per ADR-018, a bug inside that callback must
  * cost only its own output: the replay keeps reading, every row still
  * reaches `onMessage`, and the completion status is still produced.
- * Each fault becomes one classified console line in this source's
- * family. Without the guard, a throwing `onStatus` at the `starting`
- * site killed the whole replay before the first row.
+ * Each fault is contained and reported as a classified console line in
+ * this source's family. The guard bounds the report per callback
+ * (ADR-029): the first two faults of an episode print in full, later
+ * ones are counted. Without the guard, a throwing `onStatus` at the
+ * `starting` site killed the whole replay before the first row.
  */
 
 /* eslint-disable no-sync */
@@ -93,9 +95,10 @@ describe( 'CSV source — a broken user onStatus is contained (ADR-018)', functi
             const completeCall = onStatus.getCalls()
                 .find( ( call ) => call.args[ 0 ].phase === 'complete' );
             expect( completeCall.args[ 0 ].count ).to.equal( 3 );
-            // One classified line per contained fault, in this source's family.
+            // Three contained faults, two classified lines in this
+            // source's family: the bound prints the first two in full.
             const lines = faultLines( spy );
-            expect( lines ).to.have.lengthOf( 3 );
+            expect( lines ).to.have.lengthOf( 2 );
             expect( lines[ 0 ] ).to.contain( 'winkComposer/csvSource' );
             expect( lines[ 0 ] ).to.contain( 'reporter down' );
             expect( unhandled ).to.have.lengthOf( 0 );
@@ -123,10 +126,11 @@ describe( 'CSV source — a broken user onStatus is contained (ADR-018)', functi
 
             // The malformed row cost itself; the rows around it arrived.
             expect( messages ).to.have.lengthOf( 2 );
-            // starting, headers, the DECODE_ERROR report, complete.
+            // starting, headers, the DECODE_ERROR report, complete: four
+            // contained faults, of which the bound prints the first two.
             expect( onStatus.callCount ).to.equal( 4 );
             const lines = faultLines( spy );
-            expect( lines ).to.have.lengthOf( 4 );
+            expect( lines ).to.have.lengthOf( 2 );
             expect( unhandled ).to.have.lengthOf( 0 );
             await stop();
         } finally {
@@ -167,8 +171,9 @@ describe( 'CSV source — a broken user onStatus is contained (ADR-018)', functi
             await settle();
 
             expect( messages ).to.have.lengthOf( 1 );
+            // Three rejections, two lines: the bound prints the first two.
             const lines = faultLines( spy );
-            expect( lines ).to.have.lengthOf( 3 );
+            expect( lines ).to.have.lengthOf( 2 );
             expect( lines[ 0 ] ).to.contain( 'async reporter down' );
             expect( unhandled ).to.have.lengthOf( 0 );
             await stop();
