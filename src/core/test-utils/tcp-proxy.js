@@ -130,24 +130,76 @@ export const stopProxy = function ( server ) {
  * so the client's write completes and the client then waits for a
  * response that never comes. That is the shape of an endpoint whose
  * process is alive but wedged. A closed port has a different shape:
- * it refuses at once. Returns the `net.Server` once it is listening;
- * pass it to `stopProxy()` to tear down, sockets included.
+ * it refuses at once.
+ *
+ * The hole has a second mode. After `forwardTo( targetPort )` every
+ * new connection is relayed to that port, like `startProxy()`. After
+ * `swallow()` the hole is back: new connections are swallowed, and a
+ * connection that was being relayed goes quiet from that instant. Its
+ * service side is dropped and its client side stays open, so a
+ * request already on a kept-alive socket waits for an answer that
+ * never comes. The switch happens on the live server, so the port
+ * never closes and no request on the wire is reset. A port bounce
+ * would reset one, and the client reports a reset as a socket error,
+ * not as a hang.
+ *
+ * Returns the `net.Server` once it is listening, with `forwardTo()`
+ * and `swallow()` attached; pass it to `stopProxy()` to tear down,
+ * sockets included.
  *
  * @param {number} port
  * @returns {Promise<net.Server>}
  */
 export const startBlackHole = function ( port ) {
     const sockets = new Set();
-    const server = net.createServer( function ( clientSocket ) {
-        sockets.add( clientSocket );
-        clientSocket.on( 'close', function () {
-            sockets.delete( clientSocket );
+    // Client socket → service socket, for the connections being relayed.
+    const relayed = new Map();
+    let targetPort = null;
+
+    const track = function ( socket ) {
+        sockets.add( socket );
+        socket.on( 'close', function () {
+            sockets.delete( socket );
         } );
         // See file-header note on swallowed errors.
-        clientSocket.on( 'error', function () {} );
-        // Consume the request bytes so the client's write completes.
-        clientSocket.resume();
+        socket.on( 'error', function () {} );
+    };
+
+    const relay = function ( clientSocket, servicePort ) {
+        const targetSocket = net.connect( servicePort, '127.0.0.1', function () {
+            clientSocket.pipe( targetSocket );
+            targetSocket.pipe( clientSocket );
+        } );
+        track( targetSocket );
+        relayed.set( clientSocket, targetSocket );
+        clientSocket.on( 'close', function () {
+            relayed.delete( clientSocket );
+            targetSocket.destroy();
+        } );
+    };
+
+    const server = net.createServer( function ( clientSocket ) {
+        track( clientSocket );
+        if ( targetPort === null ) {
+            // Consume the request bytes so the client's write completes.
+            clientSocket.resume();
+            return;
+        }
+        relay( clientSocket, targetPort );
     } );
+    server.forwardTo = function ( servicePort ) {
+        targetPort = servicePort;
+    };
+    server.swallow = function () {
+        targetPort = null;
+        for ( const [ clientSocket, targetSocket ] of relayed ) {
+            clientSocket.unpipe( targetSocket );
+            targetSocket.unpipe( clientSocket );
+            targetSocket.destroy();
+            clientSocket.resume();
+        }
+        relayed.clear();
+    };
     // eslint-disable-next-line no-underscore-dangle
     server._sockets = sockets;
     return new Promise( function ( resolve ) {

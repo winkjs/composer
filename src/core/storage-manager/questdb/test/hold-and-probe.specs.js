@@ -128,6 +128,49 @@ describe( 'QuestDB hold and probe (ADR-029)', function () {
         sinon.restore();
     } );
 
+    describe( 'the gate survives a probe outcome its describer cannot read', function () {
+
+        // The gate must not depend on the probe's own robustness. A
+        // probe that returns a shape the describer cannot read would
+        // otherwise reject the chain. The guard would then stay held
+        // for ever, with no report (fresh-eyes review, 2026-09-08).
+
+        it( 'reports the loss with a fallback finding, pauses, and the guard is free for the resume', async function () {
+            // The two setup probes pass. The engine's first probe returns
+            // an unreadable shape. Every later probe passes again.
+            let calls = 0;
+            deps.probeFn = function ( address ) {
+                calls += 1;
+                return Promise.resolve( ( calls === 3 ) ? {} : probeOutcomeFor( address, 'answers' ) );
+            };
+            mockSender.flush.onFirstCall().rejects( new Error( 'ECONNREFUSED' ) );
+            const onDeliveryFailure = sinon.stub();
+            const warnSpy = sinon.spy( console, 'warn' );
+            const storage = await makeStorage( { flushRows: 2, flushIntervalMs: 1000, onDeliveryFailure } );
+
+            writeRows( storage, 2 );
+            writeRows( storage, 1 );
+            await clock.tickAsync( 0 );
+
+            expect( onDeliveryFailure.callCount, 'the loss is reported once' ).to.equal( 1 );
+            expect( onDeliveryFailure.firstCall.args[ 1 ].probe ).to.deep.equal( {} );
+            expect( storage.getHealth().pausedSince, 'an unreadable outcome pauses' ).to.equal( NOW );
+            const pauseLines = linesWith( warnSpy, '[CIRCUIT_OPEN]' );
+            expect( pauseLines ).to.have.lengthOf( 1 );
+            expect( pauseLines[ 0 ] ).to.include( 'the probe\'s description failed: ' );
+
+            // The tick probes again, the probe passes, and the held row
+            // flushes: the guard was released, not held for ever.
+            await clock.tickAsync( 1000 );
+            expect( calls ).to.equal( 4 );
+            expect( storage.getHealth().pausedSince ).to.equal( null );
+            expect( mockSender.flush.callCount, 'the resume flush started' ).to.equal( 2 );
+
+            await storage.shutdown();
+        } );
+
+    } );
+
     describe( 'a failed engine flush runs the probe', function () {
 
         it( 'once per failed flush, against the ILP endpoint', async function () {

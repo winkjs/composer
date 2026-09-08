@@ -326,8 +326,15 @@ export const runFlow = async function ( flowName, specsOrSpecsByCase, importSet,
     // the process as unhandled. The classified log keeps the loss
     // loud without the crash, and a caller that later awaits
     // `handle.shutdown()` still receives the memoized rejection.
+    //
+    // The exit code carries the loss too. This drain has no awaiting
+    // caller, and the flow left the shutdown manager's list when the
+    // drain began, so no other path can set it. A batch script that
+    // replays a file and loses rows at the end must exit 1, the same
+    // as the signal path does (ADR-018 §7).
     const observedShutdown = function () {
         shutdown().catch( function ( err ) {
+            process.exitCode = 1;
             logger.error(
                 `winkComposer/flow '${flowName}': shutdown failed ` +
                 `[${( err && err.code ) || 'UNKNOWN'}]: ${( err && err.message ) || String( err )}`

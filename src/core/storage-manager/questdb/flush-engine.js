@@ -41,6 +41,19 @@
  * finding when a probe ran. The process keeps running either way. An
  * unattended deployment must report a lost batch, not stop on it.
  *
+ * The lines are bounded during a streak. A server that answers an
+ * error for hours never pauses delivery, because the probe passes, so
+ * a flush fails every interval. The first two losses of an episode
+ * print in full. After that the losses are counted, and one summary
+ * line prints per minute of streak with the counts. The handler still
+ * hears every loss.
+ *
+ * One count is off by one row per rare event. When the client refuses
+ * an append at its byte ceiling, its promise rejects after the plan
+ * has returned, so the row was already counted as buffered. The next
+ * flush then carries one row fewer than the count says. The drift is
+ * one row per such event, and it resets when that flush settles.
+ *
  * What a failure sets in motion. A failed or abandoned engine flush
  * goes to the gate. The gate runs the ADR-030 probe once, holds the
  * single-flight guard until the probe answers, and pauses delivery
@@ -251,6 +264,20 @@ const HEALTH_PRESSURE_YELLOW_THRESHOLD = 0.66;
  */
 const HEALTH_PRESSURE_RED_THRESHOLD = 1;
 
+/**
+ * Lost flushes of an episode that print in full when no handler is
+ * given. They stand beside the degraded and red edge lines; after them
+ * the losses are counted into summaries.
+ */
+const FULL_LOSS_LINES_PER_EPISODE = 2;
+
+/**
+ * How often a summary line prints while a streak of lost flushes goes
+ * on with no handler. A server that answers an error for hours would
+ * otherwise print one line per interval for the whole night.
+ */
+const FAILURE_SUMMARY_INTERVAL_MS = 60000;
+
 // ============================================================================
 // THE ENGINE
 // ============================================================================
@@ -323,6 +350,11 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
     // So the accept branch never looks at it.
     let shedding = false;
     let shedRows = 0;
+    // The loss-line summary during a streak with no handler: when the
+    // last line printed, and the losses counted since.
+    let summarySince = 0;
+    let summaryFlushes = 0;
+    let summaryRows = 0;
 
     // The ledger of flushes in flight (exact counts, deadlines) and the
     // gate that pauses delivery while the endpoint is unreachable. The
@@ -363,10 +395,39 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
             } );
             return;
         }
-        const line = abandoned ?
-            err.message :
-            `winkComposer/questdb: flush failed, ${rows} row(s) lost [DELIVERY_FAILED]: ${err.message}`;
-        logger.error( ( probed === null ) ? line : `${line}; probe: ${probed.finding}` );
+        // The lines are bounded during a streak. A server that answers
+        // an error for hours never pauses delivery, because the probe
+        // passes, so a flush fails every interval. The first losses of
+        // an episode print in full, beside the ladder's edge lines. The
+        // rest are counted, and one summary line prints per interval of
+        // streak. The restored edge line closes the episode with its
+        // totals. The ledger already counts this loss, and single
+        // flight means no other flush settles before this report.
+        const finding = ( probed === null ) ? '' : `; probe: ${probed.finding}`;
+        const now = Date.now();
+        if ( ledger.consecutiveFlushFailures <= FULL_LOSS_LINES_PER_EPISODE ) {
+            const line = abandoned ?
+                err.message :
+                `winkComposer/questdb: flush failed, ${rows} row(s) lost [DELIVERY_FAILED]: ${err.message}`;
+            logger.error( `${line}${finding}` );
+            summarySince = now;
+            summaryFlushes = 0;
+            summaryRows = 0;
+            return;
+        }
+        summaryFlushes += 1;
+        summaryRows += rows;
+        if ( ( now - summarySince ) < FAILURE_SUMMARY_INTERVAL_MS ) {
+            return;
+        }
+        const seconds = Math.round( ( now - summarySince ) / 1000 );
+        logger.error(
+            `winkComposer/questdb: delivery still failing, ${summaryFlushes} flush(es) and ${summaryRows} row(s) ` +
+            `lost in the last ${seconds} s [DELIVERY_FAILED]: ${err.message}${finding}`
+        );
+        summarySince = now;
+        summaryFlushes = 0;
+        summaryRows = 0;
     }; // reportFlushLoss()
 
     /** Lowers the single-flight guard. */

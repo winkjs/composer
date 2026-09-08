@@ -18,8 +18,15 @@
  * Single flight bounds that. One request hangs at a time, the buffer
  * grows only to the ceiling, and the abandonment count grows by at
  * most one per deadline period. The handle count is one, whatever the
- * length of the outage. This leg pins each of those bounds, then
- * replaces the hole with the proxy and asserts recovery.
+ * length of the outage. This leg pins each of those bounds, then lets
+ * the server answer again and asserts recovery.
+ *
+ * The hole sits on the port for the whole leg. It forwards to QuestDB
+ * while rows should land, and swallows while they should not. The
+ * switch happens on the live server, so no request on the wire is
+ * ever reset. A port bounce would reset one, and a deadline that fired
+ * in the gap would probe a closed port and pause delivery. That shape
+ * belongs to the outage specs, not here.
  *
  * What the client does after an abandonment matters for recovery. On
  * its request timeout the client destroys the request, which frees
@@ -40,7 +47,7 @@ import { describe, it, before, after, beforeEach, afterEach } from 'mocha';
 
 import { flow } from '../../../../composer.js';
 import * as testHarness from '../../../source-manager/test-harness/index.js';
-import { startProxy, stopProxy, startBlackHole } from '../../../test-utils/tcp-proxy.js';
+import { stopProxy, startBlackHole } from '../../../test-utils/tcp-proxy.js';
 import { storages as wireStorages } from '../../../wiring/index.js';
 import questdbAdapter from '../index.js';
 import {
@@ -49,9 +56,9 @@ import {
     captureConsole, adapterLinesOf
 } from './slow-helpers.js';
 
-const PROXY_PORT    = 19003;
-const PROXY_ILP_URL = `127.0.0.1:${PROXY_PORT}`;
-const RUN_PREFIX    = `hole_${Date.now()}`;
+const HOLE_PORT    = 19003;
+const HOLE_ILP_URL = `127.0.0.1:${HOLE_PORT}`;
+const RUN_PREFIX   = `hole_${Date.now()}`;
 
 const SAMPLE_MS         = 100;
 const FLUSH_INTERVAL_MS = 300;
@@ -66,7 +73,6 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
 
     let qdbUp = false;
     let pgClient = null;
-    let proxy = null;
     let hole = null;
     let capture = null;
     const tablesToCleanUp = [];
@@ -102,10 +108,6 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
             await stopProxy( hole );
             hole = null;
         }
-        if ( proxy ) {
-            await stopProxy( proxy );
-            proxy = null;
-        }
     } );
 
     it( 'abandons at the deadline without pausing, one request at a time, and recovers when the server answers again', async function () {
@@ -113,7 +115,9 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
         const tableName = `${tablePrefix}_samples`;
         tablesToCleanUp.push( tableName );
 
-        proxy = await startProxy( PROXY_PORT, QUESTDB_REAL_PORT );
+        // The hole forwards to QuestDB until the outage begins.
+        hole = await startBlackHole( HOLE_PORT );
+        hole.forwardTo( QUESTDB_REAL_PORT );
         capture = captureConsole();
 
         const deliveryFailures = [];
@@ -126,12 +130,12 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
             } )
             .assetClass( assetClass )
             .storage( questdbAdapter, {
-                ilpUrl: PROXY_ILP_URL,
+                ilpUrl: HOLE_ILP_URL,
                 pgUrl: QUESTDB_PG_URL,
                 tablePrefix,
                 flushRows: 2000,
                 flushIntervalMs: FLUSH_INTERVAL_MS,
-                bufferCeilingRows: 2000,
+                bufferCeilingRows: 4000,
                 retryTimeout: 500,
                 requestTimeout: 1000,
                 flushDeadlineMs: FLUSH_DEADLINE_MS,
@@ -152,10 +156,9 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
         const baseline = await waitForHealth( storage, ( h ) => h.lastFlushAt !== null, 3000 );
         expect( baseline.status ).to.equal( 'green' );
 
-        // Phase 2: the hole. Requests are accepted and never answered.
-        await stopProxy( proxy );
-        proxy = null;
-        hole = await startBlackHole( PROXY_PORT );
+        // Phase 2: the hole. Requests are accepted and never answered,
+        // on the kept-alive socket too.
+        hole.swallow();
         const holeStart = Date.now();
         const samples = [];
         while ( ( Date.now() - holeStart ) < HOLE_MS ) {
@@ -164,10 +167,10 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
         }
         const reportsInHole = deliveryFailures.length;
 
-        // Phase 3: the server answers again.
-        await stopProxy( hole );
-        hole = null;
-        proxy = await startProxy( PROXY_PORT, QUESTDB_REAL_PORT );
+        // Phase 3: the server answers again. The request already in the
+        // hole stays there until the client's own timeout frees the
+        // socket; every new connection reaches QuestDB.
+        hole.forwardTo( QUESTDB_REAL_PORT );
         const returnedAt = Date.now();
         const recovered = await waitForHealth(
             storage,
@@ -198,8 +201,10 @@ describe( 'QuestDB Hardening — a server that accepts and never answers', funct
         console.log( `    rows landed:           ${landed} of ${produced} (${rowsLost} reported lost)` );
 
         // The first loss is an abandonment at the deadline, and the
-        // probe passed: the hole accepts connections.
-        expect( reportsInHole ).to.be.at.least( 1 );
+        // probe passed: the hole accepts connections. Eight seconds in
+        // the hole with a 1.5-second deadline give at least three
+        // abandonments; one would prove only that the deadline exists.
+        expect( reportsInHole ).to.be.at.least( 3 );
         expect( deliveryFailures[ 0 ].ctx.abandoned ).to.equal( true );
         expect( deliveryFailures[ 0 ].ctx.probe.ok ).to.equal( true );
         expect( deliveryFailures[ 0 ].message ).to.include( `${FLUSH_DEADLINE_MS} ms` );

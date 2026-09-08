@@ -142,7 +142,7 @@ describe( 'QuestDB Hardening — a server that answers with an HTTP error', func
                 tablePrefix,
                 flushRows: 2000,
                 flushIntervalMs: FLUSH_INTERVAL_MS,
-                bufferCeilingRows: 2000,
+                bufferCeilingRows: 4000,
                 retryTimeout: RETRY_TIMEOUT_MS,
                 requestTimeout: REQUEST_TIMEOUT_MS,
                 onDeliveryFailure: function ( err, ctx ) {
@@ -257,9 +257,10 @@ describe( 'QuestDB Hardening — a server that answers with an HTTP error', func
         const opts = { flowName: 'httpError400', statusCode: 400 };
         const result = await runResponder( opts );
         assertErrorAnswerTruth( opts, result );
-        // At once: within one tick of the responder switching to
-        // answers, plus the request itself.
-        expect( result.firstReportAfterMs ).to.be.lessThan( FLUSH_INTERVAL_MS + 200 );
+        // At once: before one retry budget could have passed. The 500
+        // leg below cannot report earlier than that budget, so this
+        // bound is what tells the two apart (measured 250 ms).
+        expect( result.firstReportAfterMs ).to.be.lessThan( RETRY_TIMEOUT_MS );
     } );
 
     it( '500: the client retries inside its budget first, then composer reports the batch', async function () {

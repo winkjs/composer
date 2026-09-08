@@ -98,6 +98,8 @@ A flow with a source stops when the source runs out of data. A headless flow has
 
 The stop also sets the process exit code. Exit 0 means every flow drained clean. Exit 1 means the stop was forced by the timeout, or some flow's drain failed and lost buffered data. Each such loss is also logged as one classified line. So a supervisor such as systemd or Docker can treat a data-losing stop as a failure.
 
+A flow that ends on its own sets the same exit code when its drain loses data. A file replay that reaches the end of its file is the common case. So a batch script learns of the loss too.
+
 Either path runs the same drain: stop the source if there is one, flush the emitters, then flush the storage.
 
 **A delivery failure during the drain is loud, and it fails the stop.** Each sink gets its full chance to deliver what it holds. When one cannot finish in time, the framework logs one classified line naming the sink, the reason, and the exact count. The drain still completes for the other sinks. Then `handle.shutdown()` rejects with that sink's error, so a program that awaits it learns of the loss, and the signal path exits 1. The log line looks like this:

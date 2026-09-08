@@ -115,6 +115,91 @@ describe( 'buildResolutionQuantizer', function () {
 
     } );
 
+    describe( 'resolutions whose inverse is a whole number, beyond powers of ten', function () {
+
+        // A grid step of 0.25 needs two decimal places. The old
+        // decimal-place rule, ceil( -log10( 0.25 ) ) = 1, cut 23.75
+        // to 23.8, off the grid. Division by the exact inverse gives
+        // the nearest double to the grid value with no string.
+
+        it( 'resolution 0.25 snaps to quarters and keeps both decimals', function () {
+            const q = buildResolutionQuantizer( 0.25 );
+
+            expect( q( 23.7 ) ).to.equal( 23.75 );
+            expect( q( 23.6 ) ).to.equal( 23.5 );
+            expect( q( 23.87 ) ).to.equal( 23.75 );
+            expect( q( 23.88 ) ).to.equal( 24 );
+        } );
+
+        it( 'resolution 0.5 snaps to halves', function () {
+            const q = buildResolutionQuantizer( 0.5 );
+
+            expect( q( 23.7 ) ).to.equal( 23.5 );
+            expect( q( 23.76 ) ).to.equal( 24 );
+        } );
+
+        it( 'resolution 0.125 snaps to eighths and keeps three decimals', function () {
+            const q = buildResolutionQuantizer( 0.125 );
+
+            expect( q( 23.6 ) ).to.equal( 23.625 );
+            expect( q( 23.55 ) ).to.equal( 23.5 );
+        } );
+
+        it( 'resolution 0.2 snaps to fifths', function () {
+            const q = buildResolutionQuantizer( 0.2 );
+
+            expect( q( 23.456 ) ).to.equal( 23.4 );
+            expect( q( 23.5 ) ).to.equal( 23.6 );
+        } );
+
+    } );
+
+    describe( 'resolutions with no exact inverse', function () {
+
+        it( 'resolution 0.3 still snaps to the grid and trims the noise', function () {
+            // 1 / 0.3 is not a whole number, so this takes the string
+            // path: multiply, round, multiply, then trim to one decimal.
+            const q = buildResolutionQuantizer( 0.3 );
+
+            expect( q( 23.456 ) ).to.equal( 23.4 );
+            expect( q( 0.44 ) ).to.equal( 0.3 );
+            expect( q( 0.46 ) ).to.equal( 0.6 );
+        } );
+
+        it( 'resolution 7 snaps to multiples of 7 without noise', function () {
+            const q = buildResolutionQuantizer( 7 );
+
+            expect( q( 100 ) ).to.equal( 98 );
+            expect( q( 102 ) ).to.equal( 105 );
+        } );
+
+        it( 'resolution 0.15 keeps the two decimals its grid needs', function () {
+            // The old rule, ceil( -log10( 0.15 ) ) = 1, would have cut
+            // 0.45 to 0.5.
+            const q = buildResolutionQuantizer( 0.15 );
+
+            expect( q( 0.44 ) ).to.equal( 0.45 );
+            expect( q( 0.5 ) ).to.equal( 0.45 );
+        } );
+
+        it( 'resolution 2.5 keeps the one decimal its grid needs', function () {
+            // The old rule gave zero decimals to any resolution of one
+            // or more, so 7.5 became 8.
+            const q = buildResolutionQuantizer( 2.5 );
+
+            expect( q( 6.3 ) ).to.equal( 7.5 );
+            expect( q( 6 ) ).to.equal( 5 );
+        } );
+
+        it( 'a resolution below one millionth prints in exponent form and still trims right', function () {
+            const q = buildResolutionQuantizer( 3e-7 );
+
+            expect( q( 1e-6 ) ).to.equal( 9e-7 );
+            expect( q( 1.5e-6 ) ).to.equal( 1.5e-6 );
+        } );
+
+    } );
+
     describe( 'on-grid values', function () {
 
         it( 'values already on the grid pass through unchanged', function () {

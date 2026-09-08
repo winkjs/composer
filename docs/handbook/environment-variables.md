@@ -116,7 +116,7 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 | `QUESTDB_MAX_BUF_SIZE` | unset | Largest size the client's send buffer may grow to, bytes (client default when unset) |
 | `QUESTDB_FLUSH_ROWS` | unset | Rows that start a send; the adapter uses 5000 when unset |
 | `QUESTDB_FLUSH_INTERVAL_MS` | unset | The send timer; the adapter uses 1000 when unset |
-| `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset |
+| `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset, and never below twice them |
 | `QUESTDB_FLUSH_DEADLINE_MS` | unset | A fixed longest wait for one send; derived from the send's size when unset |
 | `QUESTDB_DATABASE` | `qdb` | Database name |
 | `QUESTDB_USER` | `admin` | User |

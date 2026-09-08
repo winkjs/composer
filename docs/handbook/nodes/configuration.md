@@ -475,8 +475,8 @@ flow('pipeline')
 | `autoFlushIntervalMs` | number | — | Deprecated, removed in 0.8.0. Accepted and ignored |
 | `flushRows` | number | `5000` | Rows that start a send from inside the write. About 0.65 to 1.5 MB per request |
 | `flushIntervalMs` | number | `1000` | The send timer. Whatever is buffered is sent this often, so rows land within about a second |
-| `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1000 rows a second, hours at plant rate |
-| `flushDeadlineMs` | number | derived per send | Longest wait for one send before it is declared failed. Derived from the rows it carries, from 25 seconds for one row to 275 seconds for a full catch-up send. Set it to fix one value for every send |
+| `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory, counting a send in flight. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1000 rows a second, hours at plant rate. At least 2 × `flushRows`, one batch in flight and one buffering; a smaller value fails setup |
+| `flushDeadlineMs` | number | derived per send | Longest wait for one send before it is declared failed. Derived from the rows it carries, from 36 seconds for one row to about 9 minutes for a full catch-up send. It outlasts the client's own retries, so a real answer arrives first. Set it to fix one value for every send |
 | `stdlibHttp` | boolean | `true` | The HTTP transport. `true` is Node's standard library, whose requests always end. `false` is the client's undici transport. See the transport note below |
 | `requestTimeout` | number | client default | How long one send may wait for an answer, in milliseconds. The client uses 10 seconds when unset. A longer value lengthens the derived deadline with it |
 | `retryTimeout` | number | client default | How long the client retries a failed send, in milliseconds. The client uses 10 seconds when unset |
@@ -541,6 +541,7 @@ A QuestDB restart therefore costs only the send that was on the wire when the po
 - `DELIVERY_HEALTH` at `warn` when the first send fails, at `error` when delivery turns red, and at `warn` when it is restored. The restored line names the episode length and the rows reported lost in it.
 - `CIRCUIT_OPEN` at `warn` when delivery pauses, and again when it resumes.
 - `STORAGE_FULL` at `warn` when the first row of an episode is refused at the ceiling, and again when the buffer has room, with the count refused.
+- `DELIVERY_FAILED` at `error` for a lost send, only when no `onDeliveryFailure` function is given. The first two losses of an episode print in full. After that the losses are counted, and one summary line a minute names the sends and rows lost since the last line. A server that answers an error for hours therefore prints one line a minute, not one a second.
 
 A whole outage prints six lines at most. All of them print at `warn` or above, so a log level of `warn` still shows every one. A log reader and a health reader see the same story, because one function derives both.
 
@@ -560,7 +561,7 @@ storage.getHealth()
 
 Inside a flow, the storage handle is not reachable yet. A flow-level `getHealth()` on the run handle is planned for a later release. Until then, a flow learns of delivery trouble through `onDeliveryFailure` and the framework's log lines.
 
-**Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain — the final flush failed, or a hung flush outlived the shutdown budget — shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Inside a flow, the framework catches this rejection and logs it — one classified line naming the storage, the code, and the count — so the flow's own shutdown still completes for the other sinks.
+**Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain, shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Rows remain when the final flush failed, or when a hung flush outlived the shutdown budget. Inside a flow, the framework logs this rejection as one classified line naming the storage, the code, and the count. The other sinks finish their drain. Then the flow's own `shutdown()` rejects with the same error. The process exits 1, on the signal path and when a finite source ends the flow itself.
 
 **A failed startup names its cause.** When the adapter cannot start, the error's `code` tells you which of two different problems you have — so you fix the right thing:
 

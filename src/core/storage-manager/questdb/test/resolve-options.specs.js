@@ -155,9 +155,9 @@ describe( 'resolveOptions — the derived ceiling', function () {
     } );
 
     it( 'lets an explicit bufferCeilingRows win over the derivation', function () {
-        const { settings } = resolveOptions( { flushRows: 5000, bufferCeilingRows: 7500 }, BASE_ENV );
+        const { settings } = resolveOptions( { flushRows: 5000, bufferCeilingRows: 12500 }, BASE_ENV );
 
-        expect( settings.bufferCeilingRows ).to.equal( 7500 );
+        expect( settings.bufferCeilingRows ).to.equal( 12500 );
     } );
 
     it( 'lets a bufferCeilingRows from the environment win over the derivation', function () {
@@ -174,57 +174,69 @@ describe( 'resolveOptions — the derived ceiling', function () {
 
 describe( 'flushDeadlineFor — the deadline of one flush', function () {
 
-    // The client's bound for a batch, plus a margin: retry window 10 s,
-    // request timeout 10 s, transfer time at 512 bytes a row over
-    // 100 KiB/s (5 ms a row), margin 5 s. The numbers below are those
-    // constants applied by hand.
+    // The client's worst case for a batch, plus a margin. One attempt
+    // lasts the request timeout (10 s) plus the transfer time at 512
+    // bytes a row over 100 KiB/s (5 ms a row). The client checks its
+    // retry window (10 s) only when an attempt ends, and starts that
+    // clock when the first attempt ends. So the worst case is two full
+    // attempts around the window, plus the longest backoff (1 s). The
+    // margin is 5 s. The numbers below are those constants by hand:
+    // retry + 2 × ( request + 5 × rows ) + 1000 + 5000.
     const DEFAULTS = resolveOptions( {}, BASE_ENV ).settings;
 
-    it( 'gives a one-row flush about 25 seconds', function () {
-        expect( flushDeadlineFor( 1, DEFAULTS ) ).to.equal( 25005 );
+    it( 'gives a one-row flush about 36 seconds', function () {
+        expect( flushDeadlineFor( 1, DEFAULTS ) ).to.equal( 36010 );
     } );
 
-    it( 'gives a default 5000-row batch 50 seconds', function () {
-        expect( flushDeadlineFor( 5000, DEFAULTS ) ).to.equal( 50000 );
+    it( 'gives a default 5000-row batch 86 seconds', function () {
+        expect( flushDeadlineFor( 5000, DEFAULTS ) ).to.equal( 86000 );
     } );
 
-    it( 'gives a full 50000-row catch-up flush 275 seconds', function () {
-        expect( flushDeadlineFor( 50000, DEFAULTS ) ).to.equal( 275000 );
+    it( 'gives a full 50000-row catch-up flush 536 seconds', function () {
+        expect( flushDeadlineFor( 50000, DEFAULTS ) ).to.equal( 536000 );
     } );
 
-    it( 'adds 5 milliseconds of transfer time per row', function () {
+    it( 'outlasts the client\'s worst case for a full catch-up flush of the widest measured row', function () {
+        // A 50,000-row flush of 291-byte rows at the client defaults
+        // gives up at 304,190 ms in the fresh-eyes simulation of the
+        // client's retry loop (2026-09-08). The old derivation gave
+        // 275,000 ms and fired first.
+        expect( flushDeadlineFor( 50000, DEFAULTS ) ).to.be.above( 304190 );
+    } );
+
+    it( 'adds 10 milliseconds of transfer time per row, two attempts of 5', function () {
         // 512 bytes a row over 102400 bytes a second is exactly 5 ms a row.
-        expect( flushDeadlineFor( 7, DEFAULTS ) ).to.equal( 25035 );
+        expect( flushDeadlineFor( 7, DEFAULTS ) ).to.equal( 36070 );
     } );
 
     it( 'grows with an explicit retryTimeout', function () {
         const { settings } = resolveOptions( { retryTimeout: 30000 }, BASE_ENV );
 
-        expect( flushDeadlineFor( 5000, settings ) ).to.equal( 70000 );
+        expect( flushDeadlineFor( 5000, settings ) ).to.equal( 106000 );
     } );
 
     it( 'grows with a retryTimeout from the environment', function () {
         const { settings } = resolveOptions( {}, { ...BASE_ENV, questdbRetryTimeout: 2000 } );
 
-        expect( flushDeadlineFor( 1, settings ) ).to.equal( 17005 );
+        expect( flushDeadlineFor( 1, settings ) ).to.equal( 28010 );
     } );
 
-    it( 'grows with an explicit requestTimeout in place of the client default', function () {
-        // 10000 retry + 30000 request + 5 transfer + 5000 margin.
+    it( 'grows with an explicit requestTimeout in place of the client default, twice over', function () {
+        // 10000 retry + 2 × ( 30000 request + 5 transfer ) + 1000 backoff + 5000 margin.
         const { settings } = resolveOptions( { requestTimeout: 30000 }, BASE_ENV );
 
-        expect( flushDeadlineFor( 1, settings ) ).to.equal( 45005 );
+        expect( flushDeadlineFor( 1, settings ) ).to.equal( 76010 );
     } );
 
     it( 'shrinks with both timeouts set short, from the environment', function () {
-        // 1000 retry + 2000 request + 5 transfer + 5000 margin.
+        // 1000 retry + 2 × ( 2000 request + 5 transfer ) + 1000 backoff + 5000 margin.
         const { settings } = resolveOptions( {}, {
             ...BASE_ENV,
             questdbRetryTimeout: 1000,
             questdbRequestTimeout: 2000
         } );
 
-        expect( flushDeadlineFor( 1, settings ) ).to.equal( 8005 );
+        expect( flushDeadlineFor( 1, settings ) ).to.equal( 11010 );
     } );
 
     it( 'uses a fixed flushDeadlineMs for every flush, whatever its size', function () {
@@ -389,18 +401,24 @@ describe( 'resolveOptions — precedence', function () {
 // THE CEILING RELATION
 // ============================================================================
 
-describe( 'resolveOptions — the ceiling is never below the threshold', function () {
+describe( 'resolveOptions — the ceiling is never below twice the threshold', function () {
 
-    it( 'accepts a ceiling equal to the threshold', function () {
-        const { settings } = resolveOptions( { flushRows: 5000, bufferCeilingRows: 5000 }, BASE_ENV );
+    // Rows in flight count against the ceiling. A ceiling equal to the
+    // threshold passed setup and then refused every row that arrived
+    // during a row-triggered flush, because the batch in flight filled
+    // it. Twice the threshold is the least that holds one batch in
+    // flight and one batch buffering (fresh-eyes review, 2026-09-08).
 
-        expect( settings.bufferCeilingRows ).to.equal( 5000 );
+    it( 'accepts a ceiling of twice the threshold', function () {
+        const { settings } = resolveOptions( { flushRows: 5000, bufferCeilingRows: 10000 }, BASE_ENV );
+
+        expect( settings.bufferCeilingRows ).to.equal( 10000 );
     } );
 
-    it( 'throws INVALID_CONFIG when the ceiling is below the threshold', function () {
+    it( 'throws INVALID_CONFIG when the ceiling equals the threshold', function () {
         let caught = null;
         try {
-            resolveOptions( { flushRows: 5000, bufferCeilingRows: 4999 }, BASE_ENV );
+            resolveOptions( { flushRows: 5000, bufferCeilingRows: 5000 }, BASE_ENV );
         } catch ( err ) {
             caught = err;
         }
@@ -408,9 +426,14 @@ describe( 'resolveOptions — the ceiling is never below the threshold', functio
         expect( caught ).to.be.an( 'error' );
         expect( caught.code ).to.equal( 'INVALID_CONFIG' );
         expect( caught.message ).to.equal(
-            'winkComposer/questdb: bufferCeilingRows 4999 is below flushRows 5000 [INVALID_CONFIG]: ' +
-            'the ceiling must be at least the flush threshold; raise bufferCeilingRows or lower flushRows'
+            'winkComposer/questdb: bufferCeilingRows 5000 is below twice flushRows 5000 [INVALID_CONFIG]: ' +
+            'the ceiling must hold one batch in flight and one batch buffering; raise bufferCeilingRows or lower flushRows'
         );
+    } );
+
+    it( 'throws INVALID_CONFIG one row short of twice the threshold', function () {
+        expect( () => resolveOptions( { flushRows: 5000, bufferCeilingRows: 9999 }, BASE_ENV ) )
+            .to.throw( Error ).with.property( 'code', 'INVALID_CONFIG' );
     } );
 
     it( 'applies the check to values that came from the environment', function () {

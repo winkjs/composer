@@ -438,6 +438,63 @@ describe( 'flow handle — drain stages are isolated', function () {
         expect( all ).to.include( 'storage drain stage failed [DELIVERY_FAILED]' );
     } );
 
+    it( 'a storage loss at a drain the runtime started itself sets the process exit code to 1', async function () {
+        // A finite source completes, and the runtime drains the flow with
+        // no caller awaiting it. The loss reaches nobody's await, and
+        // the flow has already left the shutdown manager's list. So the
+        // exit code is the only way a batch script learns of the loss
+        // (ADR-018 §7). Saved and restored: mocha reads the same field.
+        const savedExitCode = process.exitCode;
+        try {
+            const { adapter, refs } = buildControlledSource();
+            const loss = Object.assign( new Error( 'flush failed during shutdown: connect ECONNREFUSED' ), {
+                code: 'DELIVERY_FAILED',
+                dropped: { count: 41 }
+            } );
+            const { mockEmitter, mockStorage } = buildSinkAdapters(
+                sinon.stub().resolves(), sinon.stub().rejects( loss )
+            );
+            handle = await buildFullFlow( 'naturalCompleteLoss', adapter, mockEmitter, mockStorage ).run();
+            process.exitCode = undefined;
+            const errorSpy = sinon.spy( console, 'error' );
+
+            refs.signalComplete();
+            await handle.whenComplete();
+            let thrown = null;
+            await handle.shutdown().catch( ( err ) => {
+                thrown = err;
+            } );
+            errorSpy.restore();
+
+            expect( thrown, 'a later await still sees the loss' ).to.equal( loss );
+            expect( process.exitCode, 'the runtime-started drain set the exit code' ).to.equal( 1 );
+            const all = errorSpy.args.map( ( a ) => a[ 0 ] ).join( '\n' );
+            expect( all ).to.include( 'shutdown failed [DELIVERY_FAILED]' );
+        } finally {
+            process.exitCode = savedExitCode;
+        }
+    } );
+
+    it( 'a clean drain the runtime started itself leaves the exit code alone', async function () {
+        const savedExitCode = process.exitCode;
+        try {
+            const { adapter, refs } = buildControlledSource();
+            const { mockEmitter, mockStorage } = buildSinkAdapters(
+                sinon.stub().resolves(), sinon.stub().resolves()
+            );
+            handle = await buildFullFlow( 'naturalCompleteClean', adapter, mockEmitter, mockStorage ).run();
+            process.exitCode = undefined;
+
+            refs.signalComplete();
+            await handle.whenComplete();
+            await handle.shutdown();
+
+            expect( process.exitCode ).to.equal( undefined );
+        } finally {
+            process.exitCode = savedExitCode;
+        }
+    } );
+
     it( 'an emitter that lost messages at drain rejects the handle, and storages still drain', async function () {
         const adapter = {
             id: 'stopClean',

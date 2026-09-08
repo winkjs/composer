@@ -267,7 +267,10 @@ describe( 'QuestDB Hardening — recovery from a mid-stream outage', function ()
         await stopProxy( proxy );
         proxy = null;
         const outageStart = Date.now();
-        const heldAtOutageStart = storageHandle.getHealth().bufferedRows + storageHandle.getHealth().inFlightRows;
+        // One read: a flush that starts between two reads would move
+        // rows from one field to the other and skew the sum.
+        const healthAtOutageStart = storageHandle.getHealth();
+        const heldAtOutageStart = healthAtOutageStart.bufferedRows + healthAtOutageStart.inFlightRows;
         const pressureSamples = [];
         while ( ( Date.now() - outageStart ) < opts.outageMs ) {
             pressureSamples.push( storageHandle.getPressure() );

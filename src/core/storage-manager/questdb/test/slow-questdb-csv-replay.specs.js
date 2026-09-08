@@ -26,7 +26,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { expect } from 'chai';
-import { describe, it, before, after, beforeEach } from 'mocha';
+import { describe, it, before, after, beforeEach, afterEach } from 'mocha';
 
 import { flow, csv } from '../../../../composer.js';
 import questdbAdapter from '../index.js';
@@ -89,6 +89,7 @@ describe( 'QuestDB Hardening — a CSV replay at adapter defaults', function () 
 
     let qdbUp = false;
     let pgClient = null;
+    let capture = null;
     const tablesToCleanUp = [];
 
     before( async function () {
@@ -115,12 +116,20 @@ describe( 'QuestDB Hardening — a CSV replay at adapter defaults', function () 
         if ( !qdbUp ) this.skip();
     } );
 
+    // A failed assertion must not leave later specs with a wrapped console.
+    afterEach( function () {
+        if ( capture ) {
+            capture.restore();
+            capture = null;
+        }
+    } );
+
     it( 'lands every row, sheds nothing, reports nothing', async function () {
         const tablePrefix = `${RUN_PREFIX}_defaults`;
         const tableName = `${tablePrefix}_samples`;
         tablesToCleanUp.push( tableName );
 
-        const capture = captureConsole();
+        capture = captureConsole();
         const deliveryFailures = [];
         let produced = 0;
         const started = Date.now();
@@ -145,11 +154,13 @@ describe( 'QuestDB Hardening — a CSV replay at adapter defaults', function () 
         await handle.whenComplete();
         await handle.shutdown();
         const wallMs = Date.now() - started;
+        const lines = capture.lines;
         capture.restore();
+        capture = null;
 
         const landed = await waitForRows( pgClient, tableName, CSV_ROWS, 30000 );
-        const storageFullLines = capture.lines.filter( ( l ) => l.text.includes( 'STORAGE_FULL' ) );
-        const adapterLines = capture.lines.filter( ( l ) => l.text.includes( 'winkComposer/questdb' ) );
+        const storageFullLines = lines.filter( ( l ) => l.text.includes( 'STORAGE_FULL' ) );
+        const adapterLines = lines.filter( ( l ) => l.text.includes( 'winkComposer/questdb' ) );
 
         console.log( '\n  [csv replay — adapter defaults]:' );
         console.log( `    rows in file:      ${CSV_ROWS}` );

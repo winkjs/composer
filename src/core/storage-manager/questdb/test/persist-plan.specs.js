@@ -968,7 +968,32 @@ describe( 'Persist Plan Builder', function () {
 
             expect( failures ).to.have.lengthOf( 1 );
             expect( failures[ 0 ].err ).to.equal( flushError );
-            expect( failures[ 0 ].ctx ).to.deep.equal( { tableName: 'pump_monitoring' } );
+            // The same shape as a flush report, so a handler that sums
+            // `rowsLost` or reads `probe` never meets undefined.
+            expect( failures[ 0 ].ctx ).to.deep.equal( {
+                trigger: 'append',
+                rowsLost: 1,
+                abandoned: false,
+                probe: null,
+                tableName: 'pump_monitoring'
+            } );
+        } );
+
+        it( 'reports a second rejection with the same context object, built once per insight type', async function () {
+            // The failure path allocates nothing per row: the context is
+            // one object per plan, not one per rejection.
+            mockSender.at = sinon.stub().returns( Promise.reject( new Error( 'byte ceiling' ) ) );
+            const contexts = [];
+            const plans = buildPersistPlans( assetClass, 'pump', {
+                onDeliveryFailure: ( _err, ctx ) => contexts.push( ctx )
+            } );
+
+            plans.monitoring( mockSender, { ts: 1000, temp: 25.5 }, 'p1' );
+            plans.monitoring( mockSender, { ts: 1001, temp: 25.6 }, 'p1' );
+            await new Promise( ( resolve ) => setImmediate( resolve ) );
+
+            expect( contexts ).to.have.lengthOf( 2 );
+            expect( contexts[ 0 ] ).to.equal( contexts[ 1 ] );
         } );
 
         it( 'prints one DELIVERY_FAILED line naming the table when no onDeliveryFailure is provided', async function () {

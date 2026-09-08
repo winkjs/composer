@@ -73,6 +73,24 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
     let probing = false;
 
     /**
+     * Describes an outcome and never throws. The gate must not depend
+     * on the probe's robustness. A describer that threw would reject
+     * the chain in `runProbe`, and then `afterFailure` would never
+     * report the loss or release the engine's guard: no flush could
+     * start again, and nothing would say so.
+     *
+     * @param {Object} outcome - What `probe.run` resolved with
+     * @returns {string} The operator text, or a fallback naming the throw
+     */
+    const describeSafely = function ( outcome ) {
+        try {
+            return probe.describe( outcome );
+        } catch ( err ) {
+            return `the probe's description failed: ${err.message}`;
+        }
+    }; // describeSafely()
+
+    /**
      * Runs the probe once and never rejects.
      *
      * @returns {Promise<{outcome: Object, finding: string}>} The outcome and its operator text
@@ -80,7 +98,7 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
     const runProbe = function () {
         return Promise.resolve().then( probe.run ).then(
             function ( outcome ) {
-                return { outcome, finding: probe.describe( outcome ) };
+                return { outcome, finding: describeSafely( outcome ) };
             },
             function ( err ) {
                 return { outcome: { ok: false, error: err.message }, finding: `the probe itself failed: ${err.message}` };

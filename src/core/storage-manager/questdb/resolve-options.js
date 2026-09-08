@@ -26,11 +26,14 @@
  * grows with the bytes sent, at a planning speed of 100 KiB per second
  * (`request_min_throughput`, a 4.2.0 fact). A fixed deadline would
  * abandon a large but healthy send over a slow link and report rows
- * lost that then land. So the deadline is the client's own bound for
- * that batch, plus a margin: the retry window, the request timeout, the
- * transfer time for the rows at a planning size of 512 bytes a row, and
- * 5 seconds. One row gets about 25 seconds; 5000 rows get 50 seconds;
- * a full 50000-row catch-up send gets 275 seconds. When the operator
+ * lost that then land. So the deadline is the client's worst case for
+ * that batch, plus a margin. One attempt is the request timeout plus
+ * the transfer time at a planning size of 512 bytes a row. The client
+ * checks its retry window only when an attempt ends, so its last
+ * attempt can run in full past the window. The deadline is therefore
+ * the retry window, two attempts, the longest backoff, and 5 seconds.
+ * One row gets about 36 seconds; 5000 rows get 86 seconds; a full
+ * 50000-row catch-up send gets about 9 minutes. When the operator
  * sets `flushDeadlineMs`, that fixed value is used for every flush.
  *
  * Precedence, highest first (ADR-018 §10, extended for the legacy
@@ -51,10 +54,12 @@
  * `DEPRECATED_OPTION` line at setup. All five keys are removed in
  * 0.8.0.
  *
- * The one relation enforced here: the ceiling is never below the
- * threshold. A ceiling below the threshold would shed rows before a
- * row-triggered flush could ever start. It fails setup with
- * `INVALID_CONFIG`.
+ * The one relation enforced here: the ceiling is never below twice
+ * the threshold. Rows in flight count against the ceiling, so a
+ * ceiling equal to the threshold would refuse every row that arrives
+ * during a row-triggered flush. Twice the threshold holds one batch
+ * in flight and one batch buffering. A smaller ceiling fails setup
+ * with `INVALID_CONFIG`.
  *
  * The client constants used in the deadline are `@questdb/nodejs-client`
  * 4.2.0 facts: `request_timeout` and `retry_timeout` both default to
@@ -141,6 +146,13 @@ const CLIENT_DEFAULT_MIN_THROUGHPUT_BPS = 102400;
  * @type {number}
  */
 const ROW_BYTES_PLANNING = 512;
+
+/**
+ * The longest pause the client takes between two attempts (4.2.0 fact:
+ * the backoff doubles from 10 ms and stops at 1000 ms).
+ * @type {number}
+ */
+const CLIENT_MAX_RETRY_BACKOFF_MS = 1000;
 
 /**
  * Added on top of the client's own bound, so the client gets to reject
@@ -274,7 +286,7 @@ const onOffToBoolean = function ( word ) {
  * @param {Object} options - The raw storage options from `.storage()` config
  * @param {Object} envVars - The `ENV_VARS` object (injected, for purity)
  * @returns {{settings: Object, deprecations: Array<Object>}} Settings and report
- * @throws {Error} INVALID_CONFIG when the ceiling is below the threshold
+ * @throws {Error} INVALID_CONFIG when the ceiling is below twice the threshold
  */
 const resolveOptions = function ( options, envVars ) {
     const rows = resolveWithAlias( options, envVars, {
@@ -296,10 +308,15 @@ const resolveOptions = function ( options, envVars ) {
         envVars.questdbBufferCeilingRows ??
         ( rows.value * DEFAULT_CEILING_MULTIPLIER );
 
-    if ( bufferCeilingRows < rows.value ) {
+    // Rows in flight count against the ceiling. A ceiling equal to the
+    // threshold would refuse every row that arrives during a
+    // row-triggered flush, because the batch in flight fills it. Twice
+    // the threshold is the least that holds one batch in flight and
+    // one batch buffering.
+    if ( bufferCeilingRows < ( 2 * rows.value ) ) {
         const err = new Error(
-            `winkComposer/questdb: bufferCeilingRows ${bufferCeilingRows} is below flushRows ${rows.value} [INVALID_CONFIG]: ` +
-            'the ceiling must be at least the flush threshold; raise bufferCeilingRows or lower flushRows'
+            `winkComposer/questdb: bufferCeilingRows ${bufferCeilingRows} is below twice flushRows ${rows.value} [INVALID_CONFIG]: ` +
+            'the ceiling must hold one batch in flight and one batch buffering; raise bufferCeilingRows or lower flushRows'
         );
         err.code = 'INVALID_CONFIG';
         throw err;
@@ -328,11 +345,16 @@ const resolveOptions = function ( options, envVars ) {
 
 /**
  * The deadline of one flush, in milliseconds. A fixed `flushDeadlineMs`
- * wins. Otherwise it is the client's own bound for a batch of this many
- * rows plus a margin: the retry window, the request timeout, and the
- * transfer time at the planning speed and row size (see the header).
- * A configured `retryTimeout` or `requestTimeout` replaces the client
- * default in that sum. One multiply per flush, nothing per row.
+ * wins. Otherwise it is the client's worst case for a batch of this
+ * many rows plus a margin. One attempt lasts the request timeout plus
+ * the transfer time at the planning speed and row size (see the
+ * header). The client checks its retry window only when an attempt
+ * ends, and it starts that clock when the first attempt ends. So the
+ * last attempt can begin just inside the window and run in full. The
+ * worst case is two attempts around the window, plus the longest
+ * backoff between attempts. A configured `retryTimeout` or
+ * `requestTimeout` replaces the client default in that sum. One
+ * multiply per flush, nothing per row.
  *
  * @param {number} rows - Rows the flush carries
  * @param {Object} settings - The resolved settings
@@ -345,7 +367,8 @@ const flushDeadlineFor = function ( rows, settings ) {
     const retryTimeout = settings.retryTimeout ?? CLIENT_DEFAULT_RETRY_TIMEOUT_MS;
     const requestTimeout = settings.requestTimeout ?? CLIENT_DEFAULT_REQUEST_TIMEOUT_MS;
     const transferMs = Math.ceil( ( rows * ROW_BYTES_PLANNING * 1000 ) / CLIENT_DEFAULT_MIN_THROUGHPUT_BPS );
-    return retryTimeout + requestTimeout + transferMs + FLUSH_DEADLINE_MARGIN_MS;
+    const attemptMs = requestTimeout + transferMs;
+    return retryTimeout + ( 2 * attemptMs ) + CLIENT_MAX_RETRY_BACKOFF_MS + FLUSH_DEADLINE_MARGIN_MS;
 }; // flushDeadlineFor()
 
 /**

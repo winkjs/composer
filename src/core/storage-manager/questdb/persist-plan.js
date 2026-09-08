@@ -47,7 +47,11 @@
  *   ceiling (`max_buf_size`). The row never completed. Per composer's
  *   "no silent failures" contract, that loss MUST surface.
  *
- *   The rejection is routed through the `onDeliveryFailure` callback.
+ *   The rejection is routed through the `onDeliveryFailure` callback,
+ *   with a context of the same shape as a flush report:
+ *   `{ trigger: 'append', rowsLost: 1, abandoned: false, probe: null,
+ *   tableName }`. The context is one object per insight type, shared
+ *   by every rejection, so a handler must not keep it.
  *   When a caller provides one, they own the response (log, alert,
  *   stop the flow). When none is provided, one classified
  *   `DELIVERY_FAILED` console line reports it and the process keeps
@@ -371,12 +375,20 @@ const buildPersistPlans = function ( assetClass, tablePrefix, options ) {
         const stepCount = stepNames.length;
         const tableName = tablePrefix + '_' + insightTypeName;
 
-        // One rejection handler per insight type, built here so the
-        // per-row path allocates no closure. See the file header for
-        // what a rejection means and why the process keeps running.
+        // One rejection handler and one shared context per insight
+        // type, built here so the per-row path allocates nothing. See
+        // the file header for the context's shape and what a rejection
+        // means.
+        const appendContext = {
+            trigger: 'append',
+            rowsLost: 1,
+            abandoned: false,
+            probe: null,
+            tableName
+        };
         const onAppendRejected = function ( err ) {
             if ( onDeliveryFailure ) {
-                onDeliveryFailure( err, { tableName } );
+                onDeliveryFailure( err, appendContext );
                 return;
             }
             logger.error(

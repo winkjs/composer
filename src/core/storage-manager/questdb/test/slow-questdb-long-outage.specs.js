@@ -64,6 +64,7 @@ import {
     isQuestDBAvailable, createPgClient, dropTable, countRows, sleep, waitForHealth,
     captureConsole, adapterLinesOf, median, takeSample, formatMb
 } from './slow-helpers.js';
+import { DEFAULT_PROBE_TIMEOUT_MS } from '../../../utils/address/probe.js';
 
 const PROXY_PORT        = 19002;
 const PROXY_ILP_URL     = `127.0.0.1:${PROXY_PORT}`;
@@ -74,6 +75,14 @@ const SAMPLE_MS = 250;
 
 /** The interval timer, which is also the probe cadence while paused. */
 const FLUSH_INTERVAL_MS = 300;
+
+/**
+ * The longest a resume may take after the endpoint returns: the tick
+ * that finds it, the probe's own budget, and the flush the next tick
+ * starts. Stated in the adapter's own terms, so a slower box such as
+ * the CM5 has the same headroom the M4 has (measured 203 ms).
+ */
+const RESUME_BUDGET_MS = ( 2 * FLUSH_INTERVAL_MS ) + DEFAULT_PROBE_TIMEOUT_MS;
 
 /** How much the late-third median may exceed the early-third median. */
 const RSS_GROWTH_BOUND_BYTES  = 16 * 1024 * 1024;
@@ -180,6 +189,7 @@ describe( 'QuestDB Hardening — outages that outlast every timeout', function (
 
         // Phase 1: a clean stretch, long enough for at least one flush.
         const baseline = await waitForHealth( storage, ( h ) => h.lastFlushAt !== null, 3000 );
+        expect( baseline.lastFlushAt, 'the baseline landed at least one flush' ).to.be.a( 'number' );
 
         // Phase 2: the outage. Sample health and memory while it lasts.
         // The row count one second in includes the fate of the batch
@@ -309,7 +319,7 @@ describe( 'QuestDB Hardening — outages that outlast every timeout', function (
             messageCount: 400,
             intervalMs: 50,
             flushRows: 2000,
-            bufferCeilingRows: 2000,
+            bufferCeilingRows: 4000,
             retryTimeout: 1000,
             requestTimeout: 1000,
             outageMs: 12000,
@@ -335,7 +345,7 @@ describe( 'QuestDB Hardening — outages that outlast every timeout', function (
         expect( result.recovered.status ).to.equal( 'green' );
         expect( result.recovered.pausedSince ).to.equal( null );
         expect( result.recovered.abandonedFlushes ).to.equal( 0 );
-        expect( result.recoveredAt - result.returnedAt ).to.be.at.most( ( 2 * FLUSH_INTERVAL_MS ) + 900 );
+        expect( result.recoveredAt - result.returnedAt ).to.be.at.most( RESUME_BUDGET_MS );
         expect( result.shutdownError ).to.equal( null );
 
         // Accounting: a bound, because a batch reported lost may land.
@@ -357,7 +367,7 @@ describe( 'QuestDB Hardening — outages that outlast every timeout', function (
             messageCount: 600,
             intervalMs: 50,
             flushRows: 2000,
-            bufferCeilingRows: 2000,
+            bufferCeilingRows: 4000,
             retryTimeout: 1000,
             requestTimeout: 1000,
             outageMs: 15000,

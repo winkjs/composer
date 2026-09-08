@@ -20,11 +20,12 @@
  * dropped, so a shutdown with no `{ timeout }` ends at the last
  * deadline instead of waiting for ever.
  *
- * The derived deadline for one row is 25,005 ms: the client's retry
- * window (10,000) plus its request timeout (10,000) plus the transfer
- * time for 512 bytes at 100 KiB a second (5) plus the 5,000 ms margin.
- * The arithmetic is in `resolve-options.js`; the number is pinned here
- * so a change to either side is visible.
+ * The derived deadline for one row is 36,010 ms: the client's retry
+ * window (10,000) plus two attempts of its request timeout (10,000)
+ * and the transfer time for 512 bytes at 100 KiB a second (5), plus
+ * the longest backoff (1,000) and the 5,000 ms margin. The arithmetic
+ * is in `resolve-options.js`; the number is pinned here so a change to
+ * either side is visible.
  *
  * Every case here was written before the engine changed and proven red
  * against the 2a engine.
@@ -161,7 +162,7 @@ describe( 'QuestDB flush deadline (ADR-029)', function () {
             await storage.shutdown();
         } );
 
-        it( 'the derived deadline applies when flushDeadlineMs is unset: one row is abandoned at 25,005 ms', async function () {
+        it( 'the derived deadline applies when flushDeadlineMs is unset: one row is abandoned at 36,010 ms', async function () {
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
             const storage = await makeStorage( { flushIntervalMs: 1000 } );
 
@@ -169,8 +170,8 @@ describe( 'QuestDB flush deadline (ADR-029)', function () {
             await clock.tickAsync( 1000 );
             expect( mockSender.flush.callCount ).to.equal( 1 );
 
-            // 10,000 retry + 10,000 request + 5 transfer + 5,000 margin.
-            await clock.tickAsync( 25004 );
+            // 10,000 retry + 2 × ( 10,000 request + 5 transfer ) + 1,000 backoff + 5,000 margin.
+            await clock.tickAsync( 36009 );
             expect( storage.getHealth().inFlightRows ).to.equal( 1 );
 
             await clock.tickAsync( 1 );

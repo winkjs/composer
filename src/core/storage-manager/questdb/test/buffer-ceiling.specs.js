@@ -115,9 +115,11 @@ describe( 'QuestDB buffer ceiling (ADR-029)', function () {
 
         it( 'an explicit bufferCeilingRows wins over the derived one', async function () {
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
-            const storage = await makeStorage( { flushRows: 2, bufferCeilingRows: 3 } );
+            // Derived would be 20; the explicit 4 holds one batch in
+            // flight and one buffering, the least the resolver accepts.
+            const storage = await makeStorage( { flushRows: 2, bufferCeilingRows: 4 } );
 
-            const accepted = writeRows( storage, 3 );
+            const accepted = writeRows( storage, 4 );
             expect( accepted.every( ( r ) => r.ok ) ).to.equal( true );
 
             const refused = storage.write( 'monitoring', GOOD_MSG, 'p1' );
@@ -128,18 +130,18 @@ describe( 'QuestDB buffer ceiling (ADR-029)', function () {
 
         it( 'a shed row never reaches the sender', async function () {
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
-            const storage = await makeStorage( { flushRows: 2, bufferCeilingRows: 3 } );
+            const storage = await makeStorage( { flushRows: 2, bufferCeilingRows: 4 } );
 
-            writeRows( storage, 4 );
+            writeRows( storage, 5 );
 
-            expect( mockSender.table.callCount ).to.equal( 3 );
+            expect( mockSender.table.callCount ).to.equal( 4 );
 
             await storage.shutdown( { timeout: 10 } ).catch( () => undefined );
         } );
 
         it( 'the refusal is one shared result object', async function () {
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
-            const storage = await makeStorage( { flushRows: 2, bufferCeilingRows: 2 } );
+            const storage = await makeStorage( { flushRows: 1, bufferCeilingRows: 2 } );
 
             writeRows( storage, 2 );
             const first = storage.write( 'monitoring', GOOD_MSG, 'p1' );
@@ -153,7 +155,7 @@ describe( 'QuestDB buffer ceiling (ADR-029)', function () {
 
         it( 'a shed row is not a write error', async function () {
             mockSender.flush.onFirstCall().returns( NEVER_SETTLES );
-            const storage = await makeStorage( { flushRows: 2, bufferCeilingRows: 2 } );
+            const storage = await makeStorage( { flushRows: 1, bufferCeilingRows: 2 } );
 
             writeRows( storage, 3 );
 
@@ -181,7 +183,7 @@ describe( 'QuestDB buffer ceiling (ADR-029)', function () {
             mockSender.flush.onFirstCall().returns( new Promise( ( resolve ) => {
                 release = resolve;
             } ) );
-            const storage = await makeStorage( { flushRows: 2, bufferCeilingRows: 2 } );
+            const storage = await makeStorage( { flushRows: 1, bufferCeilingRows: 2 } );
 
             writeRows( storage, 2 );
             expect( storage.write( 'monitoring', GOOD_MSG, 'p1' ).error.code ).to.equal( 'STORAGE_FULL' );
@@ -196,13 +198,13 @@ describe( 'QuestDB buffer ceiling (ADR-029)', function () {
 
     } );
 
-    describe( 'a ceiling below the threshold fails setup', function () {
+    describe( 'a ceiling below twice the threshold fails setup', function () {
 
         it( 'rejects with INVALID_CONFIG naming both keys, before any socket opens', async function () {
-            const err = await rejection( makeStorage( { flushRows: 10, bufferCeilingRows: 5 } ) );
+            const err = await rejection( makeStorage( { flushRows: 10, bufferCeilingRows: 19 } ) );
 
             expect( err.code ).to.equal( 'INVALID_CONFIG' );
-            expect( err.message ).to.include( 'bufferCeilingRows 5 is below flushRows 10' );
+            expect( err.message ).to.include( 'bufferCeilingRows 19 is below twice flushRows 10' );
             expect( deps.PgClientClass.called ).to.equal( false );
             expect( deps.SenderClass.fromConfig.called ).to.equal( false );
         } );
