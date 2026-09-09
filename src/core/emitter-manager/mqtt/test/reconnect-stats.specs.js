@@ -34,8 +34,8 @@ describe( 'mqtt emitter — reconnects counter', function () {
         sinon.restore();
     } );
 
-    it( 'counts reconnects — the first connect is not a reconnect', function () {
-        emitter = createEmitter( {
+    it( 'counts reconnects — the first connect is not a reconnect', async function () {
+        emitter = await createEmitter( {
             brokerUrl: 'mqtt://127.0.0.1',
             connectGraceMs: 0,
             codec: testCodec,
@@ -56,12 +56,12 @@ describe( 'mqtt emitter — reconnects counter', function () {
         expect( emitter.getHealth().stats.reconnects ).to.equal( 2 );
     } );
 
-    it( 'counts a reconnect even without an offline event in between', function () {
+    it( 'counts a reconnect even without an offline event in between', async function () {
         // mqtt.js can complete a reconnect cycle where the client sees
         // two connacks without the 'offline' event firing in between
         // (fast broker restart). The counter keys on connacks after the
         // first, not on offline transitions.
-        emitter = createEmitter( {
+        emitter = await createEmitter( {
             brokerUrl: 'mqtt://127.0.0.1',
             connectGraceMs: 0,
             codec: testCodec,

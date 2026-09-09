@@ -16,13 +16,16 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createEmitter } from '../emitter.js';
-import { makeMockClient, testCodec } from './test-helpers.js';
+import { makeMockClient, refusalOf, testCodec } from './test-helpers.js';
 
 describe( 'mqtt emitter — will configuration', function () {
 
     let mock;
     let capturedOpts;
+    let emitter;
 
+    // Returns the factory's promise, so a caller either awaits the
+    // handle or hands the promise to refusalOf for the refusal cases.
     const makeEmitter = function ( will ) {
         return createEmitter( {
             brokerUrl: 'mqtt://127.0.0.1',
@@ -39,27 +42,35 @@ describe( 'mqtt emitter — will configuration', function () {
     beforeEach( function () {
         mock = makeMockClient();
         capturedOpts = null;
+        emitter = null;
+    } );
+
+    afterEach( async function () {
+        if ( emitter ) {
+            await Promise.resolve( emitter.shutdown() ).catch( () => undefined );
+            emitter = null;
+        }
     } );
 
     describe( 'qos shapes — every advertised value passes through', function () {
 
-        it( 'preserves will.qos 0 (0 is a valid QoS, not an absent one)', function () {
-            makeEmitter( { topic: 'status/offline', message: { s: 'down' }, qos: 0 } );
+        it( 'preserves will.qos 0 (0 is a valid QoS, not an absent one)', async function () {
+            emitter = await makeEmitter( { topic: 'status/offline', message: { s: 'down' }, qos: 0 } );
             expect( capturedOpts.will.qos ).to.equal( 0 );
         } );
 
-        it( 'preserves will.qos 1', function () {
-            makeEmitter( { topic: 'status/offline', message: { s: 'down' }, qos: 1 } );
+        it( 'preserves will.qos 1', async function () {
+            emitter = await makeEmitter( { topic: 'status/offline', message: { s: 'down' }, qos: 1 } );
             expect( capturedOpts.will.qos ).to.equal( 1 );
         } );
 
-        it( 'preserves will.qos 2', function () {
-            makeEmitter( { topic: 'status/offline', message: { s: 'down' }, qos: 2 } );
+        it( 'preserves will.qos 2', async function () {
+            emitter = await makeEmitter( { topic: 'status/offline', message: { s: 'down' }, qos: 2 } );
             expect( capturedOpts.will.qos ).to.equal( 2 );
         } );
 
-        it( 'defaults to QoS 1 when will.qos is not given', function () {
-            makeEmitter( { topic: 'status/offline', message: { s: 'down' } } );
+        it( 'defaults to QoS 1 when will.qos is not given', async function () {
+            emitter = await makeEmitter( { topic: 'status/offline', message: { s: 'down' } } );
             expect( capturedOpts.will.qos ).to.equal( 1 );
         } );
 
@@ -67,26 +78,16 @@ describe( 'mqtt emitter — will configuration', function () {
 
     describe( 'setup-time shape guard (direct callers bypass the schema)', function () {
 
-        it( 'classifies a will without a topic as INVALID_CONFIG', function () {
-            let caught = null;
-            try {
-                makeEmitter( { message: { s: 'down' } } );
-            } catch ( err ) {
-                caught = err;
-            }
-            expect( caught, 'a will without a topic must throw' ).to.not.equal( null );
+        it( 'classifies a will without a topic as INVALID_CONFIG', async function () {
+            const caught = await refusalOf( makeEmitter( { message: { s: 'down' } } ) );
+            expect( caught, 'a will without a topic must be refused' ).to.not.equal( null );
             expect( caught.code ).to.equal( 'INVALID_CONFIG' );
             expect( caught.message ).to.contain( 'will.topic' );
         } );
 
-        it( 'classifies a will without a message as INVALID_CONFIG', function () {
-            let caught = null;
-            try {
-                makeEmitter( { topic: 'status/offline' } );
-            } catch ( err ) {
-                caught = err;
-            }
-            expect( caught, 'a will without a message must throw' ).to.not.equal( null );
+        it( 'classifies a will without a message as INVALID_CONFIG', async function () {
+            const caught = await refusalOf( makeEmitter( { topic: 'status/offline' } ) );
+            expect( caught, 'a will without a message must be refused' ).to.not.equal( null );
             expect( caught.code ).to.equal( 'INVALID_CONFIG' );
             expect( caught.message ).to.contain( 'will.message' );
         } );
@@ -95,18 +96,13 @@ describe( 'mqtt emitter — will configuration', function () {
 
     describe( 'setup-time encode guard', function () {
 
-        it( 'classifies a will message the codec cannot encode as INVALID_CONFIG', function () {
+        it( 'classifies a will message the codec cannot encode as INVALID_CONFIG', async function () {
             const circular = {};
             circular.self = circular;
 
-            let caught = null;
-            try {
-                makeEmitter( { topic: 'status/offline', message: circular } );
-            } catch ( err ) {
-                caught = err;
-            }
+            const caught = await refusalOf( makeEmitter( { topic: 'status/offline', message: circular } ) );
 
-            expect( caught, 'an unencodable will message must throw' ).to.not.equal( null );
+            expect( caught, 'an unencodable will message must be refused' ).to.not.equal( null );
             expect( caught.code ).to.equal( 'INVALID_CONFIG' );
             // The message points at the failing field, per ADR-018.
             expect( caught.message ).to.contain( 'will.message' );
@@ -141,8 +137,8 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
 
     describe( 'will message configuration', function () {
 
-        it( 'does not set will if not configured', function () {
-            emitter = createEmitter( {
+        it( 'does not set will if not configured', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -153,8 +149,8 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
             expect( opts.will ).to.equal( undefined );
         } );
 
-        it( 'sets will message when configured', function () {
-            emitter = createEmitter( {
+        it( 'sets will message when configured', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -171,8 +167,8 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
             expect( opts.will.retain ).to.equal( true );
         } );
 
-        it( 'respects will retain=false', function () {
-            emitter = createEmitter( {
+        it( 'respects will retain=false', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -188,8 +184,8 @@ describe( 'mqtt emitter — will (mqtt.js options handoff)', function () {
             expect( opts.will.retain ).to.equal( false );
         } );
 
-        it( 'sets payloadFormatIndicator when codec specifies it', function () {
-            emitter = createEmitter( {
+        it( 'sets payloadFormatIndicator when codec specifies it', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: {

@@ -60,7 +60,7 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
 
         it( 'returns within timeout after all publish callbacks fire', async function () {
             const { client, eventHandlers, publishCalls } = makeMockClient();
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: jsonCodec,
@@ -85,7 +85,7 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
 
         it( 'second shutdown is a no-op (idempotent)', async function () {
             const { client, eventHandlers } = makeMockClient();
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: jsonCodec,
@@ -111,7 +111,7 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
 
         it( 'returns within timeout via force-end when broker never ACKs', async function () {
             const { client, eventHandlers, endCalls } = makeMockClient( { hangOnEnd: true } );
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: jsonCodec,
@@ -143,7 +143,7 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             // immediately on the remaining budget.
             const { client, eventHandlers, endCalls, publishCalls } =
                 makeMockClient( { hangOnEnd: true, manualAcks: true } );
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: jsonCodec,
@@ -187,7 +187,7 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
 
         it( 'goes straight to force-close when never connected (offline path)', async function () {
             const { client, endCalls } = makeMockClient();
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: jsonCodec,
@@ -222,7 +222,7 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
 
         const runRoundTrip = async function ( codec ) {
             const { client, eventHandlers, publishCalls } = makeMockClient();
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec,

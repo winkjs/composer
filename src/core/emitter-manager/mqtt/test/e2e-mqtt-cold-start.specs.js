@@ -187,13 +187,14 @@ describe( 'MQTT emitter E2E — cold start (grace + pre-connack pin)', function 
         const captured = await subscribeAndCollect( TOPIC );
         activeSubscriber = captured.client;
 
-        activeEmitter = createEmitter( {
+        activeEmitter = await createEmitter( {
             brokerUrl: MQTT_BROKER_URL,
             connectGraceMs: 0,
             codec: jsonCodec
         } );
 
-        // Synchronous return: the handshake cannot have completed yet.
+        // At grace 0 the promise resolves without waiting for any
+        // socket event, so the handshake cannot have completed yet.
         expect( activeEmitter.getHealth().connected ).to.equal( false );
 
         for ( let i = 0; i < TOTAL; i += 1 ) {

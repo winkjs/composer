@@ -14,13 +14,14 @@
  * operator-facing diagnostic content of `err.message`).
  *
  * Each test asserts the operator-facing contract from ADR-018:
- * setup-time failures throw an `Error` whose `code` property is one
- * of a small, documented vocabulary, so flow operators can route on it
- * without parsing message strings.
+ * the factory's promise rejects with an `Error` whose `code` property
+ * is one of a small, documented vocabulary, so flow operators can
+ * route on it without parsing message strings. The factory is async,
+ * so a refusal arrives as a rejection, never as a synchronous throw.
  *
  * No broker connection is established for any of these tests — every
- * scenario throws *before* `mqtt.connect()` is reached, so no Mosquitto
- * is required.
+ * scenario is refused *before* `mqtt.connect()` is reached, so no
+ * Mosquitto is required.
  */
 
 import { expect } from 'chai';
@@ -29,6 +30,7 @@ import sinon from 'sinon';
 
 import { createEmitter } from '../emitter.js';
 import { ENV_VARS } from '../../../env-vars.js';
+import { refusalOf } from './test-helpers.js';
 
 const validCodec = {
     pack: ( msg ) => Buffer.from( JSON.stringify( msg ) ),
@@ -45,14 +47,10 @@ const stubMqttClient = function () {
     };
 };
 
-const expectThrowsCode = function ( fn, expectedCode ) {
-    let thrown;
-    try {
-        fn();
-    } catch ( err ) {
-        thrown = err;
-    }
-    expect( thrown, 'should have thrown' ).to.be.an( 'error' );
+/** Awaits a factory call and asserts it rejected with the expected code. */
+const expectRejectsCode = async function ( pending, expectedCode ) {
+    const thrown = await refusalOf( pending );
+    expect( thrown, 'should have rejected' ).to.be.an( 'error' );
     expect( thrown.code ).to.equal( expectedCode );
     return thrown;
 };
@@ -69,25 +67,25 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     } );
 
     // ------------------------------------------------------------------
-    // The brokerUrl and codec throw sites in createEmitter. Already
+    // The brokerUrl and codec refusal sites in createEmitter. Already
     // unit-covered in emitter-config.specs.js; reasserted here at the
     // integration level (no `mqttConnectFn` injection, no
     // schema-pre-validation), and extended with diagnostic-content pins.
     // ------------------------------------------------------------------
 
-    it( 'throws INVALID_CONFIG when brokerUrl missing and env-var unset', function () {
+    it( 'rejects with INVALID_CONFIG when brokerUrl missing and env-var unset', async function () {
         envStub = sinon.stub( ENV_VARS, 'mqttBrokerUrl' ).value( undefined );
-        const err = expectThrowsCode(
-            () => createEmitter( { codec: validCodec } ),
+        const err = await expectRejectsCode(
+            createEmitter( { codec: validCodec } ),
             'INVALID_CONFIG'
         );
         expect( err.message ).to.contain( 'brokerUrl' );
         expect( err.message ).to.contain( 'MQTT_BROKER_URL' );
     } );
 
-    it( 'throws INVALID_CONFIG when codec missing', function () {
-        const err = expectThrowsCode(
-            () => createEmitter( { brokerUrl: 'mqtt://127.0.0.1:1883' } ),
+    it( 'rejects with INVALID_CONFIG when codec missing', async function () {
+        const err = await expectRejectsCode(
+            createEmitter( { brokerUrl: 'mqtt://127.0.0.1:1883' } ),
             'INVALID_CONFIG'
         );
         expect( err.message ).to.contain( 'codec' );
@@ -97,22 +95,22 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     // Edge-case inputs not reached by existing unit tests.
     // ------------------------------------------------------------------
 
-    it( 'throws INVALID_CONFIG when brokerUrl is empty (2026-07-09: comment re-based to the ?? semantics)', function () {
+    it( 'rejects with INVALID_CONFIG when brokerUrl is empty (2026-07-09: comment re-based to the ?? semantics)', async function () {
         // `config.brokerUrl ?? ENV_VARS.mqttBrokerUrl`: an explicit ''
         // is the user's choice — no env fallback happens — and the
         // trim-then-check rejects it. No env stub needed.
-        expectThrowsCode(
-            () => createEmitter( { brokerUrl: '', codec: validCodec } ),
+        await expectRejectsCode(
+            createEmitter( { brokerUrl: '', codec: validCodec } ),
             'INVALID_CONFIG'
         );
     } );
 
-    it( 'throws INVALID_CONFIG when brokerUrl is empty (no env fallback for explicit empty)', function () {
+    it( 'rejects with INVALID_CONFIG when brokerUrl is empty (no env fallback for explicit empty)', async function () {
         // `??` (not `||`) so explicit '' is
         // the user's choice, not "fall back to env." Symmetric with QuestDB,
         // which throws on `ilpUrl: ''`.
-        expectThrowsCode(
-            () => createEmitter( {
+        await expectRejectsCode(
+            createEmitter( {
                 brokerUrl: '',
                 codec: validCodec,
                 mqttConnectFn: stubMqttClient
@@ -121,22 +119,22 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
         );
     } );
 
-    it( 'throws INVALID_CONFIG when brokerUrl is null and env-var is empty', function () {
+    it( 'rejects with INVALID_CONFIG when brokerUrl is null and env-var is empty', async function () {
         // `null` is falsy → fallback to env. With env stubbed empty,
-        // both are falsy and the throw fires.
+        // both are falsy and the refusal fires.
         envStub = sinon.stub( ENV_VARS, 'mqttBrokerUrl' ).value( '' );
-        expectThrowsCode(
-            () => createEmitter( { brokerUrl: null, codec: validCodec } ),
+        await expectRejectsCode(
+            createEmitter( { brokerUrl: null, codec: validCodec } ),
             'INVALID_CONFIG'
         );
     } );
 
-    it( 'throws INVALID_CONFIG when brokerUrl is whitespace-only', function () {
+    it( 'rejects with INVALID_CONFIG when brokerUrl is whitespace-only', async function () {
         // `.trim()` before the empty check
         // rejects whitespace-only strings — which would otherwise pass
         // through truthy and reach mqtt.connect() unchanged.
-        expectThrowsCode(
-            () => createEmitter( {
+        await expectRejectsCode(
+            createEmitter( {
                 brokerUrl: '   ',
                 codec: validCodec,
                 mqttConnectFn: stubMqttClient
@@ -145,10 +143,10 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
         );
     } );
 
-    it( 'throws INVALID_CONFIG when codec is null', function () {
+    it( 'rejects with INVALID_CONFIG when codec is null', async function () {
         // `!config.codec` catches both `undefined` and `null`.
-        const err = expectThrowsCode(
-            () => createEmitter( {
+        const err = await expectRejectsCode(
+            createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: null
             } ),
@@ -167,10 +165,10 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     // `err.cause` is expected.
     // ------------------------------------------------------------------
 
-    it( 'setup-time INVALID_CONFIG throws have no err.cause (pure config)', function () {
+    it( 'setup-time INVALID_CONFIG refusals have no err.cause (pure config)', async function () {
         envStub = sinon.stub( ENV_VARS, 'mqttBrokerUrl' ).value( undefined );
-        const err = expectThrowsCode(
-            () => createEmitter( { codec: validCodec } ),
+        const err = await expectRejectsCode(
+            createEmitter( { codec: validCodec } ),
             'INVALID_CONFIG'
         );
         expect( err.cause ).to.equal( undefined );
@@ -183,9 +181,9 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
     // level validation in `config-schema.specs.js`).
     // ------------------------------------------------------------------
 
-    it( 'throws INVALID_CONFIG when codec lacks a pack() function', function () {
-        const err = expectThrowsCode(
-            () => createEmitter( {
+    it( 'rejects with INVALID_CONFIG when codec lacks a pack() function', async function () {
+        const err = await expectRejectsCode(
+            createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: { contentType: 'application/json' }  // no pack
             } ),
@@ -194,9 +192,9 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
         expect( err.message ).to.contain( 'pack' );
     } );
 
-    it( 'throws INVALID_CONFIG when onDeliveryFailure is not a function', function () {
-        const err = expectThrowsCode(
-            () => createEmitter( {
+    it( 'rejects with INVALID_CONFIG when onDeliveryFailure is not a function', async function () {
+        const err = await expectRejectsCode(
+            createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: validCodec,
                 onDeliveryFailure: 'not a function',
@@ -207,9 +205,9 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
         expect( err.message ).to.contain( 'onDeliveryFailure' );
     } );
 
-    it( 'throws INVALID_CONFIG when onCritical is not a function', function () {
-        const err = expectThrowsCode(
-            () => createEmitter( {
+    it( 'rejects with INVALID_CONFIG when onCritical is not a function', async function () {
+        const err = await expectRejectsCode(
+            createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: validCodec,
                 onCritical: 42,
@@ -220,9 +218,9 @@ describe( 'MQTT emitter E2E — setup-time error classification', function () {
         expect( err.message ).to.contain( 'onCritical' );
     } );
 
-    it( 'throws INVALID_CONFIG when onBackpressure is not a function', function () {
-        const err = expectThrowsCode(
-            () => createEmitter( {
+    it( 'rejects with INVALID_CONFIG when onBackpressure is not a function', async function () {
+        const err = await expectRejectsCode(
+            createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1:1883',
                 codec: validCodec,
                 onBackpressure: {},

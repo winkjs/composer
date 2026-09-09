@@ -47,6 +47,7 @@ describe( 'MQTT emitter lossy-shutdown reporting', function () {
         }
     } );
 
+    // Returns the factory's promise; every caller awaits the handle.
     const makeEmitter = () => createEmitter( {
         brokerUrl: 'mqtt://127.0.0.1',
         connectGraceMs: 0,
@@ -55,7 +56,7 @@ describe( 'MQTT emitter lossy-shutdown reporting', function () {
     } );
 
     it( 'rejects with SHUTDOWN_TIMEOUT and the exact undelivered count when the drain cannot complete', async function () {
-        emitter = makeEmitter();
+        emitter = await makeEmitter();
         fireConnect( mock.eventHandlers );
 
         // Two publishes whose acknowledgments never arrive: the drain
@@ -77,7 +78,7 @@ describe( 'MQTT emitter lossy-shutdown reporting', function () {
     } );
 
     it( 'the client is still closed before the throw (teardown first, then the report)', async function () {
-        emitter = makeEmitter();
+        emitter = await makeEmitter();
         fireConnect( mock.eventHandlers );
         expect( emitter.publishNow( 'wink/a', { v: 1 } ).ok ).to.equal( true );
 
@@ -91,7 +92,7 @@ describe( 'MQTT emitter lossy-shutdown reporting', function () {
     it( 'resolves cleanly when the drain completes (acknowledgments arrive mid-drain)', async function () {
         // The acknowledgments land while the drain loop is waiting, so
         // the loop genuinely runs before the counter reaches zero.
-        emitter = makeEmitter();
+        emitter = await makeEmitter();
         fireConnect( mock.eventHandlers );
         expect( emitter.publishNow( 'wink/a', { v: 1 } ).ok ).to.equal( true );
         expect( emitter.publishNow( 'wink/b', { v: 2 } ).ok ).to.equal( true );

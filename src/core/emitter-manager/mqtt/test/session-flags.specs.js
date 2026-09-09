@@ -60,13 +60,13 @@ describe( 'mqtt emitter — session flags', function () {
     let mockConnect;
     let emitter;
 
-    beforeEach( function () {
+    beforeEach( async function () {
         const mock = makeMockClient();
         mockConnect = sinon.stub().returns( mock.client );
-        emitter = createEmitter( {
+        emitter = await createEmitter( {
             brokerUrl: 'mqtt://127.0.0.1',
-            // Grace disabled: this beforeEach is synchronous, and the
-            // mock client never fires connect.
+            // Grace disabled: the mock client never fires connect, so
+            // a positive grace would only wait out its budget.
             connectGraceMs: 0,
             codec: testCodec,
             mqttConnectFn: mockConnect

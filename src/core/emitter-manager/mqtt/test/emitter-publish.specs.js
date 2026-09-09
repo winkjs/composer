@@ -43,8 +43,8 @@ describe( 'mqtt emitter — publishNow()', function () {
 
     describe( 'publishNow()', function () {
 
-        beforeEach( function () {
-            emitter = createEmitter( {
+        beforeEach( async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -102,7 +102,9 @@ describe( 'mqtt emitter — publishNow()', function () {
         } );
 
         it( 'sets payloadFormatIndicator when codec specifies it', async function () {
-            emitter = createEmitter( {
+            // Close the beforeEach handle before replacing it.
+            await emitter.shutdown();
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: {
@@ -138,7 +140,9 @@ describe( 'mqtt emitter — publishNow()', function () {
             } );
 
             const failures = [];
-            emitter = createEmitter( {
+            // Close the beforeEach handle before replacing it.
+            await emitter.shutdown();
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -186,8 +190,8 @@ describe( 'mqtt emitter — publishNow()', function () {
         // below, acks freeing capacity) is exercised counter-by-counter
         // in unacked-accounting.specs.js.
 
-        it( 'accepts publish when pressure is below STORAGE_PRESSURE_LIMIT', function () {
-            emitter = createEmitter( {
+        it( 'accepts publish when pressure is below STORAGE_PRESSURE_LIMIT', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -203,9 +207,9 @@ describe( 'mqtt emitter — publishNow()', function () {
             expect( mockClient.publish.calledOnce ).to.equal( true );
         } );
 
-        it( 'reuses the same STORAGE_FULL singleton across rejects', function () {
+        it( 'reuses the same STORAGE_FULL singleton across rejects', async function () {
             const manual = makeMockClient( { manualAcks: true } );
-            emitter = createEmitter( {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,

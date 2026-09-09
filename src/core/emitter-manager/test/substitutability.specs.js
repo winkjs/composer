@@ -144,7 +144,7 @@ describe( 'adapter substitutability — stream sinks (ADR-018)', function () {
         const eventHandlers = {};
         const mockClient = createMockMqttClient( eventHandlers );
 
-        const realHandle = mqttModule.createEmitter( {
+        const realHandle = await mqttModule.createEmitter( {
             codec: jsonCodec,
             connectGraceMs: 0,
             mqttConnectFn: () => mockClient
@@ -183,7 +183,7 @@ describe( 'adapter substitutability — stream sinks (ADR-018)', function () {
         // message stays unacknowledged and the counter stays up.
         const mockClient = createMockMqttClient( eventHandlers, { ack: false } );
 
-        const realHandle = mqttModule.createEmitter( {
+        const realHandle = await mqttModule.createEmitter( {
             codec: jsonCodec,
             connectGraceMs: 0,
             maxQueueSize: 10,

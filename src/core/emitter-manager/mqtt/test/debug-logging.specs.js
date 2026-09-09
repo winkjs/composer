@@ -20,7 +20,9 @@ describe( 'mqtt emitter — debug logging', function () {
 
     let mock;
     let logStub;
+    let emitter;
 
+    // Returns the factory's promise; every caller awaits the handle.
     const makeEmitter = function ( brokerUrl ) {
         return createEmitter( {
             brokerUrl,
@@ -34,14 +36,19 @@ describe( 'mqtt emitter — debug logging', function () {
     beforeEach( function () {
         mock = makeMockClient();
         logStub = sinon.stub( console, 'log' );
+        emitter = null;
     } );
 
-    afterEach( function () {
+    afterEach( async function () {
+        if ( emitter ) {
+            await Promise.resolve( emitter.shutdown() ).catch( () => undefined );
+            emitter = null;
+        }
         sinon.restore();
     } );
 
-    it( 'never prints broker credentials in the connect log', function () {
-        makeEmitter( 'mqtt://svc-user:s3cret-pw@broker.local:1883' );
+    it( 'never prints broker credentials in the connect log', async function () {
+        emitter = await makeEmitter( 'mqtt://svc-user:s3cret-pw@broker.local:1883' );
         fireConnect( mock.eventHandlers );
 
         expect( logStub.calledOnce ).to.equal( true );
@@ -52,8 +59,8 @@ describe( 'mqtt emitter — debug logging', function () {
         expect( line ).to.contain( 'broker.local:1883' );
     } );
 
-    it( 'prints a credential-free url unchanged', function () {
-        makeEmitter( 'mqtt://broker.local:1883' );
+    it( 'prints a credential-free url unchanged', async function () {
+        emitter = await makeEmitter( 'mqtt://broker.local:1883' );
         fireConnect( mock.eventHandlers );
 
         expect( logStub.calledOnce ).to.equal( true );
@@ -87,7 +94,7 @@ describe( 'mqtt emitter — debug event logs', function () {
         sinon.restore();
     } );
 
-        it( 'logs connect when debug=true', function () {
+        it( 'logs connect when debug=true', async function () {
             const originalLog = console.log;
             let logged = false;
             console.log = ( msg ) => {
@@ -97,7 +104,7 @@ describe( 'mqtt emitter — debug event logs', function () {
             };
 
             try {
-                emitter = createEmitter( {
+                emitter = await createEmitter( {
                     brokerUrl: 'mqtt://127.0.0.1',
                     connectGraceMs: 0,
                     codec: testCodec,
@@ -112,7 +119,7 @@ describe( 'mqtt emitter — debug event logs', function () {
             }
         } );
 
-        it( 'logs offline with the in-flight count when debug=true', function () {
+        it( 'logs offline with the in-flight count when debug=true', async function () {
             const originalLog = console.log;
             let logged = false;
             console.log = ( msg ) => {
@@ -122,7 +129,7 @@ describe( 'mqtt emitter — debug event logs', function () {
             };
 
             try {
-                emitter = createEmitter( {
+                emitter = await createEmitter( {
                     brokerUrl: 'mqtt://127.0.0.1',
                     connectGraceMs: 0,
                     codec: testCodec,
@@ -138,7 +145,7 @@ describe( 'mqtt emitter — debug event logs', function () {
             }
         } );
 
-        it( 'logs errors when debug=true', function () {
+        it( 'logs errors when debug=true', async function () {
             const originalError = console.error;
             let logged = false;
             console.error = ( msg ) => {
@@ -148,7 +155,7 @@ describe( 'mqtt emitter — debug event logs', function () {
             };
 
             try {
-                emitter = createEmitter( {
+                emitter = await createEmitter( {
                     brokerUrl: 'mqtt://127.0.0.1',
                     connectGraceMs: 0,
                     codec: testCodec,

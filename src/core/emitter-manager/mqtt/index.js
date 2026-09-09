@@ -47,7 +47,9 @@
  * └── test/                    # Spec files
  *
  * @example
- * const emitter = createEmitter({
+ * // The factory is async, as QuestDB's is. A configuration error
+ * // rejects the promise with a classified `INVALID_CONFIG` error.
+ * const emitter = await createEmitter({
  *     brokerUrl: 'mqtt://broker.local:1883',
  *     codec: jsonCodec
  * });

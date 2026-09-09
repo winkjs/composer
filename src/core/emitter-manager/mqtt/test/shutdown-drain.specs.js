@@ -56,6 +56,7 @@ describe( 'mqtt emitter shutdown drain', function () {
     let capturedOptions;
     let ackedUpTo;
 
+    // Returns the factory's promise; every caller awaits the handle.
     const makeEmitter = function ( config = {} ) {
         return createEmitter( {
             brokerUrl: 'mqtt://127.0.0.1',
@@ -101,7 +102,7 @@ describe( 'mqtt emitter shutdown drain', function () {
     describe( 'the shutdown outcome is latched', function () {
 
         it( 'a second call after a lossy shutdown reports the same failure, not clean', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             expect( emitter.publishNow( 'wink/test', { v: 1 } ).ok ).to.equal( true );
 
@@ -122,7 +123,7 @@ describe( 'mqtt emitter shutdown drain', function () {
         } );
 
         it( 'a caller arriving mid-drain receives the first call\'s outcome', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             expect( emitter.publishNow( 'wink/test', { v: 1 } ).ok ).to.equal( true );
 
@@ -140,7 +141,7 @@ describe( 'mqtt emitter shutdown drain', function () {
     describe( 'the drain uses the whole deadline', function () {
 
         it( 'does not give up while budget remains, even with no progress', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             expect( emitter.publishNow( 'wink/test', { v: 1 } ).ok ).to.equal( true );
 
@@ -172,7 +173,7 @@ describe( 'mqtt emitter shutdown drain', function () {
     describe( 'pathological timeout values clamp to the default', function () {
 
         const assertClamped = async function ( timeout ) {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             expect( emitter.publishNow( 'wink/test', { v: 1 } ).ok ).to.equal( true );
 
@@ -213,7 +214,7 @@ describe( 'mqtt emitter shutdown drain', function () {
     describe( 'the loss report carries the exact count', function () {
 
         it( 'rejects with dropped: { count } from the unacked counter', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             expect( emitter.publishNow( 'wink/a', { v: 1 } ).ok ).to.equal( true );
             expect( emitter.publishNow( 'wink/b', { v: 2 } ).ok ).to.equal( true );
@@ -233,8 +234,8 @@ describe( 'mqtt emitter shutdown drain', function () {
 
     describe( 'the id allocator — unique ids so unacked packets survive', function () {
 
-        it( 'hands the client a unique-id provider (never reissues an in-use id)', function () {
-            emitter = makeEmitter();
+        it( 'hands the client a unique-id provider (never reissues an in-use id)', async function () {
+            emitter = await makeEmitter();
 
             // The default provider cycles the 16-bit id space with no
             // in-use check — a publish whose acknowledgment never came
@@ -258,7 +259,7 @@ describe( 'mqtt emitter shutdown drain', function () {
             // disk store held pending messages for the next session.
             // Nothing survives the process now, so the same close is a
             // real loss and must say so.
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             // Never fires 'connect' — the emitter is offline throughout.
             expect( emitter.publishNow( 'wink/test', { v: 1 } ).ok ).to.equal( true );
 
@@ -273,7 +274,7 @@ describe( 'mqtt emitter shutdown drain', function () {
         } );
 
         it( 'a connected shutdown with everything acknowledged resolves clean, no extra sends', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             expect( emitter.publishNow( 'wink/test', { v: 1 } ).ok ).to.equal( true );
             ackStranded();

@@ -92,6 +92,23 @@ const waitForCallbacks = function () {
 }; // waitForCallbacks()
 
 /**
+ * Awaits a factory call and returns the error it rejected with, or
+ * null. The factory is async, so a configuration refusal arrives as a
+ * rejection, the same way QuestDB's does.
+ *
+ * @param {Promise} pending - The factory's returned promise
+ * @returns {Promise<Error|null>} the refusal, or null when it resolved
+ */
+const refusalOf = async function ( pending ) {
+    try {
+        await pending;
+        return null;
+    } catch ( err ) {
+        return err;
+    }
+}; // refusalOf()
+
+/**
  * The standard test codec. JSON.stringify also gives the encode-failure
  * tests a real thrower: it throws on circular references, exactly the
  * failure `publishNow` must refuse without corrupting the counter.
@@ -101,4 +118,4 @@ const testCodec = {
     contentType: 'application/json'
 };
 
-export { makeMockClient, fireConnect, waitForCallbacks, testCodec };
+export { makeMockClient, fireConnect, waitForCallbacks, refusalOf, testCodec };

@@ -15,7 +15,7 @@ import { createEmitter } from '../emitter.js';
 import { ENV_VARS } from '../../../env-vars.js';
 import fs from 'fs/promises';
 import path from 'path';
-import { makeMockClient, testCodec } from './test-helpers.js';
+import { makeMockClient, refusalOf, testCodec } from './test-helpers.js';
 describe( 'mqtt emitter — configuration', function () {
 
     let mockClient;
@@ -42,22 +42,16 @@ describe( 'mqtt emitter — configuration', function () {
 
     describe( 'malformed broker url', function () {
 
-        it( 'classifies a url mqtt.connect rejects as INVALID_CONFIG', function () {
+        it( 'classifies a url mqtt.connect rejects as INVALID_CONFIG', async function () {
             // No mqttConnectFn injected: the REAL mqtt.connect runs and
             // throws on a protocol-less url. Without the guard that
             // throw escaped unclassified, against the ADR-018 rule that
-            // setup-time throws carry a classified err.code.
-            let caught = null;
-            try {
-                emitter = createEmitter( {
-                    brokerUrl: 'not-a-url',
-                    codec: testCodec
-                } );
-            } catch ( err ) {
-                caught = err;
-            }
-            emitter = null;
-            expect( caught, 'a malformed broker url must throw' ).to.not.equal( null );
+            // setup-time refusals carry a classified err.code.
+            const caught = await refusalOf( createEmitter( {
+                brokerUrl: 'not-a-url',
+                codec: testCodec
+            } ) );
+            expect( caught, 'a malformed broker url must be refused' ).to.not.equal( null );
             expect( caught.code ).to.equal( 'INVALID_CONFIG' );
             expect( caught.message ).to.contain( 'not-a-url' );
         } );
@@ -70,9 +64,9 @@ describe( 'mqtt emitter — configuration', function () {
 
     describe( 'configuration validation', function () {
 
-        it( 'uses ENV_VARS.mqttBrokerUrl when brokerUrl omitted', function () {
-            // Should not throw — ENV_VARS provides default broker URL
-            emitter = createEmitter( {
+        it( 'uses ENV_VARS.mqttBrokerUrl when brokerUrl omitted', async function () {
+            // Should resolve — ENV_VARS provides default broker URL
+            emitter = await createEmitter( {
                 codec: testCodec,
                 connectGraceMs: 0,
                 mqttConnectFn: mockConnect
@@ -80,16 +74,18 @@ describe( 'mqtt emitter — configuration', function () {
             expect( emitter ).to.have.property( 'publishNow' );
         } );
 
-        it( 'throws if codec is missing', function () {
-            expect( () => createEmitter( {
+        it( 'rejects if codec is missing', async function () {
+            const err = await refusalOf( createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 mqttConnectFn: mockConnect
-            } ) ).to.throw( TypeError, 'codec is required' );
+            } ) );
+            expect( err ).to.be.an.instanceOf( TypeError );
+            expect( err.message ).to.contain( 'codec is required' );
         } );
 
-        it( 'thrown setup errors carry err.code = INVALID_CONFIG (ADR-018)', function () {
-            // Two representative scenarios — one per setup-time throw site.
+        it( 'setup refusals carry err.code = INVALID_CONFIG (ADR-018)', async function () {
+            // Two representative scenarios — one per setup-time refusal site.
             // For the missing-brokerUrl case we have to also stub out the
             // ENV_VARS fallback (loaded once at module import; deleting
             // process.env.MQTT_BROKER_URL after that has no effect).
@@ -111,12 +107,8 @@ describe( 'mqtt emitter — configuration', function () {
                     envStub = sinon.stub( ENV_VARS, 'mqttBrokerUrl' ).value( undefined );
                 }
                 try {
-                    let thrown;
-                    try {
-                        createEmitter( config );
-                    } catch ( err ) {
-                        thrown = err;
-                    }
+                    // eslint-disable-next-line no-await-in-loop
+                    const thrown = await refusalOf( createEmitter( config ) );
                     expect( thrown, `case: ${what}` ).to.be.an( 'error' );
                     expect( thrown.code, `case: ${what}` ).to.equal( 'INVALID_CONFIG' );
                 } finally {
@@ -125,8 +117,8 @@ describe( 'mqtt emitter — configuration', function () {
             }
         } );
 
-        it( 'creates emitter with valid config', function () {
-            emitter = createEmitter( {
+        it( 'creates emitter with valid config', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -142,8 +134,8 @@ describe( 'mqtt emitter — configuration', function () {
             // getter had no production callers (verified before removal).
         } );
 
-        it( 'generates clientId if not provided', function () {
-            emitter = createEmitter( {
+        it( 'generates clientId if not provided', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -155,8 +147,8 @@ describe( 'mqtt emitter — configuration', function () {
             expect( opts.clientId ).to.match( /^wink-\d+-[a-z0-9]+$/ );
         } );
 
-        it( 'uses provided clientId', function () {
-            emitter = createEmitter( {
+        it( 'uses provided clientId', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -179,7 +171,7 @@ describe( 'mqtt emitter — configuration', function () {
         it( 'creates NO store directory — nothing touches the filesystem', async function () {
             const clientId = `test-client-${Date.now()}`;
 
-            emitter = createEmitter( {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,

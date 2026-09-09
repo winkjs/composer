@@ -532,11 +532,12 @@ describe( 'MQTT Emitter Hardening — broker outage and window overflow', functi
         activeSubscriber = captured.subscriber;
 
         const deliveryFailures = [];
-        activeEmitter = createEmitter( {
+        activeEmitter = await createEmitter( {
             brokerUrl: MQTT_BROKER_DIRECT,
             // Grace deliberately disabled: this test's subject IS the
             // pre-connack window — the handle must come back before the
-            // handshake completes so the publishes below race it.
+            // handshake completes so the publishes below race it. At
+            // grace 0 the promise resolves without any socket event.
             connectGraceMs: 0,
             codec: jsonCodec,
             maxQueueSize: 5_000,

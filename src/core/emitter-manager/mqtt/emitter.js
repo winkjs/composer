@@ -48,8 +48,10 @@
  *      reachable broker the real wait is one connack round trip; on an
  *      unreachable one the flow starts with `connected: false` and the
  *      client keeps retrying in the background.
- *    - Return shape: the handle itself at grace 0, otherwise a Promise
- *      of it. The wiring layer awaits either (ADR-018).
+ *    - Return shape: always a Promise of the handle, as QuestDB's
+ *      factory returns. At grace 0 the promise resolves without a
+ *      wait. A configuration refusal arrives as a rejection carrying
+ *      the classified code. The wiring layer awaits it (ADR-018).
  *    - This replaced the wire-time `sleep(240)` that once papered over
  *      the pre-connack loss ADR-021 eliminated.
  *
@@ -328,17 +330,17 @@ const waitForFirstConnect = function ( client, graceMs ) {
 /**
  * Create production MQTT emitter.
  *
- * Validation is synchronous — bad config throws before any side
- * effect. The return shape depends on the effective grace:
- * `connectGraceMs === 0` returns the handle directly (today's callers
- * that need synchronous creation pass 0); otherwise returns a Promise
- * resolving to the handle after the first connack or the grace budget.
- * The wiring layer awaits either shape (ADR-018).
+ * Validation runs before any side effect. Bad config rejects the
+ * returned promise with a classified `INVALID_CONFIG` error, so a
+ * refusal and a handle arrive through the same channel, the way
+ * QuestDB's factory works. With a positive grace the promise resolves
+ * after the first connack or the grace budget; at grace 0 it resolves
+ * without a wait. The wiring layer awaits it (ADR-018).
  *
  * @param {Object} config - emitter config (see configSchema in index.js)
- * @returns {Object|Promise<Object>} the emitter handle, or a Promise of it
+ * @returns {Promise<Object>} the emitter handle
  */
-export const createEmitter = function ( config ) {
+export const createEmitter = async function ( config ) {
     // Per ADR-018, setup-time throws carry classified err.code.
     //
     // brokerUrl: `??` so explicit '' is the user's choice (not "fall back
@@ -846,17 +848,16 @@ export const createEmitter = function ( config ) {
         getPressure
     };
 
-    // First-connack grace (bounded). With a grace, the return is a
-    // Promise the wiring layer awaits (ADR-018 allows sync or async
-    // factories): by the time wire() hands the emitter to the flow,
-    // the client has either seen its first connack or spent the
-    // budget. Expiry is not an error — the posture stays 'recovering'.
-    // With connectGraceMs 0 the handle returns synchronously, exactly
-    // the pre-grace behavior. The permanent 'connect' handler above is
-    // attached before the wait's one-shot listener, so a handle
-    // resolved via connack already reports `connected: true`.
-    if ( connectGraceMs === 0 ) {
-        return handle;
+    // First-connack grace (bounded). By the time wire() hands the
+    // emitter to the flow, the client has either seen its first
+    // connack or spent the budget. Expiry is not an error — the
+    // posture stays 'recovering'. With connectGraceMs 0 no wait is
+    // armed and the promise resolves at once. The permanent 'connect'
+    // handler above is attached before the wait's one-shot listener,
+    // so a handle resolved via connack already reports
+    // `connected: true`.
+    if ( connectGraceMs > 0 ) {
+        await waitForFirstConnect( client, connectGraceMs );
     }
-    return waitForFirstConnect( client, connectGraceMs ).then( () => handle );
-}; // createMQTTEmitter()
+    return handle;
+}; // createEmitter()

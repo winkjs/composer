@@ -45,8 +45,8 @@ describe( 'mqtt emitter — getHealth()', function () {
 
     describe( 'getHealth()', function () {
 
-        beforeEach( function () {
-            emitter = createEmitter( {
+        beforeEach( async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -97,11 +97,13 @@ describe( 'mqtt emitter — getHealth()', function () {
             expect( health2.stats.published ).to.equal( 0 );
         } );
 
-        it( 'is yellow when connected and pressure crosses the yellow threshold (0.66)', function () {
+        it( 'is yellow when connected and pressure crosses the yellow threshold (0.66)', async function () {
             // Drive pressure into the yellow band with real unacked
             // messages: 7 in flight against a window of 10 is 0.7.
             const manual = makeMockClient( { manualAcks: true } );
-            emitter = createEmitter( {
+            // Close the beforeEach handle before replacing it.
+            await emitter.shutdown();
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -122,11 +124,13 @@ describe( 'mqtt emitter — getHealth()', function () {
             manual.publishCalls.forEach( ( call ) => call.cb() );
         } );
 
-        it( 'turns yellow at exactly 0.66 — the threshold is inclusive', function () {
+        it( 'turns yellow at exactly 0.66 — the threshold is inclusive', async function () {
             // getHealth uses `pressure >= 0.66`. Pin the boundary from
             // both sides: 32/50 = 0.64 is green, 33/50 = 0.66 is yellow.
             const manual = makeMockClient( { manualAcks: true } );
-            emitter = createEmitter( {
+            // Close the beforeEach handle before replacing it.
+            await emitter.shutdown();
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,

@@ -169,7 +169,7 @@ describe( 'record-reuse pattern (handbook: "Reusing one record in annotate")', f
 
             it( `${entry.name}: each payload decodes to its own firing's values`, async function () {
                 const mock = makeMockClient();
-                const emitter = createMqttEmitter( {
+                const emitter = await createMqttEmitter( {
                     brokerUrl: 'mqtt://127.0.0.1',
                     connectGraceMs: 0,
                     codec: entry.codec,

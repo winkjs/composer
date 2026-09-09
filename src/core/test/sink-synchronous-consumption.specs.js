@@ -79,13 +79,13 @@ const SINKS = [
     },
     {
         name: 'mqtt emitter — publishNow()',
-        drive: function ( record ) {
+        drive: async function ( record ) {
             const mock = makeMockClient();
-            const emitter = createMqttEmitter( {
+            const emitter = await createMqttEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
-                // Grace disabled: drive() must get the handle in the
-                // same tick — the ADR-023 seal happens at the call
-                // boundary.
+                // Grace disabled: the handle must resolve before the
+                // mock's ack callback can run, because the ADR-023
+                // seal happens at the call boundary, after drive().
                 connectGraceMs: 0,
                 codec: testCodec,
                 mqttConnectFn: () => mock.client

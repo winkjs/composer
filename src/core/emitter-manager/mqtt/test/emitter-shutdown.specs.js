@@ -45,8 +45,8 @@ describe( 'mqtt emitter — shutdown() surface', function () {
 
     describe( 'shutdown()', function () {
 
-        it( 'returns a promise', function () {
-            emitter = createEmitter( {
+        it( 'returns a promise', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -58,7 +58,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
         } );
 
         it( 'calls client.end with force=true when not connected', async function () {
-            emitter = createEmitter( {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -71,7 +71,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
         } );
 
         it( 'calls client.end with force=false when connected (graceful)', async function () {
-            emitter = createEmitter( {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -86,7 +86,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
         } );
 
         it( 'is idempotent - second call returns immediately', async function () {
-            emitter = createEmitter( {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -110,7 +110,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
                 // Don't call callback for graceful close (force=false)
             } );
 
-            emitter = createEmitter( {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -130,7 +130,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             // Verify all three call shapes work without throwing. The timeout
             // value's actual effect is exercised by the "forces shutdown after
             // timeout" test above; this test is purely about call-shape acceptance.
-            const e1 = createEmitter( {
+            const e1 = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -138,7 +138,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             } );
             await e1.shutdown();
 
-            const e2 = createEmitter( {
+            const e2 = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -146,7 +146,7 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             } );
             await e2.shutdown( {} );
 
-            const e3 = createEmitter( {
+            const e3 = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,

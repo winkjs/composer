@@ -41,6 +41,7 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
     let emitter;
     let capturedOpts;
 
+    // Returns the factory's promise; every caller awaits the handle.
     const makeEmitter = function ( overrides = {} ) {
         return createEmitter( {
             brokerUrl: 'mqtt://127.0.0.1',
@@ -82,19 +83,19 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
 
     describe( 'client construction', function () {
 
-        it( 'hands mqtt.js NO outgoingStore — the default synchronous memory store', function () {
-            emitter = makeEmitter();
+        it( 'hands mqtt.js NO outgoingStore — the default synchronous memory store', async function () {
+            emitter = await makeEmitter();
             expect( capturedOpts.outgoingStore ).to.equal( undefined );
         } );
 
-        it( 'clamps maxQueueSize to the 16-bit packet-id ceiling, loudly', function () {
+        it( 'clamps maxQueueSize to the 16-bit packet-id ceiling, loudly', async function () {
             // Every unacknowledged QoS-1 message holds a packet id, so one
             // connection can never carry more than the id space allows; a
             // request beyond the 60,000 ceiling is clamped with a warning
             // (same behavior the LevelDB store had, kept in the emitter).
             const warnStub = sinon.stub( console, 'warn' );
             try {
-                emitter = makeEmitter( { maxQueueSize: 70000 } );
+                emitter = await makeEmitter( { maxQueueSize: 70000 } );
                 fireConnect( mock.eventHandlers );
                 emitter.publishNow( 'jig/t', { i: 0 } );
 
@@ -114,13 +115,13 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
 
     describe( 'pressure from the counter', function () {
 
-        it( 'starts at zero pressure', function () {
-            emitter = makeEmitter();
+        it( 'starts at zero pressure', async function () {
+            emitter = await makeEmitter();
             expect( emitter.getPressure() ).to.equal( 0 );
         } );
 
-        it( 'rises with unacknowledged publishes', function () {
-            emitter = makeEmitter();
+        it( 'rises with unacknowledged publishes', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             for ( let i = 0; i < 4; i += 1 ) {
                 emitter.publishNow( 'jig/t', { i } );
@@ -128,8 +129,8 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             expect( emitter.getPressure() ).to.equal( 0.4 );
         } );
 
-        it( 'falls as acknowledgments arrive', function () {
-            emitter = makeEmitter();
+        it( 'falls as acknowledgments arrive', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             for ( let i = 0; i < 4; i += 1 ) {
                 emitter.publishNow( 'jig/t', { i } );
@@ -140,19 +141,19 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             expect( emitter.getPressure() ).to.be.closeTo( 0.1, 1e-12 );
         } );
 
-        it( 'caps reported pressure at 1 even with a degenerate sub-1 cap', function () {
+        it( 'caps reported pressure at 1 even with a degenerate sub-1 cap', async function () {
             // The DSL schema validates maxQueueSize as a positive integer,
             // but a direct createEmitter caller bypasses it. The gauge
             // still honours the ADR-018 contract: pressure ∈ [0, 1].
-            emitter = makeEmitter( { maxQueueSize: 0.5 } );
+            emitter = await makeEmitter( { maxQueueSize: 0.5 } );
             fireConnect( mock.eventHandlers );
             emitter.publishNow( 'jig/t', { i: 0 } );
             expect( emitter.getPressure() ).to.equal( 1 );
             ackOne( 0 );
         } );
 
-        it( 'a failed publish frees its slot exactly once', function () {
-            emitter = makeEmitter( { onDeliveryFailure: () => null } );
+        it( 'a failed publish frees its slot exactly once', async function () {
+            emitter = await makeEmitter( { onDeliveryFailure: () => null } );
             fireConnect( mock.eventHandlers );
             emitter.publishNow( 'jig/t', { i: 0 } );
             emitter.publishNow( 'jig/t', { i: 1 } );
@@ -164,8 +165,8 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
 
     describe( 'pre-flight refusal at the cap', function () {
 
-        it( 'refuses with STORAGE_FULL once unacked reaches 90% of maxQueueSize', function () {
-            emitter = makeEmitter();
+        it( 'refuses with STORAGE_FULL once unacked reaches 90% of maxQueueSize', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             for ( let i = 0; i < 9; i += 1 ) {
                 expect( emitter.publishNow( 'jig/t', { i } ).ok ).to.equal( true );
@@ -175,8 +176,8 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             expect( refused.error.code ).to.equal( 'STORAGE_FULL' );
         } );
 
-        it( 'acknowledgments free capacity for new accepts', function () {
-            emitter = makeEmitter();
+        it( 'acknowledgments free capacity for new accepts', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             for ( let i = 0; i < 9; i += 1 ) {
                 emitter.publishNow( 'jig/t', { i } );
@@ -186,8 +187,8 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             expect( emitter.publishNow( 'jig/t', { i: 10 } ).ok ).to.equal( true );
         } );
 
-        it( 'a refused message is not counted as in flight', function () {
-            emitter = makeEmitter();
+        it( 'a refused message is not counted as in flight', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             for ( let i = 0; i < 9; i += 1 ) {
                 emitter.publishNow( 'jig/t', { i } );
@@ -201,8 +202,8 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
 
     describe( 'health exposure', function () {
 
-        it( 'getHealth().stats.unacked reports the live count', function () {
-            emitter = makeEmitter();
+        it( 'getHealth().stats.unacked reports the live count', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             emitter.publishNow( 'jig/t', { i: 0 } );
             emitter.publishNow( 'jig/t', { i: 1 } );
@@ -227,9 +228,9 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
         const circular = {};
         circular.self = circular;
 
-        it( 'refuses a message the codec cannot encode — classified, no throw, counter untouched', function () {
+        it( 'refuses a message the codec cannot encode — classified, no throw, counter untouched', async function () {
             const onDeliveryFailure = sinon.stub();
-            emitter = makeEmitter( { onDeliveryFailure } );
+            emitter = await makeEmitter( { onDeliveryFailure } );
             fireConnect( mock.eventHandlers );
 
             const result = emitter.publishNow( 'jig/t', circular );
@@ -247,8 +248,8 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             expect( onDeliveryFailure.called ).to.equal( false );
         } );
 
-        it( 'accepts a good message immediately after an encode failure', function () {
-            emitter = makeEmitter();
+        it( 'accepts a good message immediately after an encode failure', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
 
             emitter.publishNow( 'jig/t', circular );
@@ -261,7 +262,7 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
         } );
 
         it( 'shuts down clean after encode failures — nothing was ever in flight', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
 
             emitter.publishNow( 'jig/t', circular );
@@ -271,8 +272,8 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             emitter = null;
         } );
 
-        it( 'restores the counter when client.publish itself throws synchronously', function () {
-            emitter = makeEmitter();
+        it( 'restores the counter when client.publish itself throws synchronously', async function () {
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             mock.client.publish = sinon.stub().throws( new TypeError( 'invalid topic' ) );
 
@@ -290,7 +291,7 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
     describe( 'shutdown drain from the counter', function () {
 
         it( 'rejects SHUTDOWN_TIMEOUT with the exact unacked count when messages are stuck', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             emitter.publishNow( 'jig/t', { i: 0 } );
             emitter.publishNow( 'jig/t', { i: 1 } );
@@ -312,7 +313,7 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             // clean on purpose: the disk store held the messages for the
             // next session. With no disk store, unacknowledged messages
             // die with the process — shutdown must say so.
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             emitter.publishNow( 'jig/t', { i: 0 } );
             emitter.publishNow( 'jig/t', { i: 1 } );
@@ -330,7 +331,7 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
         } );
 
         it( 'resolves clean when everything was acknowledged', async function () {
-            emitter = makeEmitter();
+            emitter = await makeEmitter();
             fireConnect( mock.eventHandlers );
             emitter.publishNow( 'jig/t', { i: 0 } );
             emitter.publishNow( 'jig/t', { i: 1 } );

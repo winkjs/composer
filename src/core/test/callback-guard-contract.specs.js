@@ -303,7 +303,7 @@ const SITES = [
         callbackName: 'onCritical',
         run: async function ( badCallback ) {
             const manual = makeMockClient( { manualAcks: true } );
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -338,7 +338,7 @@ const SITES = [
         callbackName: 'onBackpressure',
         run: async function ( badCallback ) {
             const manual = makeMockClient( { manualAcks: true } );
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -366,7 +366,7 @@ const SITES = [
         callbackName: 'onDeliveryFailure',
         run: async function ( badCallback ) {
             const manual = makeMockClient( { manualAcks: true } );
-            const emitter = createEmitter( {
+            const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,

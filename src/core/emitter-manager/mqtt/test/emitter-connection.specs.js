@@ -45,12 +45,12 @@ describe( 'mqtt emitter — connection state', function () {
 
     describe( 'connection state', function () {
 
-        it( 'starts disconnected (grace disabled: handle handed back before any connack)', function () {
+        it( 'starts disconnected (grace disabled: handle handed back before any connack)', async function () {
             // The factory never fabricates connectivity. With
-            // connectGraceMs 0 the handle comes back synchronously,
+            // connectGraceMs 0 the promise resolves without waiting,
             // before any connack could arrive. connect-grace.specs.js
             // pins the same invariant after a full grace expiry.
-            emitter = createEmitter( {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -60,8 +60,8 @@ describe( 'mqtt emitter — connection state', function () {
             expect( emitter.getHealth().connected ).to.equal( false );
         } );
 
-        it( 'becomes connected on connect event', function () {
-            emitter = createEmitter( {
+        it( 'becomes connected on connect event', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -74,8 +74,8 @@ describe( 'mqtt emitter — connection state', function () {
             expect( emitter.getHealth().connected ).to.equal( true );
         } );
 
-        it( 'becomes disconnected on offline event', function () {
-            emitter = createEmitter( {
+        it( 'becomes disconnected on offline event', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
@@ -89,8 +89,8 @@ describe( 'mqtt emitter — connection state', function () {
             expect( emitter.getHealth().connected ).to.equal( false );
         } );
 
-        it( 'tracks errors in stats', function () {
-            emitter = createEmitter( {
+        it( 'tracks errors in stats', async function () {
+            emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
                 codec: testCodec,
