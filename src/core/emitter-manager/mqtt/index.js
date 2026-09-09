@@ -39,7 +39,14 @@
  * Directory structure:
  * core/emitter-manager/mqtt/
  * ├── index.js                 # Module surface: id, schema, factory
- * ├── emitter.js               # The emitter implementation
+ * ├── emitter.js               # The factory: resolve, open, assemble
+ * ├── resolve-config.js        # Validation in one fixed order; the
+ * │                            #   three callbacks armed by the guard
+ * ├── connection.js            # Client open, first-connack wait, the
+ * │                            #   connection event handlers
+ * ├── health.js                # getPressure, getHealth, backpressure
+ * ├── publish.js               # publishNow, the hot path
+ * ├── shutdown-drain.js        # The latched drain-then-close shutdown
  * ├── mqtt-store.js            # DORMANT LevelDB store (ADR-021; kept
  * │                            #   for the WAL successor, not wired,
  * │                            #   not shipped in the npm package)
