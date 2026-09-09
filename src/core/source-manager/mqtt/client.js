@@ -148,6 +148,7 @@ import { createDedupCache } from './dedup.js';
 import { createStatusReporter } from './status.js';
 import { isUsableRecord, describeShape } from '../record-shape.js';
 import { wrapTransform, TRANSFORM_THREW } from '../../utils/callback-guard/index.js';
+import { jitteredPeriod } from '../../utils/jitter/index.js';
 import { logger } from '../../logger/index.js';
 import { classifyAddress, localhostRefusalMessage, nameWarningMessage } from '../../utils/address/index.js';
 
@@ -307,10 +308,14 @@ const createMQTTSourceClient = function ( config ) {
         );
     }
 
-    // Build MQTT options, allowing cleanStart override
+    // Build MQTT options, allowing cleanStart override. The reconnect
+    // period is the configured one plus a random share of up to 20%,
+    // drawn once here, so a fleet that lost one broker does not retry
+    // in step. The configured period is the floor.
     const mqttOptions = {
         ...MQTT_SOURCE_CONFIG,
-        clientId: generatedClientId
+        clientId: generatedClientId,
+        reconnectPeriod: jitteredPeriod( MQTT_SOURCE_CONFIG.reconnectPeriod )
     };
 
     // Map the user-facing `cleanStart` key (MQTT 5 term) onto the

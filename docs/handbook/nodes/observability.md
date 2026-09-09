@@ -50,6 +50,14 @@ stopping being refused at the buffer ceiling. Every one of these
 prints at `warn` or above. The lines and their levels are listed under
 [Configuration → storage](./configuration.md#storage).
 
+The MQTT emitter follows the same rule for its broker link. One
+`DELIVERY_HEALTH` line marks the broker going offline, and one marks
+the connection restored, each with the count of messages in flight.
+`CONNECT_FAILED` marks a failed connection attempt with its reason,
+two in full per episode and then one summary a minute. These print
+with or without the emitter's `debug` option. The list is under
+[Configuration → MQTT emitter](./configuration.md#mqtt-emitter).
+
 ## Watching a source: status and metrics
 
 A source reports its health through two callbacks you pass in its

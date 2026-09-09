@@ -51,6 +51,12 @@
  * 3. MESSAGE EXPIRY (MQTT v5)
  *    - Configurable per message type
  *    - Prevents flooding backend after extended offline periods
+ *    - The type lookup is a null-prototype table. A prototype key such
+ *      as 'constructor' would hand the library a function, and
+ *      mqtt-packet then destroys the stream with an error that carries
+ *      no code. mqtt.js swallows such an error, so no handler sees it,
+ *      and the poison packet replays on every reconnect. An unknown
+ *      key falls back to the default expiry instead.
  *
  * 4. NO FORCED IDENTITY / OPTIONAL WILL — unchanged transport behavior.
  *
@@ -77,7 +83,12 @@
  *   when supplied (ctx = `{ topic }`); without a handler the adapter
  *   surfaces the failure via `Promise.reject(deliveryErr)` — loud failure
  *   beats silent loss (parity with QuestDB). `onCritical` is
- *   reserved for the high-pressure `QUEUE_CRITICAL` warning (no loss yet).
+ *   reserved for the high-pressure `QUEUE_CRITICAL` warning (no loss
+ *   yet). It fires once per climb past 0.8 and re-arms below 0.66;
+ *   `onBackpressure` reports the pressure after every acknowledgment.
+ * - `flush( { timeout }? )` waits for every accepted message to settle,
+ *   closing nothing and refusing nothing. On its deadline it rejects
+ *   `DELIVERY_FAILED` with `pending: { count }` (ADR-018 §6).
  * - `getPressure()` returns unacked / maxQueueSize in `[0, 1]` (sync,
  *   O(1), allocation-free per ADR-018).
  * - `getHealth()` returns the ADR-018 health floor `{status, connected,
@@ -135,6 +146,13 @@
  *   line. Fix the callback; the line names it and carries the detail.
  *
  * Console classification (a token on a log line, not an `err.code`):
+ * - `DELIVERY_HEALTH`  — the link changed state. One line per change,
+ *   with or without `debug`: going offline at error, the next connack
+ *   at warn with the outage length. Both carry the in-flight count.
+ *   Nothing prints while a state persists (see `connection.js`).
+ * - `CONNECT_FAILED`   — the client's `error` event, at warn, with
+ *   the reason (a refused connect, a connack timeout). Bounded: two
+ *   per episode in full, then one summary a minute.
  * - `ADDRESS_IS_NAME`  — the `brokerUrl` host is a name other than
  *   `localhost`. One `logger.warn` line at setup, before the client is
  *   created (ADR-030). A name is allowed and the emitter proceeds; the
@@ -190,7 +208,7 @@ export const createEmitter = async function ( config ) {
 
     const client = openClient( resolved );
 
-    const { getPressure, checkBackpressure, getHealth } = createHealth( {
+    const { getPressure, checkCritical, checkBackpressure, getHealth } = createHealth( {
         state,
         maxQueueSize: resolved.maxQueueSize,
         onCritical: resolved.onCritical,
@@ -201,10 +219,11 @@ export const createEmitter = async function ( config ) {
         state,
         codec: resolved.codec,
         getPressure,
+        checkCritical,
         checkBackpressure,
         onDeliveryFailure: resolved.onDeliveryFailure
     } );
-    const shutdown = createShutdown( { client, state } );
+    const { flush, shutdown } = createShutdown( { client, state } );
 
     // The permanent handlers attach before the grace wait's one-shot
     // listener, so a handle resolved via connack already reports
@@ -218,6 +237,7 @@ export const createEmitter = async function ( config ) {
 
     const handle = {
         publishNow,
+        flush,
         getHealth,
         shutdown,
         getPressure

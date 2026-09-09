@@ -32,6 +32,7 @@ import {
     MQTT_INFLIGHT_ID_LIMIT
 } from './constants.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
+import { jitteredPeriod } from '../../utils/jitter/index.js';
 import { logger } from '../../logger/index.js';
 import { classifyAddress, localhostRefusalMessage } from '../../utils/address/index.js';
 
@@ -70,7 +71,7 @@ const assertBrokerNotLocalhost = function ( brokerUrl ) {
  * @param {string} name - the option name for the error message
  */
 const assertOptionalCallback = function ( value, name ) {
-    if ( value !== undefined && typeof value !== 'function' ) {
+    if ( ( value !== undefined ) && ( typeof value !== 'function' ) ) {
         throw invalidConfig( `${name} must be a function` );
     }
 };
@@ -89,10 +90,10 @@ const assertOptionalCallback = function ( value, name ) {
  * @returns {Object} the mqtt.js connect-options `will` object
  */
 const buildWillOptions = function ( will, codec ) {
-    if ( typeof will.topic !== 'string' || will.topic.length === 0 ) {
+    if ( ( typeof will.topic !== 'string' ) || ( will.topic.length === 0 ) ) {
         throw invalidConfig( 'will.topic is required — a non-empty string' );
     }
-    if ( will.message === undefined || will.message === null ) {
+    if ( ( will.message === undefined ) || ( will.message === null ) ) {
         throw invalidConfig( 'will.message is required' );
     }
     let willPayload;
@@ -205,7 +206,7 @@ const armCallbacks = function ( config ) {
  */
 const resolveGrace = function ( config ) {
     const connectGraceMs = config.connectGraceMs ?? ENV_VARS.mqttConnectGraceMs;
-    if ( !Number.isInteger( connectGraceMs ) || connectGraceMs < 0 ) {
+    if ( !Number.isInteger( connectGraceMs ) || ( connectGraceMs < 0 ) ) {
         throw invalidConfig( 'connectGraceMs must be a non-negative integer (milliseconds); 0 disables the first-connect wait' );
     }
     return connectGraceMs;
@@ -261,6 +262,10 @@ const buildClientOptions = function ( config ) {
     const mqttOptions = {
         ...MQTT_CONFIG,
         clientId,
+        // The configured period plus a random share of up to 20%,
+        // drawn once here, so a fleet that lost one broker does not
+        // retry in step. The configured period is the floor.
+        reconnectPeriod: jitteredPeriod( MQTT_CONFIG.reconnectPeriod ),
         messageIdProvider: new mqtt.UniqueMessageIdProvider()
     };
 

@@ -100,15 +100,9 @@ describe( 'mqtt emitter — shutdown() surface', function () {
             expect( mockClient.end.callCount ).to.equal( 1 );
         } );
 
-        it( 'forces shutdown after timeout when connected', async function () {
-            mockClient.end.callsFake( ( force, opts, cb ) => {
-                // Simulate graceful close never completing
-                if ( force === true ) {
-                    // Force close completes immediately
-                    if ( cb ) setImmediate( cb );
-                }
-                // Don't call callback for graceful close (force=false)
-            } );
+        it( 'detaches the stream after the timeout when the graceful close hangs', async function () {
+            const hung = makeMockClient( { hangOnEnd: true } );
+            mockConnect = sinon.stub().returns( hung.client );
 
             emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
@@ -117,13 +111,35 @@ describe( 'mqtt emitter — shutdown() surface', function () {
                 mqttConnectFn: mockConnect
             } );
 
-            eventHandlers.connect();
+            hung.eventHandlers.connect();
 
             // Use very short timeout for test (the ADR-018 shutdown-contract shape).
             await emitter.shutdown( { timeout: 10 } );
 
-            // Should have called end twice - once graceful, once forced
-            expect( mockClient.end.callCount ).to.be.at.least( 1 );
+            // One graceful end() that hung; the timer detached the stream.
+            expect( hung.endCalls.length ).to.equal( 1 );
+            expect( hung.endCalls[ 0 ].force ).to.equal( false );
+            expect( hung.stream.destroyed ).to.equal( true );
+        } );
+
+        it( 'a stream the timer cannot destroy is counted, never thrown', async function () {
+            // The timer runs outside every promise, so a throw there
+            // would end the process. The emitter counts it instead.
+            const hung = makeMockClient( { hangOnEnd: true } );
+            delete hung.client.stream;
+            mockConnect = sinon.stub().returns( hung.client );
+
+            emitter = await createEmitter( {
+                brokerUrl: 'mqtt://127.0.0.1',
+                connectGraceMs: 0,
+                codec: testCodec,
+                mqttConnectFn: mockConnect
+            } );
+            hung.eventHandlers.connect();
+
+            await emitter.shutdown( { timeout: 10 } );
+
+            expect( emitter.getHealth().stats.errors ).to.equal( 1 );
         } );
 
         it( 'shutdown signature accepts the ADR-018 forms — no arg, {}, { timeout: N }', async function () {

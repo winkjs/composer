@@ -52,6 +52,27 @@ describe( 'mqtt emitter — publishNow()', function () {
             } );
         } );
 
+        it( 'hands the client one reused options object, with fresh properties per publish', function () {
+            // mqtt.js copies its options synchronously before any other
+            // work, and the packet keeps only `properties`. So the
+            // emitter reuses one options object per instance, and the
+            // per-publish allocation is the properties object alone.
+            const optionRefs = [];
+            const propertyRefs = [];
+            mockClient.publish.callsFake( ( topic, payload, opts, cb ) => {
+                optionRefs.push( opts );
+                propertyRefs.push( opts.properties );
+                setImmediate( cb );
+            } );
+
+            emitter.publishNow( 'test/topic', { value: 1 } );
+            emitter.publishNow( 'test/topic', { value: 2 } );
+
+            expect( optionRefs[ 0 ] ).to.equal( optionRefs[ 1 ] );
+            expect( optionRefs[ 0 ].qos ).to.equal( 1 );
+            expect( propertyRefs[ 0 ] ).to.not.equal( propertyRefs[ 1 ] );
+        } );
+
         it( 'publishes message to topic and returns { ok: true } per ADR-018', function () {
             const result = emitter.publishNow( 'test/topic', { value: 42 } );
 

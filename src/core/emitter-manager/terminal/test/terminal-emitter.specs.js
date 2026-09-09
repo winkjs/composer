@@ -51,6 +51,7 @@ describe( 'Terminal Emitter — createEmitter', function () {
 
         expect( emitter ).to.have.property( 'publishNow' ).that.is.a( 'function' );
         expect( emitter ).to.have.property( 'shutdown' ).that.is.a( 'function' );
+        expect( emitter ).to.have.property( 'flush' ).that.is.a( 'function' );
         expect( emitter ).to.have.property( 'getPressure' ).that.is.a( 'function' );
     } );
 
@@ -58,6 +59,14 @@ describe( 'Terminal Emitter — createEmitter', function () {
         const emitter = createEmitter();
 
         expect( emitter.getHealth().connected ).to.equal( true );
+    } );
+
+    it( 'flush returns a promise that resolves: stdout drains to the kernel without help', async function () {
+        const emitter = createEmitter( {} );
+        const result = emitter.flush();
+        expect( result ).to.be.instanceOf( Promise );
+        await result;
+        await emitter.flush( { timeout: 100 } );
     } );
 
     it( 'shutdown returns a promise', async function () {

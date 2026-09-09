@@ -109,8 +109,8 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
 
     describe( 'shutdown timeout enforcement (broker hangs DISCONNECT)', function () {
 
-        it( 'returns within timeout via force-end when broker never ACKs', async function () {
-            const { client, eventHandlers, endCalls } = makeMockClient( { hangOnEnd: true } );
+        it( 'returns within timeout and detaches the stream when the broker hangs the DISCONNECT', async function () {
+            const { client, stream, eventHandlers, endCalls } = makeMockClient( { hangOnEnd: true } );
             const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
@@ -130,10 +130,11 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             expect( elapsed ).to.be.at.least( 200 );
             expect( elapsed ).to.be.below( 700 );
 
-            // First end() call: graceful (force=false, with cb). Hangs.
-            // Second end() call: force=true (no cb), fires from the timer.
-            const forceEndCalls = endCalls.filter( ( c ) => c.force === true );
-            expect( forceEndCalls.length ).to.be.at.least( 1 );
+            // The graceful end() hangs, and a second end() would be a
+            // no-op behind the library's latch. The timer must destroy
+            // the stream itself, as the library's connack timeout does.
+            expect( endCalls[ 0 ].force ).to.equal( false );
+            expect( stream.destroyed, 'the stream must be detached at the deadline' ).to.equal( true );
         } );
 
         it( 'force-closes when drain budget exhausts (unacked stuck above 0)', async function () {
@@ -141,7 +142,7 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             // calculation: when the drain budget elapses before the
             // unacked counter hits 0, force-close fires almost
             // immediately on the remaining budget.
-            const { client, eventHandlers, endCalls, publishCalls } =
+            const { client, stream, eventHandlers, endCalls, publishCalls } =
                 makeMockClient( { hangOnEnd: true, manualAcks: true } );
             const emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
@@ -171,8 +172,11 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             expect( elapsed ).to.be.at.least( 100 );
             expect( elapsed ).to.be.below( 700 );
 
-            const forceEnds = endCalls.filter( ( c ) => c.force === true );
-            expect( forceEnds.length ).to.be.at.least( 1 );
+            // A lossy drain forces the close at once: a graceful end()
+            // would wait for ever on the packets that never got acked.
+            expect( endCalls.length ).to.equal( 1 );
+            expect( endCalls[ 0 ].force ).to.equal( true );
+            expect( stream.destroyed, 'a lossy close must detach the stream' ).to.equal( true );
 
             // The lossy close reports itself (ADR-018): teardown
             // happened (asserted above), then the classified rejection

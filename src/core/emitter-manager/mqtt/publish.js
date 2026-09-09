@@ -119,7 +119,9 @@ const publishRefusal = function ( topic, publishErr ) {
  * reused: mqtt.js keeps the packet — properties included — until
  * PUBACK so it can retransmit, and a shared mutated object would
  * corrupt every queued retransmission (the unavoidable-residual
- * justification ADR-018 asks for).
+ * justification ADR-018 asks for). The options object that carries
+ * `properties` into the client is not on this list; the client
+ * copies it at once, so one object per emitter serves every publish.
  *
  * @param {Object} codec - The configured codec (contentType, payloadFormatIndicator)
  * @param {number} expiry - The message expiry in seconds
@@ -150,11 +152,20 @@ const buildProperties = function ( codec, expiry ) {
  * @param {Object} deps.state - The emitter's core state
  * @param {Object} deps.codec - The configured codec (pack, contentType)
  * @param {function} deps.getPressure - The pressure reader from health.js
- * @param {function} deps.checkBackpressure - The pressure signaller from health.js
+ * @param {function} deps.checkCritical - The accept-path edge check from health.js
+ * @param {function} deps.checkBackpressure - The ack-path pressure signaller from health.js
  * @param {function|null} deps.onDeliveryFailure - Guard-wrapped delivery-failure callback, or null
  * @returns {function} publishNow
  */
-export const createPublishNow = function ( { client, state, codec, getPressure, checkBackpressure, onDeliveryFailure } ) {
+export const createPublishNow = function ( {
+    client, state, codec, getPressure, checkCritical, checkBackpressure, onDeliveryFailure
+} ) {
+    // One options object per emitter, reused on every publish. mqtt.js
+    // copies its options synchronously before any other work and keeps
+    // only `properties` in the packet (5.15.1, `client.js:376-381`),
+    // so the shared object is never retained. `properties` is assigned
+    // per call; it is the object the client keeps until PUBACK.
+    const publishOptions = { qos: QOS, properties: null };
 
     /**
      * Settles one publish when its callback fires. Outcome of this async
@@ -226,11 +237,11 @@ export const createPublishNow = function ( { client, state, codec, getPressure, 
         }
 
         // Encode BEFORE the counter moves. A message the codec cannot
-        // encode was never in flight, so it must not occupy a slot: a
-        // leaked slot never drains, pressure ratchets up, and the
-        // emitter ends up refusing everything. The
-        // refusal is synchronous and classified; building it allocates,
-        // which is fine on an error path this rare.
+        // encode was never in flight, so it must not occupy a slot. A
+        // leaked slot never drains, pressure only rises, and the
+        // emitter ends up refusing everything. The refusal is
+        // synchronous and classified. Building it allocates, which is
+        // fine on an error path this rare.
         let payload;
         try {
             payload = codec.pack( message );
@@ -241,7 +252,7 @@ export const createPublishNow = function ( { client, state, codec, getPressure, 
 
         const messageType = ( options && options.type ) || 'default';
         const expiry = MESSAGE_EXPIRY[ messageType ] || MESSAGE_EXPIRY.default;
-        const properties = buildProperties( codec, expiry );
+        publishOptions.properties = buildProperties( codec, expiry );
 
         // Accept: the message is now in flight. The counter rises HERE,
         // synchronously with the accept decision, so the very next
@@ -257,7 +268,7 @@ export const createPublishNow = function ( { client, state, codec, getPressure, 
             client.publish(
                 topic,
                 payload,
-                { qos: QOS, properties },
+                publishOptions,
                 ( err ) => settlePublish( err, topic )
             );
         } catch ( publishErr ) {
@@ -268,6 +279,11 @@ export const createPublishNow = function ( { client, state, codec, getPressure, 
             state.stats.publishErrors += 1;
             return publishRefusal( topic, publishErr );
         }
+
+        // The message is accepted and the counter has its new value.
+        // Pressure rises only here, so this is where a climb past the
+        // critical threshold is seen (see health.js).
+        checkCritical();
 
         return RESULT_OK;
     }; // publishNow()

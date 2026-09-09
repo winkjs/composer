@@ -271,7 +271,7 @@ export const createMQTTStore = function ( path, options = {} ) {
                 Buffer.from( packet.payload || [] );
 
             // Check byte pressure
-            if ( metrics.totalBytes + payloadBuf.length > limits.maxQueueBytes ) {
+            if ( ( metrics.totalBytes + payloadBuf.length ) > limits.maxQueueBytes ) {
                 const err = new Error( 'STORAGE_FULL' );
                 err.code = 'STORAGE_FULL';
                 err.pressure = 1.0;
@@ -380,15 +380,15 @@ export const createMQTTStore = function ( path, options = {} ) {
             }
 
             // Read meta first (for size accounting), then batch-delete
-            // both keys. Missing meta ⇒ idempotent no-op. Driver shape
-            // normalised inline (header design decision 6) — `undefined`
-            // resolve and
+            // both keys. Missing meta means an idempotent no-op. The
+            // driver shape is normalised inline (header design
+            // decision 6). An `undefined` resolve and a
             // `LEVEL_NOT_FOUND` throw are both treated as "not present".
-            //
-            // **Optimistic decrement** — symmetric with put()'s
-            // optimistic increment. Updates metrics BEFORE the async
-            // db.batch so `getPressure()` reflects the impending
-            // del() call site. Rollback in the .catch path keeps
+
+            // **Optimistic decrement**, symmetric with put()'s
+            // optimistic increment. Metrics update BEFORE the async
+            // db.batch, so `getPressure()` reflects the impending
+            // delete at once. The rollback in the .catch path keeps
             // metrics consistent on failure.
             db.get( META + mid, { valueEncoding: 'json' } )
                 .then( ( meta ) => {

@@ -16,7 +16,7 @@
  *
  * Two builders:
  * - `makeMockEmitterHandle(overrides)` — the object the framework calls
- *   `publishNow`/`shutdown`/`getHealth` on.
+ *   `publishNow`/`flush`/`shutdown`/`getHealth` on.
  * - `makeMockEmitterModule(handleOverrides)` — wraps the handle in the
  *   `{ id, createEmitter }` shape that wire-emitters consumes via the
  *   `emitterModules` parameter.
@@ -33,7 +33,7 @@
 
 /**
  * Build a mock emitter handle that satisfies ADR-018's required sink-handle floor:
- * `publishNow`, `shutdown`, `getHealth`. Defaults are no-op stubs that
+ * `publishNow`, `flush`, `shutdown`, `getHealth`. Defaults are no-op stubs that
  * also return contract-correct values (publishNow → { ok: true }, etc.)
  * so downstream consumers see realistic shapes.
  *
@@ -58,6 +58,9 @@ const makeMockEmitterHandle = function ( overrides = {} ) {
     return {
         publishNow: function () {
             return { ok: true };
+        },
+        flush: function () {
+            return Promise.resolve();
         },
         shutdown: function () {
             return Promise.resolve();

@@ -311,21 +311,24 @@ const SITES = [
                 onCritical: badCallback,
                 mqttConnectFn: () => manual.client
             } );
-            for ( let i = 0; i < 18; i += 1 ) {
+            // onCritical fires on the accept that lifts pressure past
+            // 0.8, once per crossing. 16 of 20 is exactly 0.8; the 17th
+            // accept is the trigger.
+            for ( let i = 0; i < 16; i += 1 ) {
                 emitter.publishNow( 'cg/topic', { value: i } );
             }
             const spy = sinon.spy( console, 'error' );
             let completed = false;
             try {
-                manual.publishCalls[ 0 ].cb();
+                const result = emitter.publishNow( 'cg/topic', { value: 16 } );
                 await settleTwice();
-                // The ack was processed: pressure reflects 17/20.
-                completed = emitter.getPressure() === 0.85;
+                // The publish was accepted: pressure reflects 17/20.
+                completed = ( result.ok === true ) && ( emitter.getPressure() === 0.85 );
             } catch {
                 completed = false;
             }
             spy.restore();
-            for ( let i = 1; i < 18; i += 1 ) {
+            for ( let i = 0; i < 17; i += 1 ) {
                 manual.publishCalls[ i ].cb();
             }
             await Promise.resolve( emitter.shutdown() ).catch( () => undefined );

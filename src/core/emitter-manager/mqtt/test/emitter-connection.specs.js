@@ -25,6 +25,10 @@ describe( 'mqtt emitter — connection state', function () {
         mockClient = mock.client;
         eventHandlers = mock.eventHandlers;
         mockConnect = sinon.stub().returns( mockClient );
+        // The edge and attempt lines are pinned in
+        // connection-lines.specs.js; here they are only noise.
+        sinon.stub( console, 'warn' );
+        sinon.stub( console, 'error' );
     } );
 
     afterEach( async function () {

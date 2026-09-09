@@ -254,11 +254,13 @@ describe( 'mqtt emitter — backpressure', function () {
             expect( failures[ 0 ].err.code ).to.equal( 'DELIVERY_FAILED' );
         } );
 
-        it( 'fires onCritical with QUEUE_CRITICAL when pressure crosses 0.8 after an ack', async function () {
-            // onCritical fires from checkBackpressure, which runs inside
-            // the publish callback. Fill the unacked window to 18 of 20
-            // with manual acks, then acknowledge one message: its callback
-            // sees pressure 17/20 = 0.85 > QUEUE_CRITICAL_THRESHOLD (0.8).
+        it( 'fires onCritical with QUEUE_CRITICAL on the accept that crosses 0.8, not on the ack after it', async function () {
+            // onCritical fires from checkCritical, which runs on the
+            // accept path after the counter rises. Fill the unacked
+            // window to 18 of 20 with manual acks: the 17th accept sees
+            // pressure 17/20 = 0.85 > QUEUE_CRITICAL_THRESHOLD (0.8).
+            // The acknowledgment that follows fires nothing more; the
+            // scripted sequences live in critical-edge.specs.js.
             const calls = [];
             const manual = makeMockClient( { manualAcks: true } );
             emitter = await createEmitter( {
@@ -273,11 +275,12 @@ describe( 'mqtt emitter — backpressure', function () {
                 emitter.publishNow( 'test/topic', { value: i } );
             }
 
-            manual.publishCalls[ 0 ].cb();
-
             expect( calls.length ).to.equal( 1 );
             expect( calls[ 0 ].reason ).to.equal( 'QUEUE_CRITICAL' );
             expect( calls[ 0 ].pressure ).to.equal( 0.85 );
+
+            manual.publishCalls[ 0 ].cb();
+            expect( calls.length ).to.equal( 1 );
 
             // Drain the window so afterEach's shutdown resolves clean.
             for ( let i = 1; i < 18; i += 1 ) {
@@ -286,9 +289,9 @@ describe( 'mqtt emitter — backpressure', function () {
         } );
 
         it( 'does NOT fire onCritical at exactly 0.8 — the threshold is strict', async function () {
-            // checkBackpressure uses `pressure > 0.8`, not `>=`. Pin the
-            // boundary: an ack that lands the counter at exactly 8/10
-            // stays silent.
+            // checkCritical uses `pressure > 0.8`, not `>=`. Pin the
+            // boundary: an accept that lands the counter at exactly
+            // 8/10 stays silent.
             const onCritical = sinon.stub();
             const manual = makeMockClient( { manualAcks: true } );
             emitter = await createEmitter( {
@@ -299,17 +302,15 @@ describe( 'mqtt emitter — backpressure', function () {
                 onCritical,
                 mqttConnectFn: () => manual.client
             } );
-            for ( let i = 0; i < 9; i += 1 ) {
+            for ( let i = 0; i < 8; i += 1 ) {
                 emitter.publishNow( 'test/topic', { value: i } );
             }
-
-            manual.publishCalls[ 0 ].cb();
 
             expect( emitter.getPressure() ).to.equal( 0.8 );
             expect( onCritical.called ).to.equal( false );
 
             // Drain the window so afterEach's shutdown resolves clean.
-            for ( let i = 1; i < 9; i += 1 ) {
+            for ( let i = 0; i < 8; i += 1 ) {
                 manual.publishCalls[ i ].cb();
             }
         } );
@@ -347,7 +348,7 @@ describe( 'mqtt emitter — backpressure', function () {
                 .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) && l.includes( name ) );
         };
 
-        it( 'contains a throwing onCritical — and onBackpressure still fires', async function () {
+        it( 'contains a throwing onCritical — it still disarms, and onBackpressure still fires', async function () {
             const pressures = [];
             const manual = makeMockClient( { manualAcks: true } );
             emitter = await createEmitter( {
@@ -361,33 +362,38 @@ describe( 'mqtt emitter — backpressure', function () {
                 onBackpressure: ( p ) => pressures.push( p ),
                 mqttConnectFn: () => manual.client
             } );
-            for ( let i = 0; i < 18; i += 1 ) {
-                emitter.publishNow( 'test/topic', { value: i } );
-            }
 
+            // The throw happens on the accept path now: the 17th
+            // publish crosses 0.8. The spy is armed before the climb.
             const errorSpy = sinon.spy( console, 'error' );
             let escaped = false;
+            let accepted = 0;
             try {
-                manual.publishCalls[ 0 ].cb();
+                for ( let i = 0; i < 18; i += 1 ) {
+                    accepted += emitter.publishNow( 'test/topic', { value: i } ).ok ? 1 : 0;
+                }
             } catch {
                 escaped = true;
             }
             errorSpy.restore();
+
             // Drain before asserting so a red case still shuts down clean.
-            for ( let i = 1; i < 18; i += 1 ) {
+            for ( let i = 0; i < 18; i += 1 ) {
                 manual.publishCalls[ i ].cb();
             }
 
-            expect( escaped, 'the throw must not escape into the ack chain' ).to.equal( false );
+            expect( escaped, 'the throw must not escape into publishNow' ).to.equal( false );
+            expect( accepted, 'the publish whose callback threw was still accepted' ).to.equal( 18 );
             const lines = guardLines( errorSpy, 'onCritical' );
+            // One line, not two: the callback disarmed before it threw,
+            // so the 18th accept (0.9) fired nothing.
             expect( lines ).to.have.length( 1 );
             // The line carries this adapter's family prefix, so an
             // operator can attribute the fault without a stack trace.
             expect( lines[ 0 ] ).to.contain( 'winkComposer/mqttEmitter' );
             expect( lines[ 0 ] ).to.contain( 'critical handler down' );
             // The decoupling pin: the second signal survives the first
-            // handler's bug — on the poisoned ack and on every drain
-            // ack after it.
+            // handler's bug on every drain ack.
             expect( pressures[ 0 ] ).to.equal( 0.85 );
             expect( pressures ).to.have.length( 18 );
         } );

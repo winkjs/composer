@@ -90,6 +90,33 @@ describe( 'adapter substitutability — stream sinks (ADR-018)', function () {
         sinon.restore();
     } );
 
+    it( 'Test 0: both shipped emitters expose the whole sink floor (ADR-018 §6)', async function () {
+        // The floor the wiring layer requires of every emitter handle.
+        // Data-driven over the two modules, so a new emitter cannot
+        // ship with a shorter surface unnoticed.
+        const FLOOR = [ 'publishNow', 'flush', 'shutdown', 'getHealth', 'getPressure' ];
+        const eventHandlers = {};
+        const handles = {
+            terminal: await terminalModule.createEmitter( {} ),
+            mqtt: await mqttModule.createEmitter( {
+                brokerUrl: 'mqtt://127.0.0.1',
+                connectGraceMs: 0,
+                codec: jsonCodec,
+                mqttConnectFn: () => createMockMqttClient( eventHandlers )
+            } )
+        };
+
+        for ( const [ name, handle ] of Object.entries( handles ) ) {
+            for ( const method of FLOOR ) {
+                expect( typeof handle[ method ], `${name}.${method}` ).to.equal( 'function' );
+            }
+            // eslint-disable-next-line no-await-in-loop
+            await handle.flush();
+            // eslint-disable-next-line no-await-in-loop
+            await handle.shutdown();
+        }
+    } );
+
     it( 'Test 1: Terminal through a real flow returns the contract success shape', async function () {
         // Pre-build the real Terminal handle so we can attach a sinon spy
         // to publishNow before wiring. The flow's wire layer calls our

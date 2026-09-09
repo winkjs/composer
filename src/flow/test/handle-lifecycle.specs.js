@@ -284,6 +284,7 @@ describe( 'flow handle — drain stages are isolated', function () {
             durabilityClass: 'best-effort',
             createEmitter: () => ( {
                 publishNow: () => ( { ok: true } ),
+                flush: () => Promise.resolve(),
                 shutdown: emitterShutdown,
                 getHealth: () => HEALTH_GREEN
             } )
@@ -597,6 +598,9 @@ describe( 'flow handle — runtime owns the auto-shutdown trigger', function () 
                 return {
                     publishNow: function () {
                         return { ok: true };
+                    },
+                    flush: function () {
+                        return Promise.resolve();
                     },
                     getPressure: function () {
                         return 0;

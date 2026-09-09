@@ -43,6 +43,7 @@
 
 import { expect } from 'chai';
 import { describe, it, beforeEach, afterEach } from 'mocha';
+import sinon from 'sinon';
 
 import { createEmitter } from '../emitter.js';
 import { makeMockClient, fireConnect, testCodec } from './test-helpers.js';
@@ -283,6 +284,32 @@ describe( 'mqtt emitter shutdown drain', function () {
             await emitter.shutdown( { timeout: 1000 } );
 
             expect( mock.publishCalls.length, 'no re-send machinery — one publish per message' ).to.equal( 1 );
+        } );
+
+    } );
+
+    describe( 'the drain budget on a monotonic clock', function () {
+
+        it( 'a wall-clock step mid-drain does not shorten the budget', async function () {
+            // A time correction can move Date.now() by hours while a
+            // drain runs. The budget reads a monotonic clock, so the
+            // drain keeps waiting, and the acknowledgment that lands
+            // 60 ms later completes it cleanly.
+            emitter = await makeEmitter();
+            fireConnect( mock.eventHandlers );
+            expect( emitter.publishNow( 'wink/test', { v: 1 } ).ok ).to.equal( true );
+
+            const pending = emitter.shutdown( { timeout: 2000 } );
+            const stepped = sinon.stub( Date, 'now' ).returns( Date.now() + ( 60 * 60 * 1000 ) );
+            try {
+                await sleep( 60 );
+                ackStranded();
+                await pending;
+            } finally {
+                stepped.restore();
+            }
+
+            expect( emitter.getPressure() ).to.equal( 0 );
         } );
 
     } );

@@ -84,7 +84,9 @@ describe( 'MQTT emitter lossy-shutdown reporting', function () {
 
         await emitter.shutdown( { timeout: 300 } ).catch( () => undefined );
 
-        expect( mock.endCalls.length, 'client.end must run before the loss report' ).to.be.at.least( 1 );
+        expect( mock.endCalls.length, 'client.end must run before the loss report' ).to.equal( 1 );
+        expect( mock.endCalls[ 0 ].force, 'a lossy close is forced at once' ).to.equal( true );
+        expect( mock.stream.destroyed, 'the stream is detached before the loss report' ).to.equal( true );
 
         mock.publishCalls.forEach( ( call ) => call.cb() );
     } );

@@ -1,4 +1,8 @@
-// core/emitter-manager/mqtt/client/test/mqtt-viewer.js
+// core/emitter-manager/mqtt/test/view-msgs.js
+
+// A manual viewer, not a spec. Run it by hand to watch every topic on
+// the local broker while a flow publishes. Excluded from the package
+// by the `test/` glob.
 
 import mqtt from 'mqtt';
 

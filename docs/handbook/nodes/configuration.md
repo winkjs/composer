@@ -106,8 +106,8 @@ flow('pipeline')
 | `maxQueueSize` | number | `10000` | Max undelivered messages held in memory (hard ceiling 60,000 — see Delivery guarantees below) |
 | `debug` | boolean | `false` | Enable debug logging |
 | `will` | object | `null` | MQTT Last Will and Testament (see below) |
-| `onCritical` | function | `null` | Callback when buffer pressure > 80% |
-| `onBackpressure` | function | `null` | Pressure callback, fired when an accepted publish completes (refused attempts never fire it) |
+| `onCritical` | function | `null` | Fires once when buffer pressure climbs past 80%. It fires again only after pressure has fallen below 66% and climbed past 80% a second time |
+| `onBackpressure` | function | `null` | Pressure callback, fired with the current pressure every time an accepted publish completes (refused attempts never fire it) |
 | `onDeliveryFailure` | function | `null` | Callback when an accepted message fails to deliver. Without one, the failure surfaces as an unhandled rejection — loud by design |
 | `mqttConnectFn` | function | `mqtt.connect` | Advanced: inject a custom MQTT connect function (tests, benchmarks) |
 
@@ -132,8 +132,8 @@ will: {
 **Publishing behavior:**
 - At startup, the flow waits briefly (up to `connectGraceMs`, default 500 ms) for the broker connection before the first message flows. On a reachable broker the wait ends the moment the broker answers — typically a few milliseconds. If the broker is not reachable in time, the flow starts anyway and messages buffer until it connects
 - Fire-and-forget with QoS 1 — never blocks on PUBACK
-- MQTT v5 with persistent sessions (7-day expiry)
-- Auto-reconnect every 5s
+- MQTT v5 with a clean session. The emitter holds no subscriptions, so a broker session has nothing to keep
+- Auto-reconnect every 5 s (`MQTT_RECONNECT_MS`), plus a random share of up to 20% drawn once per client. A fleet that lost one broker then spreads its retries instead of hitting the broker in step
 - Keepalive: 60s
 
 **Message metadata** (added automatically per message):
@@ -156,6 +156,15 @@ Every accepted publish counts as in flight until the broker acknowledges it.
 - At 90% of buffer capacity, `publishNow` refuses new messages with a `STORAGE_FULL` error. The refusal is immediate. composer never accepts a message it would later drop in silence.
 - A message the codec cannot encode (for example, a value JSON cannot represent) is refused on the spot with an `ENCODE_ERROR`. The message never occupies buffer space, later messages are unaffected, and the running count appears in `stats.encodeErrors`. Fix the flow that produces the value; the transport is fine.
 - The emitter's `shutdown()` result states exactly what was delivered. A clean resolve means every accepted message reached a settled outcome — acknowledged by the broker, or failed and reported loudly through `onDeliveryFailure`. When unacknowledged messages remain at the deadline, shutdown rejects with a `SHUTDOWN_TIMEOUT` error carrying the exact count in `dropped: { count }` — whether the connection was up or not, because nothing survives the process. Inside a flow, the framework catches this rejection and logs it — one classified line naming the emitter, the code, and the count — so the flow's own shutdown still completes for the other sinks.
+- The emitter's `flush( { timeout } )` waits until every accepted message is acknowledged, without closing the connection or refusing new work. On its deadline (default 5 s) it rejects with a `DELIVERY_FAILED` error carrying the count still pending in `pending: { count }`. The messages stay in flight; a later acknowledgment still settles them.
+
+**What the emitter logs, and when.** Every change of the broker link prints one line through the [framework log](./observability.md#framework-log-lines), with or without the `debug` option. Nothing prints while a state persists, however long an outage lasts. The lines, in the order an outage shows them:
+
+- `DELIVERY_HEALTH` at `error` when the broker goes offline, with the count of messages in flight. The same token at `warn` when the connection is restored, with the outage length and the count.
+- `CONNECT_FAILED` at `warn` for each failed connection attempt, with the reason (a refused connect, a connack timeout). The first two attempts of an episode print in full. After that the attempts are counted, and one summary line a minute carries the count since the last line.
+- `CALLBACK_FAILED` at `error` or `warn` when one of your three callbacks throws or rejects, bounded the same way.
+
+A night of retries every five seconds therefore prints a few lines an hour, not one every five seconds. All of them print at `warn` or above.
 
 **Resolved issue — completing a connection could lose in-flight messages (fixed 2026-07-09).** mqtt.js briefly forgets which packet ids its undelivered messages hold whenever a connection completes; with an asynchronous disk store, a new publish could take an id an undelivered message still owned and overwrite it. composer closed this by running the client's synchronous in-memory store, where the forget-and-rebuild gap has zero width. The library defect is still being pursued upstream with a reproduction. The trade: undelivered messages no longer survive a process restart — the crash cost is stated under "Outage buffer" above.
 
@@ -358,7 +367,7 @@ option name (say `brokerURL` instead of `brokerUrl`) is rejected with an
 **Connection behavior:**
 - MQTT v5 with QoS 1 subscriptions
 - Persistent sessions (7-day expiry) — the broker queues messages while composer is away, and delivers them only if composer returns under the same fixed `clientId` (see [Resilience](../resilience.md))
-- Auto-reconnect with backoff (5s intervals)
+- Auto-reconnect every 5 s (`MQTT_RECONNECT_MS`), plus a random share of up to 20% drawn once per client, so a fleet that lost one broker spreads its retries
 - Keepalive: 60s
 
 **Deduplication:**

@@ -8,6 +8,14 @@
  * handler is captured so tests can fire connection events themselves.
  * The rich client-store contract fake stays in shutdown-drain.specs.js —
  * it models ack timing and store callbacks that only those tests need.
+ *
+ * `end` models one library fact (mqtt.js 5.15.1, `client.js:731-734`):
+ * once an `end()` call set `disconnecting`, every later `end()` only
+ * invokes its callback and does nothing else. So a forced `end( true )`
+ * after a hung graceful `end( false )` cannot detach anything. The mock
+ * carries a `stream` with `destroy()`, the call that does detach, and
+ * `destroy()` fires the hung graceful callback the way the library's
+ * `close` event would.
  */
 
 import sinon from 'sinon';
@@ -17,13 +25,14 @@ import sinon from 'sinon';
  *
  * @param {Object} [options] - Mock options
  * @param {boolean} [options.hangOnEnd] - When true, the graceful
- *   (force=false) end call never completes; the force=true call always
- *   does, so timeout paths can finish.
+ *   (force=false) end call never completes on its own; only
+ *   `stream.destroy()` completes it, as the library's `close` event
+ *   would. A later `end( true )` is a no-op behind the latch.
  * @param {boolean} [options.manualAcks] - When true, publish callbacks
  *   are NOT auto-invoked; each entry in `publishCalls` carries its `cb`
  *   so the test acknowledges (or fails) messages deliberately. This is
  *   how the unacked-accounting specs hold messages "in flight".
- * @returns {Object} `{ client, eventHandlers, onceHandlers, publishCalls, endCalls }`
+ * @returns {Object} `{ client, stream, eventHandlers, onceHandlers, publishCalls, endCalls }`
  */
 const makeMockClient = function ( { hangOnEnd = false, manualAcks = false } = {} ) {
     const eventHandlers = {};
@@ -35,21 +44,55 @@ const makeMockClient = function ( { hangOnEnd = false, manualAcks = false } = {}
     const publishCalls = [];
     const endCalls = [];
 
+    // The library's latch and the graceful callback it may leave hung.
+    let disconnecting = false;
+    let hungGracefulCb = null;
+
+    const stream = {
+        destroyed: false,
+        destroy: sinon.stub().callsFake( () => {
+            stream.destroyed = true;
+            if ( hungGracefulCb ) {
+                const cb = hungGracefulCb;
+                hungGracefulCb = null;
+                setImmediate( cb );
+            }
+        } )
+    };
+
+    const end = function ( force, opts, callback ) {
+        const cb = typeof opts === 'function' ? opts : callback;
+        endCalls.push( { force, hadCb: typeof cb === 'function' } );
+        if ( disconnecting ) {
+            if ( cb ) setImmediate( cb );
+            return;
+        }
+        disconnecting = true;
+        if ( force ) {
+            stream.destroyed = true;
+            if ( cb ) setImmediate( cb );
+            return;
+        }
+        if ( hangOnEnd ) {
+            hungGracefulCb = cb || null;
+            return;
+        }
+        stream.destroyed = true;
+        if ( cb ) setImmediate( cb );
+    }; // end()
+
     const client = {
+        stream,
         publish: sinon.stub().callsFake( ( topic, payload, opts, cb ) => {
-            publishCalls.push( { topic, payload, opts, cb } );
+            // Copied at once, as mqtt.js copies its options before any
+            // other work: the emitter reuses one options object, and
+            // each captured call must keep the properties of its own
+            // publish.
+            publishCalls.push( { topic, payload, opts: { ...opts }, cb } );
             if ( manualAcks ) return;
             if ( cb ) setImmediate( cb );
         } ),
-        end: sinon.stub().callsFake( ( force, opts, callback ) => {
-            const cb = typeof opts === 'function' ? opts : callback;
-            endCalls.push( { force, hadCb: typeof cb === 'function' } );
-            // hangOnEnd: only the graceful (force=false) call is suspended;
-            // the timeout-driven force=true call always completes so the
-            // test can finish.
-            if ( hangOnEnd && force === false ) return;
-            if ( cb ) setImmediate( cb );
-        } ),
+        end: sinon.stub().callsFake( end ),
         on: sinon.stub().callsFake( ( event, handler ) => {
             eventHandlers[ event ] = handler;
         } ),
@@ -65,7 +108,7 @@ const makeMockClient = function ( { hangOnEnd = false, manualAcks = false } = {}
         } )
     };
 
-    return { client, eventHandlers, onceHandlers, publishCalls, endCalls };
+    return { client, stream, eventHandlers, onceHandlers, publishCalls, endCalls };
 }; // makeMockClient()
 
 /**

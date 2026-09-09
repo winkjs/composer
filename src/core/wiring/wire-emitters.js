@@ -54,8 +54,10 @@ import { logger } from '../logger/index.js';
  * contract's method surface.
  * `getPressure` is optional — its presence decides whether the handle is
  * collected into `backpressureAwareSinks`, not whether the wire succeeds.
+ * `flush` is required, as it is for storages: ADR-018 §6 lists it in
+ * the sink floor for both roles.
  */
-const REQUIRED_EMITTER_METHODS = [ 'publishNow', 'shutdown', 'getHealth' ];
+const REQUIRED_EMITTER_METHODS = [ 'publishNow', 'flush', 'shutdown', 'getHealth' ];
 
 /**
  * Serializes a rejection's `dropped` payload for the shutdown log. A

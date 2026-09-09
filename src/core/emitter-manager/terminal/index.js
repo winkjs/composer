@@ -21,6 +21,9 @@
  * - `getPressure()` returns `0` — Terminal has no observable buffer (stdout drains
  *   to the kernel); a trivial sink meets the pressure obligation with a
  *   constant 0 (ADR-018).
+ * - `flush()` resolves at once, for the same reason. It is on the handle
+ *   because the wiring layer requires the whole sink floor of every
+ *   emitter (ADR-018 §6).
  * - `getHealth()` returns `{ status: 'green', connected: true, pressure: 0 }` —
  *   Terminal is always healthy and always "connected" to stdout (there is no
  *   connection to lose). Uniform semantics with MQTT emitter / QuestDB.
@@ -237,7 +240,7 @@ const formatVerbose = function ( msg, formatValue ) {
  *   the global `precision` config. Without an asset class entirely,
  *   every column falls back — the original global-precision behaviour,
  *   unchanged.
- * @returns {Object} Emitter instance with publishNow, getPressure, getHealth, shutdown
+ * @returns {Object} Emitter instance with publishNow, flush, getPressure, getHealth, shutdown
  */
 export const createEmitter = function ( config = {} ) {
     const {
@@ -303,6 +306,18 @@ export const createEmitter = function ( config = {} ) {
          */
         getPressure: function () {
             return 0;
+        },
+
+        /**
+         * No-op flush (the sink floor, ADR-018 §6). Terminal has nothing
+         * buffered to wait for: stdout drains to the kernel without our
+         * help. The unused option keeps the same shape as `shutdown`.
+         *
+         * @param {{timeout?: number}} [_options]
+         * @returns {Promise<void>}
+         */
+        flush: async function ( { timeout: _timeout = 0 } = {} ) {
+            // Nothing to wait for.
         },
 
         /**

@@ -41,8 +41,8 @@ describe( 'wire-emitters', function () {
     // ========================================================================
 
     // Builds a conformant emitter module with test-specific instrumentation.
-    // Floor methods (publishNow, shutdown, getHealth) come from the shared
-    // helper; the local additions (config capture, shutdown tracking,
+    // Floor methods (publishNow, flush, shutdown, getHealth) come from the
+    // shared helper; the local additions (config capture, shutdown tracking,
     // instances array) are the actual test concerns.
     //
     // Closure note: the `shutdown` override reads `instance` from the
@@ -317,6 +317,7 @@ describe( 'wire-emitters', function () {
                 durabilityClass: 'best-effort',
                 createEmitter: () => ( {
                     // publishNow deliberately omitted
+                    flush: () => Promise.resolve(),
                     shutdown: () => Promise.resolve(),
                     getHealth: () => ( { status: 'green', connected: true } )
                 } )
@@ -344,6 +345,7 @@ describe( 'wire-emitters', function () {
                 durabilityClass: 'best-effort',
                 createEmitter: () => ( {
                     publishNow: () => ( { ok: true } ),
+                    flush: () => Promise.resolve(),
                     // shutdown deliberately omitted
                     getHealth: () => ( { status: 'green', connected: true } )
                 } )
@@ -368,6 +370,7 @@ describe( 'wire-emitters', function () {
                 durabilityClass: 'best-effort',
                 createEmitter: () => ( {
                     publishNow: () => ( { ok: true } ),
+                    flush: () => Promise.resolve(),
                     shutdown: () => Promise.resolve()
                     // getHealth deliberately omitted
                 } )
@@ -383,6 +386,34 @@ describe( 'wire-emitters', function () {
             }
 
             expect( thrown.message ).to.include( 'missing required method \'getHealth\'' );
+        } );
+
+        it( 'throws when factory returns a handle missing flush (the sink floor, ADR-018 §6)', async function () {
+            const target = uniqueTarget();
+            const incompleteModule = {
+                id: target,
+                durabilityClass: 'best-effort',
+                createEmitter: () => ( {
+                    publishNow: () => ( { ok: true } ),
+                    // flush deliberately omitted
+                    shutdown: () => Promise.resolve(),
+                    getHealth: () => ( { status: 'green', connected: true } )
+                } )
+            };
+
+            const specs = [ { nodeType: 'Emit If', name: 'a', target } ];
+
+            let thrown;
+            try {
+                await emitters.wire( specs, { [ target ]: {} }, { [ target ]: incompleteModule } );
+            } catch ( err ) {
+                thrown = err;
+            }
+
+            expect( thrown ).to.be.an( 'error' );
+            expect( thrown.message ).to.equal(
+                `winkComposer/adapter: '${target}' missing required method 'flush'`
+            );
         } );
 
         it( 'throws when factory returns null (non-object handle)', async function () {
@@ -468,7 +499,8 @@ describe( 'wire-emitters', function () {
         it( 'omits wired emitters that do NOT expose getPressure', async function () {
             const target = uniqueTarget();
             // makeMockEmitterHandle's defaults intentionally do not include
-            // getPressure (the floor is publishNow/shutdown/getHealth only).
+            // getPressure (the required list is publishNow/flush/shutdown/
+            // getHealth; getPressure is optional at wire time).
             const moduleNoPressure = {
                 id: target,
                 durabilityClass: 'best-effort',

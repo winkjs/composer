@@ -5,10 +5,23 @@
  * ADR-021).
  *
  * One counter, `state.unacked`, feeds everything here. `getPressure()`
- * is that counter over the cap, `getHealth()` derives the status from
- * the link and the pressure, and `checkBackpressure()` signals the
- * two pressure callbacks after each acknowledgment. The factory builds
- * this once; nothing allocates on the pressure read.
+ * is that counter over the cap, and `getHealth()` derives the status
+ * from the link and the pressure. The factory builds this once;
+ * nothing allocates on the pressure read.
+ *
+ * Two pressure callbacks live here, with different cadences.
+ * `onBackpressure` is a level signal: `checkBackpressure()` calls it
+ * after every acknowledgment with the current pressure. `onCritical`
+ * is an edge signal: `checkCritical()` calls it once when an accepted
+ * publish lifts pressure above the critical threshold, then disarms
+ * it. An acknowledgment that brings pressure below the yellow
+ * threshold re-arms it. Pressure rises only on accepts, so the
+ * crossing is detected on the accept path. During a broker outage no
+ * acknowledgment arrives, and an ack-side check would stay silent
+ * through the whole climb. The accept-path cost is one boolean read
+ * and, while armed, one comparison. A level signal here would repeat
+ * the same warning on every acknowledgment while pressure stays high,
+ * and the message-level callback guard prints each call it catches.
  *
  * Health-status semantics (uniform across sinks):
  * - `red`    if `!state.connected`.
@@ -42,9 +55,12 @@ const HEALTH_PRESSURE_YELLOW_THRESHOLD = 0.66;
  * @param {number} deps.maxQueueSize - The unacked cap
  * @param {function|null} deps.onCritical - Guard-wrapped high-pressure callback, or null
  * @param {function|null} deps.onBackpressure - Guard-wrapped pressure callback, or null
- * @returns {{getPressure: function, checkBackpressure: function, getHealth: function}}
+ * @returns {{getPressure: function, checkCritical: function, checkBackpressure: function, getHealth: function}}
  */
 export const createHealth = function ( { state, maxQueueSize, onCritical, onBackpressure } ) {
+    // The edge state of `onCritical`. Armed means the next climb past
+    // the critical threshold fires the callback. It starts armed.
+    let criticalArmed = true;
 
     /**
      * Fill ratio of the unacked window: unacked / maxQueueSize, capped
@@ -57,13 +73,32 @@ export const createHealth = function ( { state, maxQueueSize, onCritical, onBack
     };
 
     /**
-     * Check and signal backpressure
+     * Fires `onCritical` once when an accepted publish lifts pressure
+     * above the critical threshold, then disarms it. Runs on the
+     * accept path, after the counter rises. The disarm comes before
+     * the call, so a callback that throws (contained by the guard)
+     * still counts as fired.
+     */
+    const checkCritical = function () {
+        if ( criticalArmed && onCritical ) {
+            const pressure = getPressure();
+            if ( pressure > QUEUE_CRITICAL_THRESHOLD ) {
+                criticalArmed = false;
+                onCritical( 'QUEUE_CRITICAL', pressure );
+            }
+        }
+    };
+
+    /**
+     * Runs after every acknowledgment. Re-arms `onCritical` once
+     * pressure is back below the yellow threshold, and reports the
+     * current pressure to `onBackpressure`.
      */
     const checkBackpressure = function () {
         const pressure = getPressure();
 
-        if ( ( pressure > QUEUE_CRITICAL_THRESHOLD ) && onCritical ) {
-            onCritical( 'QUEUE_CRITICAL', pressure );
+        if ( pressure < HEALTH_PRESSURE_YELLOW_THRESHOLD ) {
+            criticalArmed = true;
         }
 
         if ( onBackpressure ) {
@@ -112,5 +147,5 @@ export const createHealth = function ( { state, maxQueueSize, onCritical, onBack
         };
     };
 
-    return { getPressure, checkBackpressure, getHealth };
+    return { getPressure, checkCritical, checkBackpressure, getHealth };
 }; // createHealth()

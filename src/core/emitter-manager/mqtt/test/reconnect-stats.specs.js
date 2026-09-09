@@ -24,6 +24,10 @@ describe( 'mqtt emitter — reconnects counter', function () {
 
     beforeEach( function () {
         mock = makeMockClient();
+        // The offline and restored edge lines are pinned in
+        // connection-lines.specs.js; here they are only noise.
+        sinon.stub( console, 'warn' );
+        sinon.stub( console, 'error' );
     } );
 
     afterEach( async function () {

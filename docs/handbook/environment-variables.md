@@ -55,7 +55,7 @@ Flows fed by the MQTT source do not need this at all. Each incoming message alre
 | `MQTT_BROKER_URL` | `mqtt://127.0.0.1:1883` | Broker address; must start `mqtt://` or `mqtts://` |
 | `MQTT_MSG_EXPIRY` | `3600` | Message time-to-live, seconds |
 | `MQTT_KEEPALIVE` | `60` | Keepalive, seconds |
-| `MQTT_RECONNECT_MS` | `5000` | Reconnect interval, milliseconds |
+| `MQTT_RECONNECT_MS` | `5000` | Reconnect interval, milliseconds. Each client adds a random share of up to 20%, drawn once at startup, so a fleet that lost one broker does not retry in step. The configured value is the floor |
 | `MQTT_CONNECT_TIMEOUT_MS` | `30000` | Connect timeout, milliseconds |
 | `MQTT_CONNECT_GRACE_MS` | `500` | How long flow startup waits for the emitter's first broker acknowledgment, milliseconds. The wait ends the moment the broker answers; if it does not answer in time the flow starts anyway and messages buffer. `0` skips the wait. Per-flow override: the emitter's `connectGraceMs` option |
 | `MQTT_SESSION_EXPIRY_S` | `604800` | Persistent-session expiry, seconds (7 days). Read by the MQTT source only — the emitter asks for a clean session, because a publish-only client has nothing for a broker session to keep |

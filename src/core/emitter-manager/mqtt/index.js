@@ -36,6 +36,44 @@
  * `id`, `configSchema`, `createEmitter`, `durabilityClass`, and the
  * default aggregate referencing the same constants.
  *
+ * Shed policy and outage budget. Once the unacknowledged count reaches
+ * 90% of `maxQueueSize`, `publishNow` refuses new messages with
+ * `STORAGE_FULL`, and the messages already accepted stay safe. With
+ * the default cap of 10,000, refusal starts at 9,000 messages. That
+ * is 15 minutes of outage at 10 messages a second, and 2.5 hours at
+ * one a second. Memory is the count times the payload size: about
+ * 10 MB at 1 KB a message.
+ *
+ * Ordering. While connected, messages reach the broker in publish
+ * order over the one connection. After a reconnect the client replays
+ * its in-memory store in insertion order, and new publishes wait in
+ * the client's processing queue until that replay ends (mqtt.js
+ * 5.15.1, `client.js:1230-1262`). Delivery is at-least-once, so a
+ * consumer can see a message twice. Every message carries a
+ * `winkDedupId`, and the MQTT source drops the repeats (ADR-022).
+ *
+ * Edge-baseline defaults (every one runs within a 2 GB device):
+ *
+ *   | Setting          | Default  | Environment variable      |
+ *   |------------------|----------|---------------------------|
+ *   | `maxQueueSize`   | 10000    | `MQTT_MAX_QUEUE_SIZE`     |
+ *   | `connectGraceMs` | 500      | `MQTT_CONNECT_GRACE_MS`   |
+ *   | message expiry   | 3600 s   | `MQTT_MSG_EXPIRY`         |
+ *   | keepalive        | 60 s     | `MQTT_KEEPALIVE`          |
+ *   | reconnect period | 5000 ms  | `MQTT_RECONNECT_MS`       |
+ *   | connect timeout  | 30000 ms | `MQTT_CONNECT_TIMEOUT_MS` |
+ *
+ *   `brokerUrl` falls back to `MQTT_BROKER_URL`. The reconnect period
+ *   gains a random share of up to 20% per client (`utils/jitter`).
+ *   The cap is clamped to 60,000, the packet-id ceiling.
+ *
+ * Related decisions beyond ADR-018 and ADR-021. ADR-022: this adapter
+ * writes the `winkDedupId` the source dedups on. ADR-023: `publishNow`
+ * reads the message during the call and keeps no reference. ADR-027:
+ * the three callbacks run through the shared guard. ADR-028: every
+ * line and error follows the message grammar. ADR-026 (Proposed) is
+ * the planned TLS surface for `mqtts://`.
+ *
  * Directory structure:
  * core/emitter-manager/mqtt/
  * ├── index.js                 # Module surface: id, schema, factory

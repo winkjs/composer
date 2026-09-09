@@ -46,17 +46,9 @@
  *     — we don't shorten it, which would mask real-world reconnect
  *     timing. Test budget accommodates the wait.
  *
- * What this file deliberately does NOT cover (real failure modes,
- * known and deliberately deferred):
- *
- *   - True broker process restart (`docker restart mosquitto`). The
- *     TCP proxy simulates "broker unreachable from publisher" but
- *     doesn't drop broker session state. A real restart would be
- *     more punishing.
- *
- *   - Network partition without TCP-reset (subscriber sees no
- *     traffic but socket stays alive). Would need iptables-style
- *     mocking; not worth the test infra cost.
+ * Four real failure modes are not covered yet. Each is a skipped
+ * case at the end of this file, with the reason in its title, so the
+ * gap is visible in every hardening run.
  */
 
 import { expect } from 'chai';
@@ -632,6 +624,36 @@ describe( 'MQTT Emitter Hardening — broker outage and window overflow', functi
 
         expect( allReceived, 'every buffered message must deliver after recovery' ).to.equal( true );
         expect( cov.gaps, 'zero loss across grace expiry + reconnect' ).to.equal( 0 );
+    } );
+
+    // --------------------------------------------------------------------
+    // Pending — real failure modes this file does not reproduce yet.
+    // Each skip names its reason. A skip is visible in every hardening
+    // run; a prose note is not.
+    // --------------------------------------------------------------------
+
+    it.skip( 'survives a broker process restart that drops session state — needs docker control of mosquitto; the TCP proxy keeps the broker session alive', function () {
+        // Expected: the same as the proxy outage. The session is clean,
+        // so there is no broker state to lose, and the in-memory store
+        // replays every buffered message after the reconnect.
+    } );
+
+    it.skip( 'recovers from a half-open link with no TCP reset — needs packet-level blocking (iptables) so the socket stays open while traffic stops', function () {
+        // Expected: the keepalive timeout (60 s) forces the library to
+        // destroy the stream, then the proxy-outage path applies.
+    } );
+
+    it.skip( 'holds a multi-hour outage: red health, refusals at 0.9 × cap, then a full replay — needs a long-run budget beyond the hardening tier', function () {
+        // Expected: pressure climbs to the refusal limit and stays
+        // there. Every accepted message replays on reconnect; the
+        // subscriber reads its age from winkTimestamp.
+    } );
+
+    it.skip( 'reports every message the library drops when the link falls during the post-connack replay — needs a proxy cut timed inside the replay window', function () {
+        // Expected: the library fails each queued publish with
+        // "Connection closed" and drops it (mqtt.js 5.15.1,
+        // client.js:1270-1278). Each drop must reach onDeliveryFailure
+        // as DELIVERY_FAILED; none may vanish.
     } );
 
 } );
