@@ -101,7 +101,7 @@ flow('pipeline')
 |--------|------|---------|-------------|
 | `brokerUrl` | string | `MQTT_BROKER_URL` env var | MQTT broker URL (`mqtt://` or `mqtts://`). A literal address or a name, never `localhost` |
 | `codec` | object | required | Codec with `pack( msg )` method returning Buffer |
-| `clientId` | string | auto-generated | MQTT client identifier |
+| `clientId` | string | auto-generated | MQTT client identifier. One unique name per client on the broker, so an emitter never shares a name with a source. See [Choose the name carefully](../resilience.md#choose-the-name-carefully) |
 | `connectGraceMs` | number | `500` (`MQTT_CONNECT_GRACE_MS` env var) | How long flow startup waits for the broker's first connection acknowledgment, in milliseconds. The flow starts either way — an unreachable broker never fails startup. `0` skips the wait |
 | `maxQueueSize` | number | `10000` | Max undelivered messages held in memory (hard ceiling 60,000 — see Delivery guarantees below) |
 | `debug` | boolean | `false` | Enable debug logging |
@@ -352,7 +352,7 @@ flow('aggregator')
 | `codec` | object | `JSON.parse` | Codec with `unpack( payload )` method |
 | `dedupWindowMs` | number | `120000` | Dedup time bound: a duplicate arriving within this window of its original is dropped |
 | `dedupMaxEntries` | number | `65536` | Dedup memory cap (~8 MB worst case); at high rates the effective window is this count divided by the message rate |
-| `clientId` | string | auto-generated | MQTT client identifier. Set a fixed name in production — the broker files the persistent session's saved backlog under it, and an auto-generated name changes on every restart. See [Resilience](../resilience.md) |
+| `clientId` | string | auto-generated | MQTT client identifier. Set a fixed name in production — the broker files the persistent session's saved backlog under it, and an auto-generated name changes on every restart. The naming rules are in [Choose the name carefully](../resilience.md#choose-the-name-carefully) |
 | `cleanStart` | boolean | `false` | `false` = resume persistent session; `true` = fresh start |
 | `transform` | function | `null` | Per-message transform: `( msg ) => transformedMsg`; return `null`/`undefined` to drop the message (only those two values mean drop). A throw skips that one message (`CALLBACK_FAILED`) and the stream continues. Ready-made transforms: [Stream Preparation](../stream-preparation.md) |
 | `onStatus` | function | `null` | Structured status callback — see [Watching a source](./observability.md#watching-a-source-status-and-metrics) |

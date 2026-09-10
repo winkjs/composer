@@ -150,7 +150,33 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
         } );
 
         const opts = mockConnect.firstCall.args[ 1 ];
-        expect( opts.clientId ).to.match( /^wink-source-\d+$/ );
+        expect( opts.clientId ).to.match( /^wink-source-\d+-[0-9a-z]+$/ );
+    } );
+
+    it( 'two starts in the same millisecond get different generated clientIds', function () {
+        // Freeze the clock so both starts read one millisecond, and
+        // make every random draw distinct so the case is deterministic.
+        sinon.useFakeTimers( { now: 1700000000000, toFake: [ 'Date' ] } );
+        let draws = 0;
+        sinon.stub( Math, 'random' ).callsFake( function () {
+            draws += 1;
+            return draws / 100;
+        } );
+
+        const config = {
+            brokerUrl: 'mqtt://127.0.0.1',
+            topics: 'test/topic',
+            onMessage: () => {},
+            mqttConnectFn: mockConnect
+        };
+        createMQTTSourceClient( config );
+        createMQTTSourceClient( config );
+
+        const first = mockConnect.firstCall.args[ 1 ].clientId;
+        const second = mockConnect.secondCall.args[ 1 ].clientId;
+        expect( first.startsWith( 'wink-source-1700000000000-' ) ).to.equal( true );
+        expect( second.startsWith( 'wink-source-1700000000000-' ) ).to.equal( true );
+        expect( first ).to.not.equal( second );
     } );
 
     it( 'uses provided clientId', function () {

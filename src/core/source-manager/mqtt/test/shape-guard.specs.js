@@ -279,4 +279,38 @@ describe( 'MQTT Source — transform return boundary', function () {
         } );
     } );
 
+    // A throw inside the transform is user code failing: one
+    // per-record CALLBACK_FAILED naming the topic and the fault, the
+    // message skipped, the stream continues. The repo-level contract
+    // spec drives this path too; this case keeps it pinned inside the
+    // component.
+    it( 'reports CALLBACK_FAILED naming the topic when the transform throws, skips the message, and continues', function () {
+        let calls = 0;
+        const stop = makeClient( ( msg ) => {
+            calls += 1;
+            if ( calls === 1 ) {
+                throw new Error( 'transform broke on purpose' );
+            }
+            return msg;
+        } );
+
+        mockClient._emit( 'message', 'test/topic', Buffer.from( '{"value": 1}' ), packet );
+
+        expect( receivedMessages ).to.have.length( 0 );
+        const reports = callbackReports();
+        expect( reports ).to.have.length( 1 );
+        expect( reports[ 0 ].status ).to.equal( 'yellow' );
+        expect( reports[ 0 ].error.message ).to.contain( 'topic \'test/topic\': transform threw: ' );
+        expect( reports[ 0 ].error.message ).to.contain( 'transform broke on purpose' );
+        expect( reports[ 0 ].error.message ).to.contain( 'message skipped' );
+        expect( stop._metrics().skipped ).to.equal( 1 );
+        expect( stop._metrics().delivered ).to.equal( 0 );
+
+        // The stream continues: the next message passes through.
+        mockClient._emit( 'message', 'test/topic', Buffer.from( '{"value": 2}' ), packet );
+        expect( receivedMessages ).to.have.length( 1 );
+        expect( receivedMessages[ 0 ].value ).to.equal( 2 );
+        expect( stop._metrics().delivered ).to.equal( 1 );
+    } );
+
 } );

@@ -289,15 +289,20 @@ const createMQTTSourceClient = function ( config ) {
     };
     const guardedTransform = transform ? wrapTransform( transform, reportTransformFault ) : null;
 
-    // Generate client ID if not provided
-    const generatedClientId = clientId || `wink-source-${Date.now()}`;
+    // The auto-generated name carries the start time and a random
+    // part, the emitter's shape. Two sources that start in the same
+    // millisecond still get different names. That matters because the
+    // broker allows one live connection per name. When a second client
+    // arrives under a name in use, the broker disconnects the first.
+    // Two clients then take the session from each other on every
+    // reconnect.
+    const generatedClientId = clientId || `wink-source-${Date.now()}-${Math.random().toString( 36 ).slice( 2, 9 )}`;
 
     // A persistent session is filed at the broker under the client's
     // name. The auto-generated name changes on every start, so the
-    // backlog the broker saved under the previous run's name is never
-    // delivered — it waits, unclaimed, until the session expires.
-    // Warn once at startup; the fix is one config line. Setup path
-    // only — nothing here touches the message path.
+    // backlog saved under the previous run's name is never delivered.
+    // Warn once at startup. The fix is one config line, on the setup
+    // path only.
     if ( !clientId && cleanStart !== true ) {
         logger.warn(
             'winkComposer/mqttSource: no clientId configured — this session ' +
@@ -310,7 +315,7 @@ const createMQTTSourceClient = function ( config ) {
 
     // Build MQTT options, allowing cleanStart override. The reconnect
     // period is the configured one plus a random share of up to 20%,
-    // drawn once here, so a fleet that lost one broker does not retry
+    // drawn once here. So a fleet that lost one broker does not retry
     // in step. The configured period is the floor.
     const mqttOptions = {
         ...MQTT_SOURCE_CONFIG,
@@ -461,51 +466,85 @@ const createMQTTSourceClient = function ( config ) {
     // STOP FUNCTION
     // ========================================================================
 
+    // The stop outcome is latched on the first call. A second caller
+    // receives the same promise, so it can never report a clean stop
+    // while the first call is still closing.
+    let stopPromise = null;
+
     /**
      * Stop the MQTT client, with a time budget.
      *
-     * Per ADR-018, source stop functions take a `{ timeout }`. We
-     * first ask the broker for a clean disconnect (`client.end(false)`),
-     * which waits for any messages still being sent. If that does not
-     * finish within `timeout` ms, we ask for a forced disconnect
-     * (`client.end(true)`), which closes the socket right away — so the
-     * rest of the shutdown can proceed even if the broker is slow or
-     * unreachable. The forced path is reported with the sources' shared
-     * `note` convention.
+     * Per ADR-018, source stop functions take a `{ timeout }`. How the
+     * close detaches follows the library's own rules (mqtt.js 5.15.1):
+     *
+     * - Not connected (the first connect still pending, the link down,
+     *   or the library waiting to retry): `end( true )` at once. The
+     *   library destroys the stream, clears its connect and reconnect
+     *   timers, and calls back on the next tick. A graceful
+     *   `end( false )` would call back at once here too, but it would
+     *   not destroy the stream (`client.js:921-924`). A pending
+     *   connect would then hold the process for the whole connect
+     *   timeout.
+     * - Connected: `end( false )` sends DISCONNECT and half-closes the
+     *   socket, then waits for the broker to close its side. A timer
+     *   bounds that wait. At the budget the timer destroys the stream
+     *   directly. That is the call the library's own connect timeout
+     *   makes. A second `end()` would do nothing: it returns at once
+     *   behind the library's `disconnecting` flag (`client.js:731-734`).
+     *   The forced path is reported with the sources' shared `note`
+     *   convention.
      *
      * The timer is `unref()`ed so it does not keep Node alive while a
-     * clean disconnect is in progress.
-     *
-     * Default time budget (5000 ms) matches what sinks use.
+     * clean disconnect is in progress. Either path settles the promise
+     * once. The default time budget (5000 ms) matches the sinks.
      *
      * @param {Object} [options] - Stop options
-     * @param {number} [options.timeout=5000] - Max ms to wait for clean disconnect
+     * @param {number} [options.timeout=5000] - Max ms to wait for the clean disconnect
      * @returns {Promise<void>} Resolves once the client is closed (clean or forced)
      */
     const stop = function ( { timeout = 5000 } = {} ) {
+        if ( stopPromise ) {
+            return stopPromise;
+        }
         clearInterval( cadence );
-        return new Promise( function ( resolve ) {
+        stopPromise = new Promise( function ( resolve ) {
             let settled = false;
-            let forceTimer = null;
-            const onClosed = function () {
-                if ( settled ) return;
-                settled = true;
-                if ( forceTimer ) clearTimeout( forceTimer );
+            const reportClean = function () {
                 reporter.stopped();
+            };
+            const reportForced = function () {
+                reporter.stopForced( timeout );
+            };
+            // The library's close callback also fires after the timer's
+            // destroy, so the second arrival must settle nothing.
+            const settle = function ( report ) {
+                if ( settled ) {
+                    return;
+                }
+                settled = true;
+                report();
                 resolve();
             };
-            forceTimer = setTimeout( function () {
 
-                /* c8 ignore next -- defensive: settle always clears this timer (it is assigned before client.end can call back), so reaching here settled requires the timer callback to already sit in the event queue when settle runs — a race with no producer in the current design. Same guard shape as the testHarness stop. */
-                if ( settled ) return;
-                reporter.stopForced( timeout );
-                client.end( true, {}, onClosed );
+            if ( !client.connected ) {
+                client.end( true, {}, function () {
+                    settle( reportClean );
+                } );
+                return;
+            }
+
+            const forceTimer = setTimeout( function () {
+                client.stream.destroy();
+                settle( reportForced );
             }, timeout );
-            // Don't keep Node alive on the timer while the broker is
-            // closing cleanly. Either path resolves the Promise.
             forceTimer.unref();
-            client.end( false, {}, onClosed );
+
+            client.end( false, {}, function () {
+                clearTimeout( forceTimer );
+                settle( reportClean );
+            } );
         } );
+        return stopPromise;
     };
 
     // Expose for testing

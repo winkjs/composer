@@ -13,7 +13,7 @@ what is and is not guaranteed afterwards.
 .source( mqttSource, {
     brokerUrl: 'mqtt://broker:1883',
     topics: [ 'plant/line1/#' ],
-    clientId: 'paintshop-line1'    // fixed name — pick one and keep it
+    clientId: 'paintshop-line1-source'    // fixed name — pick one and keep it
 } )
 ```
 
@@ -25,14 +25,15 @@ return." The broker does exactly that. But it files the saved
 messages under the name.
 
 Without a configured `clientId`, composer invents a name from the
-start time. Every restart produces a different name. So the broker
+start time and a random part. Every restart produces a different
+name. So the broker
 holds the backlog under the old name, composer returns under a new
 one, and the saved messages are never delivered. They sit unclaimed
 until the session expires. Nothing reports an error. The readings
 are simply missing.
 
 With a fixed name, the same restart plays out differently. Composer
-returns as `paintshop-line1`. The broker recognizes the session and
+returns as `paintshop-line1-source`. The broker recognizes the session and
 delivers every message saved during the downtime. Composer's
 duplicate filter absorbs any boundary re-sends, so each reading is
 processed exactly once.
@@ -42,12 +43,33 @@ session is persistent, so this cannot be forgotten silently.
 
 ### Choose the name carefully
 
-The broker allows one connection per name. If a second client
+The broker allows one live connection per name. If a second client
 connects with a name already in use, the broker disconnects the
-first. Two devices sharing a name therefore kick each other off in
-an endless loop, and each kick looks like a network fault. Pick a
-name that is unique on your broker. Site plus line works well:
-`paintshop-line1`.
+first. Two clients sharing a name therefore take the session from
+each other on every reconnect, for as long as both run. Four rules
+keep names safe.
+
+- **One name per client, not per device.** A source and an emitter
+  in one process are two clients. Two flows in one process that both
+  read MQTT are two clients. Each needs its own name.
+- **Build the name from site, line, and role.** For example
+  `paintshop-line1-source` and `paintshop-line1-emitter`. The role
+  suffix keeps two clients in one process apart.
+- **Stay portable when the broker is not yours.** The MQTT
+  specification requires every broker to accept names of 1 to 23
+  bytes made of letters and digits only. Longer names and hyphens
+  work on most brokers, Mosquitto included, but are not guaranteed.
+- **Treat the auto-generated name as a development convenience.**
+  Without a configured `clientId`, composer uses
+  `wink-source-<start time>-<random>`. The name is unique, but it
+  changes on every start, so a saved backlog is never claimed.
+  Production sets a fixed name.
+
+A collision has a recognizable shape. The status channel flips
+between `offline` and `reconnecting` once per reconnect period, and
+a red `SUBSCRIBE_FAILED` can appear that means nothing. When you see
+that pattern, check for a duplicate name before checking the
+network.
 
 ### What the session does and does not hold
 
