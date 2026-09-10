@@ -51,6 +51,8 @@ describe( 'MQTT Source — Shutdown', function () {
     beforeEach( function () {
         mockClient = createMockClient();
         statusLog = [];
+        // A forced stop prints one warn line; keep the run quiet.
+        sinon.stub( console, 'warn' );
         fakeTimers = sinon.useFakeTimers( {
             toFake: [ 'setTimeout', 'clearTimeout' ]
         } );

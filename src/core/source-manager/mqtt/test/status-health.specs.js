@@ -19,7 +19,8 @@
  */
 
 import { expect } from 'chai';
-import { describe, it } from 'mocha';
+import { describe, it, beforeEach, afterEach } from 'mocha';
+import sinon from 'sinon';
 
 import { createStatusReporter } from '../status.js';
 import { makeClock } from './test-helpers.js';
@@ -36,7 +37,21 @@ const collect = function ( options = {} ) {
     return { clock, statuses, reporter };
 };
 
+// Every rule below crosses a health edge, and each edge prints one
+// line through the facade. The hooks keep the run quiet; the lines
+// themselves are pinned in status.specs.js.
+const quietFacade = function () {
+    beforeEach( function () {
+        sinon.stub( console, 'warn' );
+        sinon.stub( console, 'error' );
+    } );
+    afterEach( function () {
+        sinon.restore();
+    } );
+};
+
 describe( 'MQTT Source Health — the 30 s disconnect rule (both boundary sides)', function () {
+    quietFacade();
 
     it( 'holds at exactly 30,000 ms disconnected, flips red at 30,001 ms', function () {
         const { clock, statuses, reporter } = collect();
@@ -144,6 +159,7 @@ describe( 'MQTT Source Health — the 30 s disconnect rule (both boundary sides)
 } );
 
 describe( 'MQTT Source Health — the 1 % decode-error ratio rule (both boundary sides)', function () {
+    quietFacade();
 
     it( 'holds at exactly 1 % over 1,000 messages, flips yellow when the ratio exceeds it', function () {
         const { statuses, reporter } = collect();
@@ -224,6 +240,7 @@ describe( 'MQTT Source Health — the 1 % decode-error ratio rule (both boundary
 } );
 
 describe( 'MQTT Source Health — the quiet-period rule (opt-in, both boundary sides)', function () {
+    quietFacade();
 
     it( 'holds at exactly the configured quiet period, flips yellow one ms past it', function () {
         const { clock, statuses, reporter } = collect( { expectedQuietPeriodMs: 5000 } );
@@ -285,6 +302,7 @@ describe( 'MQTT Source Health — the quiet-period rule (opt-in, both boundary s
 } );
 
 describe( 'MQTT Source Health — rule precedence', function () {
+    quietFacade();
 
     it( 'the decode-ratio yellow outranks the quiet yellow (one emission, code DECODE_ERROR)', function () {
         const { clock, statuses, reporter } = collect( { expectedQuietPeriodMs: 100 } );

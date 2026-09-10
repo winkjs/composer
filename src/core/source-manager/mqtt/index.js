@@ -31,7 +31,9 @@
  * of `configSchema` — the wiring layer adds them to the config at start
  * time, after DSL validation. A user-supplied `onMessage` would be
  * silently overwritten; the unknown-key rejection turns that mistake
- * into a fail-fast error instead.
+ * into a fail-fast error instead. `onMessage` is also outside the
+ * callback guard on purpose: the flow's dispatch guard owns it, so a
+ * pipeline throw is contained once, at that one chokepoint (ADR-027).
  *
  *   ASSUMPTIONS
  *   -----------
@@ -49,6 +51,10 @@
  *   2. Duplicate filtering is opt-in per message: only messages that
  *      carry `winkDedupId` are protected. Watch the `dedupBypassed`
  *      counter to spot publishers that are not stamping ids.
+ *   3. No payload size cap and no intake rate cap. The broker's own
+ *      per-client limits are the first line against a flood; TCP
+ *      back-pressure bounds the rest. A cap is ADR-026 work
+ *      (proposed), together with TLS and authentication.
  *
  * Usage in flow:
  *   import mqtt from './core/source-manager/mqtt/index.js';
@@ -99,7 +105,9 @@ const id = 'mqtt';
  * Crash-survival class per ADR-018. For a source the value describes
  * the INPUT it can recover after a disconnect: the persistent broker
  * session holds subscribed QoS-1 messages across the gap and replays
- * them on reconnect.
+ * them on reconnect. The class is earned only under a fixed
+ * `clientId` and a broker with persistence on. The auto-generated name
+ * changes on every start, so a restart under it claims no backlog.
  *
  * @type {string}
  */
@@ -113,7 +121,9 @@ const durabilityClass = 'broker-queue';
  * @returns {boolean}
  */
 const isTopicOrTopicArray = function ( value ) {
-    if ( typeof value === 'string' && value.length > 0 ) return true;
+    if ( typeof value === 'string' && value.length > 0 ) {
+        return true;
+    }
     if ( Array.isArray( value ) && value.length > 0 ) {
         return value.every( ( t ) => typeof t === 'string' && t.length > 0 );
     }

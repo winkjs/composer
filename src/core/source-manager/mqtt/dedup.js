@@ -28,8 +28,8 @@
  * - Two unavoidable residuals, both bounded: (1) `Set.add`/`Set.delete`
  *   maintain V8's internal hash table — amortized O(1), memory bounded
  *   by `maxEntries`, and the identical profile the pre-ADR-022 cache
- *   already had (JS offers no pre-sized Set). (2) `Date.now()` exceeds
- *   the small-integer range, so the timestamp is transiently boxed; it
+ *   already had (JS offers no pre-sized Set). (2) The clock returns a
+ *   fractional number, so the timestamp is transiently boxed; it
  *   unboxes on store into the Float64Array and dies in the nursery.
  * - Eviction clears the ring slot so an evicted id string is not
  *   retained past its window — that release is deliberate.
@@ -48,9 +48,12 @@
  *   -----------
  *   1. A dedup id is unique per message and repeats only on a QoS-1
  *      retransmission (the emitter stamps UUIDs).
- *   2. The clock moves forward at millisecond granularity. A backward
- *      clock jump can expire entries early or hold them one window too
- *      long — bounded either way, and self-healing within one window.
+ *   2. The clock counts up, in milliseconds. The default is the
+ *      stopwatch clock (`performance`), which a wall-clock step cannot
+ *      move. A forward step of the wall clock would otherwise expire
+ *      every entry at once; a backward step would hold entries one
+ *      step too long (ADR-018, long-running stability). An injected
+ *      `nowFn` must count up too.
  *
  *   LIMITATIONS
  *   -----------
@@ -62,9 +65,9 @@
  *      effective window is maxEntries ÷ rate (the full 120 s up to
  *      about 550 msg/s at defaults; ~6.5 s at 10 k msg/s). Stated in
  *      ADR-022, not hidden.
- *   3. Memory, measured (benchmark/mqtt-source/dedup-memory.js,
- *      2026-07-09): 86 bytes per production-shaped id, ~6.7 MB worst
- *      case at the 65,536 cap including bounded V8 Set slack.
+ *   3. Memory, measured on the private benchmark harness (2026-07-09):
+ *      86 bytes per production-shaped id, ~6.7 MB worst case at the
+ *      65,536 cap including bounded V8 Set slack.
  *
  * @see ADR-022 - The full decision
  */
@@ -73,6 +76,7 @@ import {
     DEFAULT_DEDUP_WINDOW_MS,
     DEFAULT_DEDUP_MAX_ENTRIES
 } from './constants.js';
+import { monotonicNow } from '../../utils/clock/index.js';
 
 // ============================================================================
 // VALIDATION HELPER
@@ -108,8 +112,9 @@ const assertPositiveInteger = function ( value, name ) {
  *   expires once its age reaches this many milliseconds
  * @param {number} [options.maxEntries=65536] - Count cap: the memory
  *   guarantee; the oldest entry is evicted when the ring is full
- * @param {function} [options.nowFn=Date.now] - Clock source. Injection
- *   point for deterministic tests; production uses the default
+ * @param {function} [options.nowFn=monotonicNow] - Clock source, in
+ *   milliseconds and counting up. Injection point for deterministic
+ *   tests; production uses the stopwatch clock
  * @returns {Object} Cache instance with isDuplicate, size, clear, has
  */
 const createDedupCache = function ( options = {} ) {
@@ -122,7 +127,7 @@ const createDedupCache = function ( options = {} ) {
     const {
         windowMs = DEFAULT_DEDUP_WINDOW_MS,
         maxEntries = DEFAULT_DEDUP_MAX_ENTRIES,
-        nowFn = Date.now
+        nowFn = monotonicNow
     } = options;
 
     assertPositiveInteger( windowMs, 'windowMs' );

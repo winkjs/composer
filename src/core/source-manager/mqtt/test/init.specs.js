@@ -102,6 +102,8 @@ describe( 'MQTT Source — createMQTTSourceClient Configuration', function () {
 
         expect( stop ).to.be.a( 'function' );
         expect( mockConnect.calledOnce ).to.equal( true );
+        expect( mockConnect.firstCall.args[ 0 ] ).to.equal( 'mqtt://127.0.0.1' );
+        expect( stop._client ).to.equal( mockClient );
     } );
 
     it( 'defaults to a persistent session — mqtt.js\'s \'clean\' option is false', function () {

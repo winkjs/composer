@@ -28,6 +28,7 @@
 import { expect } from 'chai';
 import { describe, it, beforeEach, afterEach } from 'mocha';
 import mqtt from 'mqtt';
+import sinon from 'sinon';
 
 import { createMQTTSourceClient } from '../client.js';
 import { startFakeBroker, stopFakeBroker } from './fake-broker.js';
@@ -81,9 +82,14 @@ describe( 'MQTT source — stop detaches the transport (fake broker)', function 
 
     beforeEach( function () {
         statusLog = [];
+        // The offline edges and the forced stop print through the
+        // facade; keep the run quiet.
+        sinon.stub( console, 'warn' );
+        sinon.stub( console, 'error' );
     } );
 
     afterEach( async function () {
+        sinon.restore();
         if ( stop ) {
             await stop( { timeout: 50 } );
             stop = null;

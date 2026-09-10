@@ -19,6 +19,7 @@ import sinon from 'sinon';
 import { createMQTTSourceClient } from '../client.js';
 import { WINK_NAMESPACE } from '../constants.js';
 import { createMockClient } from './test-helpers.js';
+import { logger } from '../../../logger/index.js';
 
 describe( 'MQTT Source — Message Handling', function () {
 
@@ -158,6 +159,85 @@ describe( 'MQTT Source — Message Handling', function () {
         // The stream continues: the next good message is delivered.
         mockClient._emit( 'message', 'test/topic', Buffer.from( '{"ok": 1}' ), packet );
         expect( receivedMessages ).to.have.length( 1 );
+    } );
+
+    // The parser's own message can echo a fragment of the payload
+    // (Node 22: `Unexpected token 'o', "not-valid-json" is not valid
+    // JSON`). Payload text is data and stays below the warn level. The
+    // report names the topic and the size instead.
+    it( 'the DECODE_ERROR detail names the topic and the byte length, never the payload text', function () {
+        const statusLog = [];
+        createMQTTSourceClient( {
+            brokerUrl: 'mqtt://127.0.0.1',
+            topics: 'test/topic',
+            onMessage: () => { /* no-op */ },
+            onStatus: ( s ) => statusLog.push( s ),
+            mqttConnectFn: mockConnect
+        } );
+
+        const packet = { properties: {} };
+        mockClient._emit( 'message', 'test/topic', Buffer.from( 'secret-looking-text' ), packet );
+
+        // One failure in one message also flips the ratio rule; that
+        // health report is not the per-record one under test.
+        const reports = statusLog.filter(
+            ( s ) => s.error &&
+                     s.error.code === 'DECODE_ERROR' &&
+                     !( /decode-error ratio/ ).test( s.error.message )
+        );
+        expect( reports ).to.have.length( 1 );
+        expect( reports[ 0 ].error.message ).to.equal(
+            'topic \'test/topic\': payload of 19 bytes could not be decoded — message skipped'
+        );
+        expect( reports[ 0 ].error.message ).to.not.contain( 'secret-looking-text' );
+    } );
+
+    // The two cases below flip the facade's debug flag explicitly, so
+    // both arms of the guard run whatever COMPOSER_LOG_LEVEL the test
+    // process started with.
+    const withDebug = function ( on, body ) {
+        const wasOn = logger.debugOn;
+        logger.debugOn = on;
+        try {
+            body();
+        } finally {
+            logger.debugOn = wasOn;
+        }
+    };
+
+    it( 'the parser\'s own reason goes to one debug line when debug is on', function () {
+        const debugStub = sinon.stub( logger, 'debug' );
+        createMQTTSourceClient( {
+            brokerUrl: 'mqtt://127.0.0.1',
+            topics: 'test/topic',
+            onMessage: () => { /* no-op */ },
+            mqttConnectFn: mockConnect
+        } );
+
+        withDebug( true, function () {
+            mockClient._emit( 'message', 'test/topic', Buffer.from( 'not-valid-json' ), { properties: {} } );
+        } );
+
+        expect( debugStub.calledOnce ).to.equal( true );
+        const line = debugStub.firstCall.args[ 0 ];
+        expect( line ).to.contain( 'winkComposer/mqttSource: decode failed [DECODE_ERROR]: topic \'test/topic\': ' );
+        expect( line ).to.contain( 'not-valid-json' );
+    } );
+
+    it( 'no debug line is built when debug is off', function () {
+        const debugStub = sinon.stub( logger, 'debug' );
+        createMQTTSourceClient( {
+            brokerUrl: 'mqtt://127.0.0.1',
+            topics: 'test/topic',
+            onMessage: () => { /* no-op */ },
+            mqttConnectFn: mockConnect
+        } );
+
+        withDebug( false, function () {
+            mockClient._emit( 'message', 'test/topic', Buffer.from( 'not-valid-json' ), { properties: {} } );
+        } );
+
+        expect( debugStub.called ).to.equal( false );
     } );
 
     it( 'applies transform function when provided', function () {

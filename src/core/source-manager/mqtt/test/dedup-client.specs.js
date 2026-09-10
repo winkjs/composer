@@ -1,6 +1,6 @@
 // core/source-manager/mqtt/test/dedup-client.specs.js
 
-/* eslint-disable no-underscore-dangle, no-empty-function */
+/* eslint-disable no-underscore-dangle */
 
 /**
  * @fileoverview MQTT source — deduplication through the client path.
@@ -209,16 +209,47 @@ describe( 'MQTT Source — Deduplication', function () {
         expect( receivedMessages ).to.have.length( 5 );  // 4 unique + 1 after eviction
     } );
 
-    it( 'exposes dedup cache for testing', function () {
+    it( 'exposes the live dedup cache for testing — the same cache the message path fills', function () {
+        const received = [];
         const stop = createMQTTSourceClient( {
             brokerUrl: 'mqtt://127.0.0.1',
             topics: 'test/topic',
-            onMessage: () => {},
+            onMessage: ( msg ) => received.push( msg ),
             mqttConnectFn: mockConnect
         } );
 
-        expect( stop._dedup ).to.be.an( 'object' );
-        expect( stop._dedup.isDuplicate ).to.be.a( 'function' );
+        const packet = { properties: { userProperties: { [ WINK_NAMESPACE.dedupId ]: 'live-id' } } };
+        mockClient._emit( 'message', 'test/topic', Buffer.from( '{"v": 1}' ), packet );
+
+        expect( received ).to.have.length( 1 );
+        expect( stop._dedup.has( 'live-id' ) ).to.equal( true );
+        expect( stop._dedup.size() ).to.equal( 1 );
+    } );
+
+    // A repeated MQTT 5 user property parses to an array, and an array
+    // can never equal an earlier one. Any non-string id therefore
+    // bypasses the cache and counts as bypassed, so a publisher that
+    // stamps the key twice is visible in the counters instead of
+    // filling the cache with arrays.
+    it( 'a non-string dedup id (a repeated user property) bypasses dedup and counts in dedupBypassed', function () {
+        const received = [];
+        const stop = createMQTTSourceClient( {
+            brokerUrl: 'mqtt://127.0.0.1',
+            topics: 'test/topic',
+            onMessage: ( msg ) => received.push( msg ),
+            mqttConnectFn: mockConnect
+        } );
+
+        const packet = { properties: { userProperties: { [ WINK_NAMESPACE.dedupId ]: [ 'twice', 'twice' ] } } };
+        mockClient._emit( 'message', 'test/topic', Buffer.from( '{"v": 1}' ), packet );
+        mockClient._emit( 'message', 'test/topic', Buffer.from( '{"v": 2}' ), packet );
+
+        expect( received ).to.have.length( 2 );
+        expect( stop._dedup.size() ).to.equal( 0 );
+        const snap = stop._metrics();
+        expect( snap.dedupBypassed ).to.equal( 2 );
+        expect( snap.dedupHits ).to.equal( 0 );
+        expect( snap.dedupMisses ).to.equal( 0 );
     } );
 
 } );

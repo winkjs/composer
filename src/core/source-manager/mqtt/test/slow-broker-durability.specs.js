@@ -45,9 +45,16 @@ import mqtt from 'mqtt';
 
 import { createMQTTSourceClient } from '../client.js';
 import { WINK_NAMESPACE } from '../constants.js';
+import { ENV_VARS } from '../../../env-vars.js';
 
 const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const RUN_ID = `${process.pid}-${Date.now()}`;
+
+// A returning source connects at once, so its replay deadline is one
+// connect timeout (the knob the source runs on) plus 15 s for the
+// broker to hand over the gap. Derived, so a changed
+// MQTT_CONNECT_TIMEOUT_MS cannot turn the wait into a false failure.
+const REPLAY_DEADLINE_MS = ENV_VARS.mqttConnectTimeoutMs + 15_000;
 const REPO_ROOT = path.resolve(
     path.dirname( fileURLToPath( import.meta.url ) ),
     '..', '..', '..', '..', '..'
@@ -302,7 +309,7 @@ describe( 'Broker durability certification — input survives downtime', functio
 
         // Composer returns under the SAME name; the broker replays.
         createSource( clientId, topic, received );
-        await waitFor( () => validCount( received ) >= PHASE_A + GAP, 30_000 );
+        await waitFor( () => validCount( received ) >= PHASE_A + GAP, REPLAY_DEADLINE_MS );
 
         assertExactlyOnce( received, PHASE_A + GAP );
     } );
@@ -344,7 +351,7 @@ describe( 'Broker durability certification — input survives downtime', functio
 
         // Composer returns; the queue must have survived the restart.
         createSource( clientId, topic, received );
-        await waitFor( () => validCount( received ) >= PHASE_A + GAP, 30_000 );
+        await waitFor( () => validCount( received ) >= PHASE_A + GAP, REPLAY_DEADLINE_MS );
 
         assertExactlyOnce( received, PHASE_A + GAP );
     } );

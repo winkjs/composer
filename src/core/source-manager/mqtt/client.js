@@ -120,15 +120,34 @@
  *      clears. The operator tells them apart, not the code.
  *   4. Safe to kill and re-create: no disk state, no side effects.
  *      The cost of a crash is the dedup cache (see dedup.js).
+ *   5. No payload size cap and no intake rate cap. A flood of large
+ *      messages is bounded only by the broker's own per-client limits
+ *      and by TCP back-pressure on the socket. ADR-026 (proposed) is
+ *      the home for a cap; the handbook states the limit.
  *
- * Performance (benchmark/mqtt-source/BASELINE.md, 2026-04-24, M4 Max;
- * pre-ADR-022 dedup, whose replacement has the same O(1) per-message
- * profile): composer's own decode/dedup/dispatch path sustains
- * 897 k msg/s at 100 B payloads (317 k at 1 KB); end-to-end through
- * Mosquitto at QoS 1 the single-process ceiling was ~12.9 k msg/s —
- * owned by mqtt.js and the broker round-trip, not this code. At
- * 10 k msg/s steady state every cell ran clean; a 30 M-message run
- * showed no subscriber-side leak.
+ * Performance, measured on the private benchmark harness (2026-04-24,
+ * M4 Max; pre-ADR-022 dedup, whose replacement has the same O(1)
+ * per-message profile): composer's own decode/dedup/dispatch path
+ * sustains 897 k msg/s at 100 B payloads (317 k at 1 KB). End-to-end
+ * through Mosquitto at QoS 1 the single-process ceiling was
+ * ~12.9 k msg/s, owned by mqtt.js and the broker round-trip, not this
+ * code. At 10 k msg/s steady state every cell ran clean; a
+ * 30 M-message run showed no subscriber-side leak.
+ *
+ * Decisions this file follows:
+ * - ADR-004 and ADR-013 — the message handler is synchronous and
+ *   allocates nothing on the success path. The flow's dispatch never
+ *   waits on it.
+ * - ADR-018 — the adapter contract: phases, status shape, codes.
+ * - ADR-022 — the dedup cache and its two bounds.
+ * - ADR-027 — the callback wrapper scope. `transform` runs under the
+ *   shared guard. `onMessage` is not wrapped here; the flow's dispatch
+ *   guard owns it.
+ * - ADR-028 — the grammar of every facade line printed here and in
+ *   status.js.
+ * - ADR-030 — `localhost` is refused; a name is warned about.
+ * - ADR-026 (proposed) — the external-threat surface. TLS,
+ *   authentication, and payload caps belong there, not here.
  *
  * @see src/core/source-manager/mqtt/status.js - The reporting rules
  * @see src/core/emitter-manager/mqtt/emitter.js - Emitter counterpart
@@ -371,7 +390,10 @@ const createMQTTSourceClient = function ( config ) {
         const dedupId = userProps ? userProps[ WINK_NAMESPACE.dedupId ] : undefined;
 
         // Dedup is opt-in by construction (ADR-022): no id → bypass.
-        if ( dedupId === null || dedupId === undefined ) {
+        // A repeated MQTT 5 user property parses to an array, and an
+        // array can never equal an earlier one. So any non-string id
+        // bypasses too, counted in dedupBypassed rather than cached.
+        if ( typeof dedupId !== 'string' ) {
             reporter.bypassed();
         } else if ( dedup.isDuplicate( dedupId ) ) {
             reporter.dupSkipped();
@@ -380,16 +402,17 @@ const createMQTTSourceClient = function ( config ) {
             reporter.idAccepted();
         }
 
-        // Decode payload, check its shape, and attach metadata — one
-        // guarded region. A failure anywhere in it is skipped,
-        // classified, and reported per record (ADR-018) — the stream
-        // continues. The shape guard is needed because a valid JSON
-        // document can be a scalar or a bare array; the attach is
-        // inside the guard because a codec can return a frozen record
-        // (or one with a non-writable _topic), and the assignment then
-        // throws in strict mode. decodeOk() runs only when the whole
-        // record survived, so the ring gets exactly one entry per
-        // message.
+        // Decode the payload, check its shape, and attach metadata in
+        // one guarded region. A failure anywhere in it is skipped,
+        // classified, and reported per record (ADR-018). The stream
+        // continues.
+        //
+        // The shape guard is needed because a valid JSON document can
+        // be a scalar or a bare array. The attach is inside the guard
+        // because a codec can return a frozen record, or one with a
+        // non-writable _topic. The assignment then throws in strict
+        // mode. decodeOk() runs only when the whole record survived,
+        // so the ring gets exactly one entry per message.
         let message;
         try {
             if ( codec && typeof codec.unpack === 'function' ) {
@@ -409,7 +432,15 @@ const createMQTTSourceClient = function ( config ) {
 
             reporter.decodeOk();
         } catch ( err ) {
-            reporter.decodeFailed( `topic '${topic}': ${err.message} — message skipped` );
+            // The parser's own message can echo a fragment of the
+            // payload. Payload text is data, so it stays below the
+            // warn level (ADR-028). The report names the topic and
+            // the size. The parser's reason goes to a debug line,
+            // guarded so the hot path builds nothing when debug is off.
+            reporter.decodeFailed( `topic '${topic}': payload of ${payload.length} bytes could not be decoded — message skipped` );
+            if ( logger.debugOn ) {
+                logger.debug( `winkComposer/mqttSource: decode failed [DECODE_ERROR]: topic '${topic}': ${err.message}` );
+            }
             return;
         }
 
@@ -417,12 +448,13 @@ const createMQTTSourceClient = function ( config ) {
         // at startup. A throw skips this one message with a per-record
         // CALLBACK_FAILED report, and the stream continues. User code
         // must never propagate into mqtt.js's event processing
-        // (transform contract, 2026-07-11). The return is held to the
-        // same record shape as the payload. A null/undefined return
-        // stays the intentional silent drop. A scalar or array return
-        // is one per-record CALLBACK_FAILED. The shape check runs only
-        // when a transform is configured, so the plain path pays
-        // nothing.
+        // (transform contract, 2026-07-11).
+        //
+        // The return is held to the same record shape as the payload.
+        // A null or undefined return stays the intentional silent
+        // drop. A scalar or array return is one per-record
+        // CALLBACK_FAILED. The shape check runs only when a transform
+        // is configured. The plain path pays nothing.
         let finalMessage;
         if ( guardedTransform ) {
             finalMessage = guardedTransform( message, topic );

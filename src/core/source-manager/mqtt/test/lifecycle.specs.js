@@ -31,6 +31,9 @@ describe( 'MQTT Source — Connection and Subscription', function () {
         mockClient = createMockClient();
         mockConnect = sinon.stub().returns( mockClient );
         statusLog = [];
+        // The edges below print through the facade; keep the run quiet.
+        sinon.stub( console, 'warn' );
+        sinon.stub( console, 'error' );
     } );
 
     afterEach( function () {
@@ -165,6 +168,9 @@ describe( 'MQTT Source — Reconnection', function () {
         mockClient = createMockClient();
         mockConnect = sinon.stub().returns( mockClient );
         statusLog = [];
+        // The edges below print through the facade; keep the run quiet.
+        sinon.stub( console, 'warn' );
+        sinon.stub( console, 'error' );
     } );
 
     afterEach( function () {
@@ -233,6 +239,8 @@ describe( 'MQTT Source — health/metrics cadence timer', function () {
     beforeEach( function () {
         mockClient = createMockClient();
         mockConnect = sinon.stub().returns( mockClient );
+        sinon.stub( console, 'warn' );
+        sinon.stub( console, 'error' );
         // Fake only the interval machinery — setImmediate stays real
         // for the mock client's subscribe/end callbacks.
         fakeTimers = sinon.useFakeTimers( {

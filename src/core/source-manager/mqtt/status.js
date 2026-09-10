@@ -29,6 +29,25 @@
  *   later failed on still counts here. Failure visibility belongs
  *   to the flow's MESSAGE_HANDLER_FAILED reports (ADR-018), not to
  *   this counter.
+ * - The logger facade (ADR-028) — one line per health edge, and a
+ *   bounded line per record fault. These lines print with or without
+ *   an `onStatus` handler. Inside a flow the runtime's own status
+ *   wrapper forwards only red payloads when the user gave no handler,
+ *   so a yellow edge that reached only the payload channel used to
+ *   vanish. The line is the guaranteed audience. The payload
+ *   additionally reaches a listening handler.
+ *
+ *     yellow edge    → warn   source degraded [CODE]: <detail>
+ *     red edge       → error  source error [CODE]: <detail>
+ *     back to green  → warn   source recovered [CODE]: cleared after N s
+ *     forced stop    → warn   source stopped: <note>
+ *
+ *   An edge is a change of status or code. A phase change inside the
+ *   same status and code prints nothing, so a retry storm cannot fill
+ *   the log. A clean stop prints nothing. The per-record lines
+ *   (`decode failed [DECODE_ERROR]`, `transform failed
+ *   [CALLBACK_FAILED]`) print the first two of an episode in full and
+ *   then one summary a minute, the emitter's attempt-line shape.
  *
  * Health rules (evaluated on events and on tick):
  * - RED    — a subscribe failure (connected but deaf — no retry
@@ -44,6 +63,12 @@
  * Precedence is the order above; the first rule that matches names
  * the code.
  *
+ * Clock: the default `nowFn` is the stopwatch clock (`performance`),
+ * which only counts up. The wall clock can step when NTP corrects a
+ * board after boot or after a long time without network. A forward
+ * step would fire the 30 s red early; a backward step would delay it
+ * (ADR-018, long-running stability). Tests inject their own clock.
+ *
  * Hot-path allocation profile (ADR-018 zero-alloc — allocation only where
  * unavoidable, each residual stated):
  * - Counter bumps, ring writes, and the health evaluation are plain
@@ -54,20 +79,18 @@
  *   metrics snapshots (1 Hz). Snapshots are fresh objects because a
  *   consumer may retain them; mutating a shared one under the
  *   caller's feet is a footgun we refuse.
- * - `nowFn()` (Date.now) runs once per received message to feed the
- *   quiet-period clock — the same transient boxing the dedup cache
- *   already documents.
- *
- * Callers without an `onStatus` handler still see error-path
- * payloads via a classified `console.error` line (the CSV source's
- * fallback pattern); lifecycle payloads stay quiet.
+ * - `nowFn()` runs once per received message to feed the quiet-period
+ *   clock. It returns a fractional number, so the value is transiently
+ *   boxed — the same profile the dedup cache documents.
+ * - The facade lines are built only on an edge or a record fault,
+ *   never on the success path.
  *
  *   ASSUMPTIONS
  *   -----------
  *   1. All reporter calls come from one event loop (mqtt.js event
  *      handlers plus one interval) — there is no locking.
- *   2. The clock (`nowFn`) moves forward; the time rules use plain
- *      subtraction.
+ *   2. An injected `nowFn` counts up, in milliseconds. The time rules
+ *      use plain subtraction.
  *
  *   LIMITATIONS
  *   -----------
@@ -79,9 +102,13 @@
  *   2. Counters are plain JS numbers: exact to 2^53. At one million
  *      messages per second that is ~285 years of uptime — not the
  *      binding constraint.
+ *   3. The per-record line bound paces on the wall clock (the shared
+ *      line-rate helper). A clock step can only move when a summary
+ *      prints, never what the health rules decide.
  *
  * @see src/core/source-manager/mqtt/client.js - The transport wiring
  * @see ADR-018 - lifecycle phases, status shapes, error codes
+ * @see ADR-028 - the line grammar
  */
 
 import {
@@ -89,7 +116,15 @@ import {
     DECODE_RING_SIZE
 } from './constants.js';
 import { wrapCallback } from '../../utils/callback-guard/index.js';
+import { createLineBound } from '../../utils/line-rate/index.js';
+import { monotonicNow } from '../../utils/clock/index.js';
 import { logger } from '../../logger/index.js';
+
+/** How many per-record fault lines per episode print in full. */
+const FULL_RECORD_LINES_PER_EPISODE = 2;
+
+/** The per-record summary interval, also the quiet gap that ends an episode. */
+const RECORD_SUMMARY_INTERVAL_MS = 60000;
 
 // ============================================================================
 // VALIDATION HELPERS
@@ -111,6 +146,31 @@ const assertOptionalFunction = function ( value, name ) {
 };
 
 // ============================================================================
+// FACADE LINES
+// ============================================================================
+
+/**
+ * Builds the bounded facade line for one per-record fault family. The
+ * first FULL_RECORD_LINES_PER_EPISODE faults of an episode print in
+ * full; later ones are counted into one summary a minute.
+ *
+ * @param {string} label - The line's message, e.g. `decode failed [DECODE_ERROR]`
+ * @returns {Function} `( detail ) => void`
+ */
+const createRecordLine = function ( label ) {
+    return createLineBound( {
+        fullLines: FULL_RECORD_LINES_PER_EPISODE,
+        intervalMs: RECORD_SUMMARY_INTERVAL_MS,
+        printFull: function ( detail ) {
+            logger.warn( `winkComposer/mqttSource: ${label}: ${detail}` );
+        },
+        printSummary: function ( count, seconds, detail ) {
+            logger.warn( `winkComposer/mqttSource: ${label}: ${detail}; ${count} more in the last ${seconds} s` );
+        }
+    } );
+}; // createRecordLine()
+
+// ============================================================================
 // STATUS REPORTER FACTORY
 // ============================================================================
 
@@ -123,8 +183,9 @@ const assertOptionalFunction = function ( value, name ) {
  * @param {number} [options.expectedQuietPeriodMs] - Opt-in quiet rule:
  *   yellow when no packet arrives for longer than this
  * @param {function} [options.dedupSizeFn] - Live dedup-cache size read
- * @param {function} [options.nowFn=Date.now] - Clock source. Injection
- *   point for deterministic tests; production uses the default
+ * @param {function} [options.nowFn=monotonicNow] - Clock source, in
+ *   milliseconds and counting up. Injection point for deterministic
+ *   tests; production uses the stopwatch clock
  * @returns {Object} Reporter with lifecycle notes, hot-path counters,
  *   tick and snapshot
  */
@@ -140,7 +201,7 @@ const createStatusReporter = function ( options = {} ) {
         onMetrics = null,
         expectedQuietPeriodMs = null,
         dedupSizeFn = null,
-        nowFn = Date.now
+        nowFn = monotonicNow
     } = options;
 
     assertOptionalFunction( onStatus, 'onStatus' );
@@ -192,6 +253,18 @@ const createStatusReporter = function ( options = {} ) {
     let lastPhase = null;
     let lastCode = null;
 
+    // ── Facade-line state (ADR-028) ──────────────────────────────────
+    // The edge lines key on status and code only, so a phase change
+    // inside one degraded episode prints nothing. `degradedSince` and
+    // `degradedPhase` remember the first non-green edge of the
+    // episode for the recovery line.
+    let printedStatus = 'green';
+    let printedCode = null;
+    let degradedSince = 0;
+    let degradedPhase = null;
+    const decodeLine = createRecordLine( 'decode failed [DECODE_ERROR]' );
+    const transformLine = createRecordLine( 'transform failed [CALLBACK_FAILED]' );
+
     /**
      * Record one decode outcome in the ring.
      *
@@ -229,9 +302,9 @@ const createStatusReporter = function ( options = {} ) {
     // Both user callbacks are armed by the shared callback guard.
     // They were validated raw above and are wrapped here, once
     // (ADR-018: a misbehaving user callback never reaches transport
-    // code and never fails silently). A broken onStatus reports to
-    // the console in this adapter's classified line family. It
-    // cannot report through itself. A broken onMetrics reports on
+    // code and never fails silently). A broken onStatus reports
+    // through the facade in this adapter's classified line family.
+    // It cannot report through itself. A broken onMetrics reports on
     // both channels; the comment at its wrap below explains why.
     const safeOnStatus = wrapCallback( onStatus, {
         name: 'onStatus',
@@ -242,18 +315,15 @@ const createStatusReporter = function ( options = {} ) {
     } );
 
     /**
-     * Route a status payload: to the caller's handler when supplied;
-     * otherwise error-path payloads go to a classified console.error
-     * (never silent — ADR-018's two-party rule) and lifecycle
-     * payloads stay quiet.
+     * Hand a status payload to the caller's handler, when there is
+     * one. The facade lines are printed by the callers of this
+     * function, so a payload with no handler is not silent.
      *
      * @param {Object} payload - The structured status payload
      */
     const emitStatus = function ( payload ) {
         if ( safeOnStatus ) {
             safeOnStatus( payload );
-        } else if ( payload.error ) {
-            logger.error( `winkComposer/mqttSource: source error [${payload.error.code}]: ${payload.error.message}` );
         }
     };
 
@@ -261,31 +331,27 @@ const createStatusReporter = function ( options = {} ) {
     // `connected` and `phase` read the reporter's live state at fault
     // time, so the payload tells the truth about the moment it fired.
     //
-    // The console line comes first and always fires. It is the
-    // guaranteed audience: inside a flow the runtime installs its own
-    // onStatus wrapper, which forwards only red payloads when the
-    // user gave no handler, so the yellow payload alone could vanish
-    // (fresh-eyes find, 2026-08-28). The payload then additionally
-    // reaches a listening handler, so a health view sees the
-    // degradation. With no handler at all, emitStatus would print
-    // the same line a second time — skip the payload there.
+    // The facade line comes first and always fires. It is the
+    // guaranteed audience. Inside a flow the runtime installs its own
+    // onStatus wrapper. That wrapper forwards only red payloads when
+    // the user gave no handler, so the yellow payload alone could
+    // vanish (fresh-eyes find, 2026-08-28). The payload then
+    // additionally reaches a listening handler, so a health view sees
+    // the degradation.
     const safeOnMetrics = wrapCallback( onMetrics, {
         name: 'onMetrics',
         severity: 'yellow',
         report: function ( severity, name, detail ) {
-            const message = `user callback ${name} failed: ${detail}`;
             logger.error( `winkComposer/mqttSource: user callback ${name} failed [CALLBACK_FAILED]: ${detail}` );
-            if ( safeOnStatus ) {
-                emitStatus( {
-                    status: severity,
-                    connected,
-                    phase,
-                    error: {
-                        code: 'CALLBACK_FAILED',
-                        message
-                    }
-                } );
-            }
+            emitStatus( {
+                status: severity,
+                connected,
+                phase,
+                error: {
+                    code: 'CALLBACK_FAILED',
+                    message: `user callback ${name} failed: ${detail}`
+                }
+            } );
         }
     } );
 
@@ -352,7 +418,7 @@ const createStatusReporter = function ( options = {} ) {
             return lastSubscribeError;
         }
         if ( code === 'CONNECTION_LOST' ) {
-            return `not connected for ${now - disconnectedAt}ms (red threshold ${DISCONNECT_RED_MS}ms)`;
+            return `not connected for ${Math.round( now - disconnectedAt )}ms (red threshold ${DISCONNECT_RED_MS}ms)`;
         }
         if ( code === 'CONNECT_FAILED' ) {
             return lastConnectError;
@@ -361,7 +427,43 @@ const createStatusReporter = function ( options = {} ) {
             return `decode-error ratio above 1% over the last ${ringCount} messages`;
         }
         // QUIET_PERIOD_EXCEEDED — the only code left.
-        return `no message received for ${now - lastReceivedAt}ms (expected quiet period ${expectedQuietPeriodMs}ms)`;
+        return `no message received for ${Math.round( now - lastReceivedAt )}ms (expected quiet period ${expectedQuietPeriodMs}ms)`;
+    };
+
+    /**
+     * Print one facade line per health edge (ADR-028). An edge is a
+     * change of status or code. A yellow edge prints at warn, a red
+     * edge at error. The return to green prints at warn with the
+     * seconds since the first non-green edge of the episode. A stop
+     * is not a recovery, so it prints nothing.
+     *
+     * @param {string} status - The status just computed
+     * @param {number} now - Current timestamp
+     */
+    const printEdge = function ( status, now ) {
+        if ( status === printedStatus && healthCode === printedCode ) {
+            return;
+        }
+        if ( status === 'green' ) {
+            if ( phase !== 'stopped' ) {
+                const seconds = Math.round( ( now - degradedSince ) / 1000 );
+                const what = printedCode === null ? `: ${degradedPhase} cleared` : ` [${printedCode}]: cleared`;
+                logger.warn( `winkComposer/mqttSource: source recovered${what} after ${seconds} s` );
+            }
+        } else {
+            if ( printedStatus === 'green' ) {
+                degradedSince = now;
+                degradedPhase = phase;
+            }
+            const what = healthCode === null ? `: ${phase}` : ` [${healthCode}]: ${healthMessage( healthCode, now )}`;
+            if ( status === 'red' ) {
+                logger.error( `winkComposer/mqttSource: source error${what}` );
+            } else {
+                logger.warn( `winkComposer/mqttSource: source degraded${what}` );
+            }
+        }
+        printedStatus = status;
+        printedCode = healthCode;
     };
 
     /**
@@ -379,11 +481,12 @@ const createStatusReporter = function ( options = {} ) {
         lastPhase = phase;
         lastCode = healthCode;
 
+        printEdge( status, now );
         const payload = {
             status,
             connected,
             phase,
-            msSinceLastMsg: now - lastReceivedAt
+            msSinceLastMsg: Math.round( now - lastReceivedAt )
         };
         if ( healthCode !== null ) {
             payload.error = { code: healthCode, message: healthMessage( healthCode, now ) };
@@ -476,7 +579,8 @@ const createStatusReporter = function ( options = {} ) {
         /**
          * The stop's time budget ran out and the socket was forced
          * closed. Reported with the sources' shared `note` convention
-         * (CSV and testHarness use the same wording).
+         * (CSV and testHarness use the same wording), and as one warn
+         * line.
          *
          * @param {number} timeoutMs - The exceeded budget
          */
@@ -484,15 +588,19 @@ const createStatusReporter = function ( options = {} ) {
             phase = 'stopped';
             connected = false;
             const now = nowFn();
+            const note = `Stop took longer than ${timeoutMs}ms — forced.`;
             lastStatus = 'yellow';
             lastPhase = 'stopped';
             lastCode = null;
+            printedStatus = 'yellow';
+            printedCode = null;
+            logger.warn( `winkComposer/mqttSource: source stopped: ${note}` );
             emitStatus( {
                 status: 'yellow',
                 connected: false,
                 phase: 'stopped',
-                msSinceLastMsg: now - lastReceivedAt,
-                note: `Stop took longer than ${timeoutMs}ms — forced.`
+                msSinceLastMsg: Math.round( now - lastReceivedAt ),
+                note
             } );
             emitMetrics();
         },
@@ -527,9 +635,10 @@ const createStatusReporter = function ( options = {} ) {
         },
 
         /**
-         * A payload could not be decoded. Emits the mandated
-         * per-record report (ADR-018: skip, classify, continue — never
-         * silent), then re-evaluates the ratio rule.
+         * A payload could not be decoded. Prints the bounded facade
+         * line, emits the mandated per-record report (ADR-018: skip,
+         * classify, continue — never silent), then re-evaluates the
+         * ratio rule.
          *
          * @param {string} detail - Operator-facing description
          */
@@ -538,6 +647,7 @@ const createStatusReporter = function ( options = {} ) {
             skipped += 1;
             lastReceivedAt = nowFn();
             ringPush( 1 );
+            decodeLine( detail );
             emitStatus( {
                 status: 'yellow',
                 connected,
@@ -555,17 +665,19 @@ const createStatusReporter = function ( options = {} ) {
         },
 
         /**
-         * The user's transform threw. Emits the mandated per-record
-         * report (skip, classify, continue — the transform contract,
-         * source-transform-uniformity 2026-07-11), classified as
-         * CALLBACK_FAILED: user code, never a transport failure. No
-         * evaluate() — a transform throw feeds no health rule, so
-         * there is no transition to re-derive.
+         * The user's transform threw. Prints the bounded facade line
+         * and emits the mandated per-record report (skip, classify,
+         * continue — the transform contract, source-transform-
+         * uniformity 2026-07-11), classified as CALLBACK_FAILED: user
+         * code, never a transport failure. No evaluate() — a transform
+         * throw feeds no health rule, so there is no transition to
+         * re-derive.
          *
          * @param {string} detail - Operator-facing description
          */
         transformFailed: function ( detail ) {
             skipped += 1;
+            transformLine( detail );
             emitStatus( {
                 status: 'yellow',
                 connected,

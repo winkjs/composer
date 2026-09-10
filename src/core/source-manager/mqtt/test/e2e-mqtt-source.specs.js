@@ -1,6 +1,6 @@
 // core/source-manager/mqtt/test/e2e-mqtt-source.specs.js
 
-/* eslint-disable no-process-env, no-await-in-loop, no-invalid-this, no-underscore-dangle, no-empty-function, require-await, no-unused-vars */
+/* eslint-disable no-process-env, no-await-in-loop, no-invalid-this, no-underscore-dangle, no-empty-function, require-await */
 
 /**
  * @fileoverview End-to-end tests for MQTT source with real Mosquitto broker.
@@ -17,11 +17,8 @@
  */
 
 import { expect } from 'chai';
-import { describe, it, before, after, beforeEach, afterEach } from 'mocha';
+import { describe, it, before, beforeEach, afterEach } from 'mocha';
 import mqtt from 'mqtt';
-import path from 'path';
-import os from 'os';
-import fs from 'fs/promises';
 
 import { createMQTTSourceClient } from '../client.js';
 import { createEmitter } from '../../../emitter-manager/mqtt/emitter.js';
@@ -194,12 +191,6 @@ describe( 'MQTT Source E2E Tests', function () {
 
         let emitter;
         let stopSource;
-        let storePath;
-
-        beforeEach( async function () {
-            const uniqueId = `e2e-${Date.now()}-${Math.random().toString( 36 ).slice( 2, 8 )}`;
-            storePath = path.join( os.tmpdir(), uniqueId );
-        } );
 
         afterEach( async function () {
             if ( stopSource ) {
@@ -210,14 +201,6 @@ describe( 'MQTT Source E2E Tests', function () {
             if ( emitter ) {
                 await emitter.shutdown();
                 emitter = null;
-            }
-
-            if ( storePath ) {
-                try {
-                    await fs.rm( storePath, { recursive: true, force: true } );
-                } catch {
-                    // Ignore cleanup errors
-                }
             }
         } );
 
@@ -239,8 +222,7 @@ describe( 'MQTT Source E2E Tests', function () {
             // Create emitter
             emitter = await createEmitter( {
                 brokerUrl: MQTT_BROKER_URL,
-                codec: jsonCodec,
-                storePath
+                codec: jsonCodec
             } );
 
             // Wait for emitter to connect
@@ -274,8 +256,7 @@ describe( 'MQTT Source E2E Tests', function () {
             // Create emitter
             emitter = await createEmitter( {
                 brokerUrl: MQTT_BROKER_URL,
-                codec: jsonCodec,
-                storePath
+                codec: jsonCodec
             } );
 
             await waitFor( () => emitter.getHealth().connected, 5000 );
@@ -309,8 +290,7 @@ describe( 'MQTT Source E2E Tests', function () {
             // Create emitter
             emitter = await createEmitter( {
                 brokerUrl: MQTT_BROKER_URL,
-                codec: jsonCodec,
-                storePath
+                codec: jsonCodec
             } );
 
             await waitFor( () => emitter.getHealth().connected, 5000 );
@@ -374,18 +354,20 @@ describe( 'MQTT Source E2E Tests', function () {
                 }
             };
 
-            // Publish twice with same dedupId
+            // Publish three times with the same dedupId.
             publisher.publish( topic, payload, opts );
             publisher.publish( topic, payload, opts );
             publisher.publish( topic, payload, opts );
 
-            // Wait for processing
-            await new Promise( ( r ) => setTimeout( r, 500 ) );
+            // Wait on the fact itself: the second and third arrivals
+            // bump dedupHits, so the counter cannot miss them.
+            const bothSkipped = await waitFor( () => stopSource._metrics().dedupHits >= 2, 5000 );
 
             publisher.end();
 
-            // Should only receive one message; the two skips live in
+            // Only one message is delivered; the two skips live in
             // the onMetrics counters, not on the status channel.
+            expect( bothSkipped ).to.equal( true );
             expect( receivedMessages ).to.have.length( 1 );
             expect( stopSource._metrics().dedupHits ).to.equal( 2 );
         } );

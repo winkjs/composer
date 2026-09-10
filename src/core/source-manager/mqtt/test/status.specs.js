@@ -3,14 +3,17 @@
 /**
  * @fileoverview Tests for the MQTT source's status reporter — factory
  * validation, lifecycle transitions, emission de-duplication, the
- * per-record DECODE_ERROR report, and the no-handler console fallback.
+ * per-record DECODE_ERROR report, and the lines printed through the
+ * logger facade.
  *
  * The reporter is the pure state machine behind the source's
  * structured onStatus / onMetrics signals: client.js maps mqtt.js
  * events onto reporter calls 1:1, so these tests drive the reporter
  * directly with an injected clock — no fake MQTT client, no real
  * timers. Health-rule boundaries live in status-health.specs.js;
- * counters and metrics cadence in status-metrics.specs.js.
+ * counters and metrics cadence in status-metrics.specs.js; broken
+ * user callbacks in status-callbacks.specs.js; the clock source of
+ * the time rules in clock-source.specs.js.
  */
 
 import { expect } from 'chai';
@@ -18,6 +21,7 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import sinon from 'sinon';
 
 import { createStatusReporter } from '../status.js';
+import { DISCONNECT_RED_MS } from '../constants.js';
 import { makeClock } from './test-helpers.js';
 
 // Builds a reporter wired to capture every status payload, with an
@@ -363,236 +367,231 @@ describe( 'MQTT Source Status Reporter — per-record DECODE_ERROR reports', fun
 
 } );
 
-describe( 'MQTT Source Status Reporter — no-handler console fallback', function () {
+describe( 'MQTT Source Status Reporter — the facade lines (ADR-028)', function () {
 
-    afterEach( function () {
-        sinon.restore();
-    } );
+    // Every health edge and every per-record fault prints through the
+    // logger facade, with or without an onStatus handler. Inside a
+    // flow the runtime's own onStatus wrapper forwards only red
+    // payloads when the user gave no handler, so a yellow edge that
+    // only reached the payload channel used to vanish. The line is the
+    // guaranteed audience; the payload additionally reaches a handler.
 
-    it( 'error-path payloads fall back to a classified console.error when no onStatus is supplied', function () {
-        const errorSpy = sinon.spy( console, 'error' );
-        const clock = makeClock();
-        const reporter = createStatusReporter( { nowFn: clock.nowFn } );
+    let warnSpy;
+    let errorSpy;
 
-        reporter.starting();
-        reporter.connected();
-        reporter.subscribed();
-        // Prime the ring so this one failure stays under the 1 %
-        // ratio flip (1 of 201) — isolates the per-record fallback.
-        for ( let i = 0; i < 200; i += 1 ) {
-            reporter.decodeOk();
-        }
-        reporter.decodeFailed( 'bad payload' );
-
-        const lines = errorSpy.getCalls()
-            .map( ( c ) => c.args[ 0 ] )
-            .filter( ( line ) => typeof line === 'string' && line.includes( 'DECODE_ERROR' ) );
-        expect( lines ).to.have.length( 1 );
-        expect( lines[ 0 ] ).to.equal( 'winkComposer/mqttSource: source error [DECODE_ERROR]: bad payload' );
-    } );
-
-    it( 'lifecycle payloads stay quiet without an onStatus handler (no console noise)', function () {
-        const errorSpy = sinon.spy( console, 'error' );
-        const clock = makeClock();
-        const reporter = createStatusReporter( { nowFn: clock.nowFn } );
-
-        reporter.starting();
-        reporter.connected();
-        reporter.subscribed();
-        reporter.offline();
-        reporter.stopped();
-
-        expect( errorSpy.called ).to.equal( false );
-    } );
-
-} );
-
-describe( 'MQTT Source Status Reporter — broken user callbacks are contained (ADR-018)', function () {
-
-    // The reporter runs the user's handlers from transitions and from
-    // a 1 Hz timer tick. Before the shared callback guard, a throwing
-    // onStatus escaped into whichever adapter path emitted the status,
-    // and a throwing onMetrics was an uncaught exception from the
-    // timer — a process death on an unattended box.
-
-    const settle = function () {
-        return new Promise( ( resolve ) => setImmediate( resolve ) );
+    const linesOf = function ( spy, marker ) {
+        return spy.getCalls()
+            .map( ( c ) => String( c.args[ 0 ] ) )
+            .filter( ( line ) => line.includes( marker ) );
     };
 
-    const unhandled = [];
-    const trap = function ( reason ) {
-        unhandled.push( reason );
+    // Prime the ring so up to five per-record failures stay under the
+    // 1 % ratio flip, which is a health edge with its own line.
+    const primeRing = function ( reporter ) {
+        for ( let i = 0; i < 600; i += 1 ) {
+            reporter.decodeOk();
+        }
+    };
+
+    const runningReporter = function ( options = {} ) {
+        const clock = makeClock();
+        const reporter = createStatusReporter( { nowFn: clock.nowFn, ...options } );
+        reporter.starting();
+        reporter.connected();
+        reporter.subscribed();
+        return { clock, reporter };
     };
 
     beforeEach( function () {
-        unhandled.length = 0;
-        process.on( 'unhandledRejection', trap );
+        warnSpy = sinon.spy( console, 'warn' );
+        errorSpy = sinon.spy( console, 'error' );
     } );
 
     afterEach( function () {
-        process.removeListener( 'unhandledRejection', trap );
         sinon.restore();
     } );
 
-    const guardLines = function ( spy, name ) {
-        return spy.getCalls()
-            .map( ( c ) => String( c.args[ 0 ] ) )
-            .filter( ( l ) => l.includes( 'CALLBACK_FAILED' ) && l.includes( name ) );
-    };
+    it( 'a per-record decode failure prints one warn line, with no handler', function () {
+        const { reporter } = runningReporter();
+        primeRing( reporter );
 
-    it( 'contains a throwing onStatus and keeps reporting', function () {
-        const reporter = createStatusReporter( {
-            nowFn: makeClock().nowFn,
-            onStatus: function () {
-                throw new Error( 'handler down' );
-            }
-        } );
-        const errorSpy = sinon.spy( console, 'error' );
-        expect( function () {
-            reporter.starting();
-        } ).to.not.throw();
-        expect( function () {
-            reporter.stopped();
-        } ).to.not.throw();
-        errorSpy.restore();
-        // Two transitions (starting, stopped), one emission each, one
-        // contained fault each — the reporter kept reporting.
-        const lines = guardLines( errorSpy, 'onStatus' );
+        reporter.decodeFailed( 'bad payload' );
+
+        const lines = linesOf( warnSpy, 'DECODE_ERROR' );
+        expect( lines ).to.have.length( 1 );
+        expect( lines[ 0 ] ).to.equal( 'winkComposer/mqttSource: decode failed [DECODE_ERROR]: bad payload' );
+        expect( linesOf( errorSpy, 'DECODE_ERROR' ) ).to.have.length( 0 );
+    } );
+
+    it( 'a per-record decode failure prints the same line when an onStatus handler is listening, and the payload reaches the handler too', function () {
+        const statuses = [];
+        const { reporter } = runningReporter( { onStatus: ( s ) => statuses.push( s ) } );
+        primeRing( reporter );
+
+        reporter.decodeFailed( 'bad payload' );
+
+        expect( linesOf( warnSpy, 'DECODE_ERROR' ) ).to.have.length( 1 );
+        const reports = statuses.filter( ( s ) => s.error && s.error.code === 'DECODE_ERROR' );
+        expect( reports ).to.have.length( 1 );
+        expect( reports[ 0 ].error.message ).to.equal( 'bad payload' );
+    } );
+
+    it( 'per-record decode lines are bounded: two in full per episode, the rest counted, the payload still per record', function () {
+        const statuses = [];
+        const { reporter } = runningReporter( { onStatus: ( s ) => statuses.push( s ) } );
+        primeRing( reporter );
+
+        reporter.decodeFailed( 'bad payload 1' );
+        reporter.decodeFailed( 'bad payload 2' );
+        reporter.decodeFailed( 'bad payload 3' );
+        reporter.decodeFailed( 'bad payload 4' );
+
+        const lines = linesOf( warnSpy, 'DECODE_ERROR' );
         expect( lines ).to.have.length( 2 );
-        expect( lines[ 0 ] ).to.contain( 'handler down' );
+        expect( lines[ 1 ] ).to.contain( 'bad payload 2' );
+        const reports = statuses.filter( ( s ) => s.error && s.error.code === 'DECODE_ERROR' );
+        expect( reports ).to.have.length( 4 );
     } );
 
-    it( 'a throwing onStatus does not change emission counts (transition suppression intact)', function () {
-        const reporter = createStatusReporter( {
-            nowFn: makeClock().nowFn,
-            onStatus: function () {
-                throw new Error( 'handler down' );
-            }
-        } );
-        reporter.starting();
-        const errorSpy = sinon.spy( console, 'error' );
-        reporter.offline();
-        reporter.offline();
-        reporter.offline();
-        errorSpy.restore();
-        // Three offline() events, one transition: exactly one emission,
-        // so exactly one contained fault.
-        expect( guardLines( errorSpy, 'onStatus' ) ).to.have.length( 1 );
+    it( 'a transform throw prints one warn line, bounded on its own count', function () {
+        const { reporter } = runningReporter();
+
+        reporter.transformFailed( 'topic \'a\': transform threw: boom — message skipped' );
+        reporter.transformFailed( 'topic \'a\': transform threw: boom — message skipped' );
+        reporter.transformFailed( 'topic \'a\': transform threw: boom — message skipped' );
+
+        const lines = linesOf( warnSpy, 'CALLBACK_FAILED' );
+        expect( lines ).to.have.length( 2 );
+        expect( lines[ 0 ] ).to.equal( 'winkComposer/mqttSource: transform failed [CALLBACK_FAILED]: topic \'a\': transform threw: boom — message skipped' );
     } );
 
-    it( 'a throwing onMetrics becomes one yellow CALLBACK_FAILED per tick and the tick survives', function () {
-        const statuses = [];
-        const reporter = createStatusReporter( {
-            nowFn: makeClock().nowFn,
-            onStatus: ( s ) => statuses.push( s ),
-            onMetrics: function () {
-                throw new Error( 'metrics sink down' );
-            }
-        } );
-        // Consume the initial health transition first — a transition
-        // emits its own metrics snapshot, which adds one fault. That
-        // fault spends the first of the two full lines the guard prints
-        // per episode (ADR-029), so of the two ticks below only the
-        // first is reported in full; the second is counted.
-        reporter.starting();
-        statuses.length = 0;
-        expect( function () {
-            reporter.tick();
-            reporter.tick();
-        } ).to.not.throw();
-        const faults = statuses.filter(
-            ( s ) => s.error && ( s.error.code === 'CALLBACK_FAILED' )
-        );
-        expect( faults ).to.have.length( 1 );
-        expect( faults[ 0 ].status ).to.equal( 'yellow' );
-        expect( faults[ 0 ].error.message ).to.contain( 'onMetrics' );
-        expect( faults[ 0 ].error.message ).to.contain( 'metrics sink down' );
+    it( 'after a quiet minute, the next decode failure prints the summary of the counted ones, then a full line', function () {
+        // The line bound paces on the wall clock; the reporter keeps
+        // its own injected clock.
+        const wallClock = sinon.useFakeTimers( { toFake: [ 'Date' ] } );
+        const { reporter } = runningReporter();
+        primeRing( reporter );
+
+        reporter.decodeFailed( 'bad payload 1' );
+        reporter.decodeFailed( 'bad payload 2' );
+        reporter.decodeFailed( 'bad payload 3' );
+        reporter.decodeFailed( 'bad payload 4' );
+        wallClock.tick( 60_000 );
+        reporter.decodeFailed( 'bad payload 5' );
+
+        const lines = linesOf( warnSpy, 'DECODE_ERROR' );
+        expect( lines ).to.have.length( 4 );
+        expect( lines[ 2 ] ).to.equal( 'winkComposer/mqttSource: decode failed [DECODE_ERROR]: bad payload 4; 2 more in the last 60 s' );
+        expect( lines[ 3 ] ).to.equal( 'winkComposer/mqttSource: decode failed [DECODE_ERROR]: bad payload 5' );
     } );
 
-    it( 'a broken onMetrics prints the classified console line even when onStatus is listening (fresh-eyes find, 2026-08-28)', function () {
-        // Inside a flow the runtime installs its own onStatus wrapper,
-        // which forwards only red payloads when the user gave no
-        // handler. The yellow fault payload alone can therefore vanish.
-        // The console line is the guaranteed audience.
-        const statuses = [];
-        const reporter = createStatusReporter( {
-            nowFn: makeClock().nowFn,
-            onStatus: ( s ) => statuses.push( s ),
-            onMetrics: function () {
-                throw new Error( 'metrics sink down' );
-            }
-        } );
-        reporter.starting();
-        statuses.length = 0;
-        const errorSpy = sinon.spy( console, 'error' );
+    it( 'transform faults are summarised on their own count, apart from decode faults', function () {
+        const wallClock = sinon.useFakeTimers( { toFake: [ 'Date' ] } );
+        const { reporter } = runningReporter();
+        primeRing( reporter );
+
+        reporter.transformFailed( 'transform threw: boom 1' );
+        reporter.transformFailed( 'transform threw: boom 2' );
+        reporter.transformFailed( 'transform threw: boom 3' );
+        reporter.decodeFailed( 'bad payload' );
+        wallClock.tick( 60_000 );
+        reporter.transformFailed( 'transform threw: boom 4' );
+
+        const lines = linesOf( warnSpy, 'CALLBACK_FAILED' );
+        expect( lines ).to.have.length( 4 );
+        expect( lines[ 2 ] ).to.equal( 'winkComposer/mqttSource: transform failed [CALLBACK_FAILED]: transform threw: boom 3; 1 more in the last 60 s' );
+        expect( linesOf( warnSpy, 'DECODE_ERROR' ) ).to.have.length( 1 );
+    } );
+
+    it( 'a forced stop prints one warn line carrying the note', function () {
+        const { reporter } = runningReporter();
+
+        reporter.stopForced( 50 );
+
+        expect( linesOf( warnSpy, 'source stopped' ) ).to.deep.equal( [
+            'winkComposer/mqttSource: source stopped: Stop took longer than 50ms — forced.'
+        ] );
+        expect( errorSpy.called ).to.equal( false );
+    } );
+
+    it( 'green lifecycle transitions print nothing', function () {
+        const { reporter } = runningReporter();
+        reporter.stopped();
+
+        expect( warnSpy.called ).to.equal( false );
+        expect( errorSpy.called ).to.equal( false );
+    } );
+
+    it( 'a yellow edge prints once at warn, and a repeat of the same status and code prints nothing', function () {
+        const { reporter } = runningReporter();
+
+        reporter.offline();
+        reporter.reconnecting();
+        reporter.connectError( new Error( 'connect ECONNREFUSED' ) );
+        reporter.connectError( new Error( 'connect ECONNREFUSED' ) );
+        reporter.reconnecting();
+
+        const lines = linesOf( warnSpy, 'source degraded' );
+        expect( lines ).to.deep.equal( [
+            'winkComposer/mqttSource: source degraded: offline',
+            'winkComposer/mqttSource: source degraded [CONNECT_FAILED]: connect ECONNREFUSED'
+        ] );
+        expect( errorSpy.called ).to.equal( false );
+    } );
+
+    it( 'a red edge prints once at error; the return to green prints once at warn with the seconds since the first non-green edge', function () {
+        const { clock, reporter } = runningReporter();
+
+        reporter.offline();
+        clock.advance( DISCONNECT_RED_MS + 1 );
         reporter.tick();
-        errorSpy.restore();
-        expect( guardLines( errorSpy, 'onMetrics' ) ).to.have.length( 1 );
-        // The yellow payload still reaches the listening handler too.
-        const faults = statuses.filter(
-            ( s ) => s.error && ( s.error.code === 'CALLBACK_FAILED' )
-        );
-        expect( faults ).to.have.length( 1 );
-        expect( faults[ 0 ].status ).to.equal( 'yellow' );
-    } );
-
-    it( 'both onMetrics and onStatus broken: each fault contained, each on its own line', function () {
-        // The onMetrics fault report itself invokes the guarded
-        // onStatus. This is the one site where one guard's report can
-        // trip a second guard; both must contain.
-        const reporter = createStatusReporter( {
-            nowFn: makeClock().nowFn,
-            onStatus: function () {
-                throw new Error( 'status sink down' );
-            },
-            onMetrics: function () {
-                throw new Error( 'metrics sink down' );
-            }
-        } );
-        const errorSpy = sinon.spy( console, 'error' );
-        reporter.starting();
-        expect( function () {
-            reporter.tick();
-            reporter.tick();
-        } ).to.not.throw();
-        errorSpy.restore();
-        // Each guard prints the first two faults of an episode in full
-        // and counts the rest (ADR-029). The starting transition alone
-        // trips both guards, so two lines on each channel is the proof
-        // that each fault was contained on its own channel.
-        expect( guardLines( errorSpy, 'onMetrics' ) ).to.have.length( 2 );
-        expect( guardLines( errorSpy, 'onStatus' ) ).to.have.length( 2 );
-        expect( unhandled.length ).to.equal( 0 );
-    } );
-
-    it( 'a broken onMetrics with no onStatus falls back to the classified console line', function () {
-        const reporter = createStatusReporter( {
-            nowFn: makeClock().nowFn,
-            onMetrics: function () {
-                throw new Error( 'metrics sink down' );
-            }
-        } );
-        // Consume the initial transition's own metrics emission before
-        // counting, as above.
-        reporter.starting();
-        const errorSpy = sinon.spy( console, 'error' );
         reporter.tick();
-        errorSpy.restore();
-        expect( guardLines( errorSpy, 'onMetrics' ) ).to.have.length( 1 );
+        clock.advance( 4_999 );
+        reporter.connected();
+        reporter.subscribed();
+
+        const errors = linesOf( errorSpy, 'source error' );
+        expect( errors ).to.have.length( 1 );
+        expect( errors[ 0 ] ).to.contain( 'winkComposer/mqttSource: source error [CONNECTION_LOST]: not connected for' );
+        const recovered = linesOf( warnSpy, 'source recovered' );
+        expect( recovered ).to.deep.equal( [
+            'winkComposer/mqttSource: source recovered [CONNECTION_LOST]: cleared after 35 s'
+        ] );
     } );
 
-    it( 'an async onStatus that rejects never becomes an unhandled rejection', async function () {
-        const reporter = createStatusReporter( {
-            nowFn: makeClock().nowFn,
-            onStatus: () => Promise.reject( new Error( 'late handler down' ) )
-        } );
-        const errorSpy = sinon.spy( console, 'error' );
-        reporter.starting();
-        await settle();
-        await settle();
-        errorSpy.restore();
-        expect( guardLines( errorSpy, 'onStatus' ) ).to.have.length( 1 );
-        expect( unhandled.length ).to.equal( 0 );
+    it( 'a recovery from a yellow edge without a code names the phase that cleared', function () {
+        const { clock, reporter } = runningReporter();
+
+        reporter.offline();
+        clock.advance( 2_600 );
+        reporter.connected();
+        reporter.subscribed();
+
+        expect( linesOf( warnSpy, 'source recovered' ) ).to.deep.equal( [
+            'winkComposer/mqttSource: source recovered: offline cleared after 3 s'
+        ] );
+    } );
+
+    it( 'a stop after a degraded edge prints no recovery line', function () {
+        const { reporter } = runningReporter();
+
+        reporter.offline();
+        reporter.stopped();
+
+        expect( linesOf( warnSpy, 'source recovered' ) ).to.have.length( 0 );
+    } );
+
+    it( 'the edge lines print even when an onStatus handler is listening', function () {
+        const statuses = [];
+        const { reporter } = runningReporter( { onStatus: ( s ) => statuses.push( s ) } );
+
+        reporter.subscribeFailed( new Error( 'not authorized' ) );
+
+        expect( linesOf( errorSpy, 'source error' ) ).to.deep.equal( [
+            'winkComposer/mqttSource: source error [SUBSCRIBE_FAILED]: not authorized'
+        ] );
+        expect( statuses[ statuses.length - 1 ].error.code ).to.equal( 'SUBSCRIBE_FAILED' );
     } );
 
 } );
+

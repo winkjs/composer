@@ -52,14 +52,16 @@ const makeClock = function ( start = 1000 ) {
 
 describe( 'MQTT Source — createDedupCache Factory (ADR-022)', function () {
 
-    it( 'creates cache with defaults', function () {
+    it( 'creates an empty cache with defaults that admits a first id and remembers it', function () {
         const cache = createDedupCache();
 
-        expect( cache ).to.be.an( 'object' );
-        expect( cache.isDuplicate ).to.be.a( 'function' );
-        expect( cache.size ).to.be.a( 'function' );
-        expect( cache.clear ).to.be.a( 'function' );
-        expect( cache.has ).to.be.a( 'function' );
+        expect( cache.size() ).to.equal( 0 );
+        expect( cache.has( 'first' ) ).to.equal( false );
+        expect( cache.isDuplicate( 'first' ) ).to.equal( false );
+        expect( cache.has( 'first' ) ).to.equal( true );
+        expect( cache.size() ).to.equal( 1 );
+        cache.clear();
+        expect( cache.size() ).to.equal( 0 );
     } );
 
     it( 'default bounds are 120000 ms / 65536 entries (ADR-022 ratified values)', function () {

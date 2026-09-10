@@ -17,10 +17,13 @@
  *    skipped with a classified `CALLBACK_FAILED` report. Nothing is
  *    ever discarded silently except the two drop values.
  * 3. A throwing transform skips that one message, reports it as a
- *    classified `CALLBACK_FAILED` (yellow, one report per message,
- *    console.error fallback when no `onStatus` is supplied), and the
- *    stream continues. One bad message costs only itself (ADR-018);
- *    user code is never reported as a transport failure.
+ *    classified `CALLBACK_FAILED` (yellow, one report per message),
+ *    and the stream continues. One bad message costs only itself
+ *    (ADR-018); user code is never reported as a transport failure.
+ *    Without an `onStatus` handler the report is still a classified
+ *    line on the console. The level is each source's own: the CSV
+ *    source prints at `error` and only without a handler, the MQTT
+ *    source at `warn` with or without one (its edge-line family).
  * 4. Dropped and throw-skipped messages are counted: they land in the
  *    source's `skipped` accounting (CSV completion payload, MQTT
  *    metrics counters), so delivered + skipped covers every message
@@ -183,9 +186,12 @@ const runMqttCase = async function ( transform, { withStatus = true } = {} ) {
     return { delivered, statuses, metrics };
 };
 
+// `lineLevel` is the console method each source's no-handler line
+// reaches: the CSV source's fallback prints at error, the MQTT
+// source's bounded per-record line at warn.
 const SOURCES = [
-    { name: 'csv', run: runCsvCase },
-    { name: 'mqtt', run: runMqttCase }
+    { name: 'csv', run: runCsvCase, lineLevel: 'error' },
+    { name: 'mqtt', run: runMqttCase, lineLevel: 'warn' }
 ];
 
 // ============================================================================
@@ -256,13 +262,13 @@ describe( 'source transform contract (cross-source)', function () {
                 expect( statuses.filter( ( s ) => s.phase === 'errored' ) ).to.deep.equal( [] );
             } );
 
-            it( 'reports a transform throw via console.error when no onStatus is supplied', async function () {
-                const errorSpy = sinon.spy( console, 'error' );
+            it( 'reports a transform throw as a classified console line when no onStatus is supplied', async function () {
+                const lineSpy = sinon.spy( console, source.lineLevel );
 
                 const { delivered } = await source.run( throwOnSecond, { withStatus: false } );
 
                 expect( delivered.map( ( m ) => m.v ) ).to.deep.equal( [ 1, 3 ] );
-                const classified = errorSpy.getCalls().filter( ( c ) => String( c.args[ 0 ] ).includes( 'CALLBACK_FAILED' ) );
+                const classified = lineSpy.getCalls().filter( ( c ) => String( c.args[ 0 ] ).includes( 'CALLBACK_FAILED' ) );
                 expect( classified.length ).to.equal( 1 );
                 expect( String( classified[ 0 ].args[ 0 ] ) ).to.include( 'transform boom' );
             } );

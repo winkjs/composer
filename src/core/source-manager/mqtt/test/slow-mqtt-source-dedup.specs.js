@@ -20,7 +20,13 @@
  * The accounting is conservation-based, not timing-based: every unique
  * id must reach `onMessage` exactly once; every within-window duplicate
  * must be dropped; nothing may be lost. Waits poll for message-count
- * stall against a generous deadline (real broker, slow tier).
+ * stall against a deadline derived from the deployment knobs (real
+ * broker, slow tier).
+ *
+ * The third case is the sustained run. It publishes a duplicate-laden
+ * stream for SOAK_MINUTES, samples memory every half minute, and
+ * asserts a flat heap and exact accounting at the end. It is skipped
+ * unless SOAK_MINUTES is set.
  *
  * Requires the docker Mosquitto (`docker compose up -d`); skips
  * cleanly when the broker is unreachable.
@@ -31,13 +37,40 @@ import { describe, it, before, afterEach } from 'mocha';
 import mqtt from 'mqtt';
 
 import { createMQTTSourceClient } from '../client.js';
-import { WINK_NAMESPACE } from '../constants.js';
+import { WINK_NAMESPACE, DEFAULT_DEDUP_MAX_ENTRIES } from '../constants.js';
+import { ENV_VARS } from '../../../env-vars.js';
 import { startProxy, stopProxy } from '../../../test-utils/tcp-proxy.js';
 
 const MQTT_BROKER_DIRECT = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const BROKER_REAL_PORT = 1883;
 const PROXY_PORT = 11884;                    // distinct from the emitter spec's 11883
 const PROXY_URL = `mqtt://127.0.0.1:${PROXY_PORT}`;
+
+// The resume deadline follows the knobs the source runs on, so a
+// changed MQTT_RECONNECT_MS or MQTT_CONNECT_TIMEOUT_MS cannot turn the
+// wait into a false failure. One jittered reconnect gap (up to 20 %
+// over the configured period), one connect timeout in case the first
+// attempt races the proxy coming up, then 20 s for the queued delivery.
+const RESUME_DEADLINE_MS = Math.ceil( ENV_VARS.mqttReconnectMs * 1.2 ) +
+    ENV_VARS.mqttConnectTimeoutMs + 20_000;
+
+// Sustained run (test 3). Batches are awaited on PUBACK together, so
+// the pace is bounded by the broker round trip plus the pause.
+const SOAK_MINUTES = parseFloat( process.env.SOAK_MINUTES || '0' );
+const SOAK_MS = SOAK_MINUTES * 60_000;
+const SAMPLE_INTERVAL_MS = 30_000;
+const SOAK_BATCH = 50;
+const SOAK_PACE_MS = 20;
+
+const formatMb = function ( bytes ) {
+    return `${( bytes / 1024 / 1024 ).toFixed( 1 )} MB`;
+};
+
+const median = function ( values ) {
+    const sorted = [ ...values ].sort( ( a, b ) => a - b );
+    const mid = Math.floor( sorted.length / 2 );
+    return ( sorted.length % 2 === 1 ) ? sorted[ mid ] : ( sorted[ mid - 1 ] + sorted[ mid ] ) / 2;
+};
 
 // ============================================================================
 // HELPERS
@@ -275,10 +308,10 @@ describe( 'MQTT Source Dedup Soak — exactly-once through a real broker (ADR-02
             await publishWithId( publisher, TOPIC, `chaos-b-${i}`, PHASE_A + i ); // eslint-disable-line no-await-in-loop
         }
 
-        // Restore the proxy; the source's auto-reconnect (5 s cadence)
-        // finds it and resumes the session.
+        // Restore the proxy; the source's auto-reconnect finds it
+        // within RESUME_DEADLINE_MS and resumes the session.
         proxy = await startProxy( PROXY_PORT, BROKER_REAL_PORT );
-        const resumed = await waitFor( () => received >= ( PHASE_A + PHASE_B ), 60_000 );
+        const resumed = await waitFor( () => received >= ( PHASE_A + PHASE_B ), RESUME_DEADLINE_MS );
         expect( resumed, `queued delivery after resume (got ${received}/${PHASE_A + PHASE_B})` ).to.equal( true );
 
         // Phase C — inject 100 duplicates of phase A ids (well within
@@ -297,6 +330,100 @@ describe( 'MQTT Source Dedup Soak — exactly-once through a real broker (ADR-02
         expect( perId.size ).to.equal( EXPECTED );
         const seenWrong = [ ...perId.entries() ].filter( ( [ , n ] ) => n !== 1 );
         expect( seenWrong ).to.deep.equal( [] );
+    } );
+
+    // ------------------------------------------------------------------
+    // Test 3 — sustained run: flat memory and exact accounting under a
+    // duplicate-laden stream for SOAK_MINUTES
+    // ------------------------------------------------------------------
+
+    it( 'holds flat memory and exact accounting through a sustained duplicate-laden stream (SOAK_MINUTES)', async function () {
+        if ( !mosquittoUp || SOAK_MINUTES <= 0 ) this.skip();
+        this.timeout( SOAK_MS + 120_000 );
+
+        const TOPIC = `dedup-soak/sustained/${Date.now()}`;
+        let received = 0;
+
+        stopSource = createMQTTSourceClient( {
+            brokerUrl: MQTT_BROKER_DIRECT,
+            topics: TOPIC,
+            clientId: `dedup-soak-sustained-${Date.now()}`,
+            cleanStart: true,
+            onMessage: function () {
+                received += 1;
+            }
+        } );
+
+        await sleep( 1000 );
+        publisher = await connectPublisher();
+
+        // The test keeps no per-id map: at this rate the map itself
+        // would be the largest object in the heap. Accounting rests on
+        // the counters instead. delivered === uniques rules out a
+        // repeat (it would push delivered above) and a loss (below);
+        // dedupHits === injected proves every duplicate was caught.
+        const samples = [];
+        const sample = function () {
+            if ( global.gc ) {
+                global.gc();
+            }
+            const mem = process.memoryUsage();
+            samples.push( { heapUsed: mem.heapUsed, rss: mem.rss, received } );
+            console.log( `    [${samples.length}] heap ${formatMb( mem.heapUsed )}  rss ${formatMb( mem.rss )}  received ${received}` );
+        };
+        const sampler = setInterval( sample, SAMPLE_INTERVAL_MS );
+
+        let uniques = 0;
+        let injected = 0;
+        const startedAt = Date.now();
+        try {
+            while ( ( Date.now() - startedAt ) < SOAK_MS ) {
+                const batch = [];
+                for ( let i = 0; i < SOAK_BATCH; i += 1 ) {
+                    const id = `sustained-${uniques}`;
+                    batch.push( publishWithId( publisher, TOPIC, id, uniques ) );
+                    if ( ( uniques % 4 ) === 0 ) {
+                        batch.push( publishWithId( publisher, TOPIC, id, uniques ) );
+                        injected += 1;
+                    }
+                    uniques += 1;
+                }
+                await Promise.all( batch ); // eslint-disable-line no-await-in-loop
+                await sleep( SOAK_PACE_MS ); // eslint-disable-line no-await-in-loop
+            }
+        } finally {
+            clearInterval( sampler );
+        }
+
+        await waitFor( () => received >= uniques, 60_000 );
+        await sleep( 1500 );
+        sample();
+        console.log( `    published ${uniques} uniques + ${injected} duplicates in ${SOAK_MINUTES} min` );
+
+        expect( received ).to.equal( uniques );
+        // eslint-disable-next-line no-underscore-dangle
+        const snap = stopSource._metrics();
+        expect( snap.delivered ).to.equal( uniques );
+        expect( snap.dedupHits ).to.equal( injected );
+        expect( snap.dedupBypassed ).to.equal( 0 );
+        expect( snap.decodeErrors ).to.equal( 0 );
+        expect( snap.dedupCacheSize ).to.be.at.most( DEFAULT_DEDUP_MAX_ENTRIES );
+
+        // Memory: the late-third median must stay under twice the
+        // early-third median, on the heap and on RSS (the emitter
+        // soak's rule). Needs at least three samples.
+        if ( samples.length >= 3 ) {
+            const third = Math.floor( samples.length / 3 );
+            const earlyHeap = median( samples.slice( 0, third ).map( ( s ) => s.heapUsed ) );
+            const lateHeap = median( samples.slice( -third ).map( ( s ) => s.heapUsed ) );
+            const earlyRss = median( samples.slice( 0, third ).map( ( s ) => s.rss ) );
+            const lateRss = median( samples.slice( -third ).map( ( s ) => s.rss ) );
+            console.log( `    heap early ${formatMb( earlyHeap )} → late ${formatMb( lateHeap )};  rss early ${formatMb( earlyRss )} → late ${formatMb( lateRss )}` );
+            expect( lateHeap, 'late-median heap within 2x early-median (no progressive leak)' )
+                .to.be.lessThan( earlyHeap * 2 );
+            expect( lateRss, 'late-median rss within 2x early-median (no native-memory leak)' )
+                .to.be.lessThan( earlyRss * 2 );
+        }
     } );
 
 } );

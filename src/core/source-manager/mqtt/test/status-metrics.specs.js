@@ -120,11 +120,13 @@ describe( 'MQTT Source Metrics — onMetrics emission rules', function () {
         expect( metrics.length ).to.equal( baseline + 3 );
     } );
 
-    it( 'tick() without an onMetrics handler does not throw', function () {
+    it( 'tick() without an onMetrics handler does not throw and leaves the counters untouched', function () {
         const clock = makeClock();
         const reporter = createStatusReporter( { nowFn: clock.nowFn } );
+        const before = reporter.snapshot();
 
         expect( () => reporter.tick() ).to.not.throw();
+        expect( reporter.snapshot() ).to.deep.equal( before );
     } );
 
     it( 'a health transition emits metrics without waiting for the next tick', function () {

@@ -241,6 +241,38 @@ and checks that every message published during the gap arrives
 exactly once — including across a broker restart
 (`src/core/source-manager/mqtt/test/slow-broker-durability.specs.js`).
 
+## Limits of the MQTT source
+
+The MQTT source has no payload size cap and no intake rate cap. A
+publisher that sends huge messages, or far too many, is not refused
+by composer itself. This section states what bounds such a flood
+instead, so you can size a deployment with the limit in view.
+
+- **The broker is the first line.** Every broker can cap the payload
+  size and the number of in-flight messages per client. In Mosquitto
+  the settings are `message_size_limit` and `max_inflight_messages`.
+  Set them on the broker, where a bad publisher is stopped before its
+  bytes reach composer.
+- **TCP back-pressure bounds memory.** The source reads from one
+  socket. When your flow falls behind, the socket buffer fills and
+  the broker stops sending. Messages then queue at the broker in the
+  persistent session. Composer's memory does not grow without bound.
+  The broker's queue does, up to its own limit.
+- **Sinks shed visibly.** The MQTT emitter and the QuestDB adapter
+  refuse new messages at their buffer ceilings with a classified
+  code, and log each edge. A flood shows up as `STORAGE_FULL` lines,
+  never as a silent loss.
+- **One event loop.** A flood of messages that decode and pass
+  through the flow occupies the process. Nothing else in that
+  process runs faster than the flow lets it. Run one flow per
+  process on a small device, and let the supervisor restart it.
+
+What this does not give you is protection against a publisher that
+floods the broker itself, or a network that floods the device. Both
+are the broker's and the network's job. A payload cap and an intake
+rate cap inside the source are planned work, together with TLS and
+authentication.
+
 ## Measure durations from the message, not the device clock
 
 Two nodes measure how long something lasted: `dwellTimeTracker`

@@ -58,12 +58,25 @@ two in full per episode and then one summary a minute. These print
 with or without the emitter's `debug` option. The list is under
 [Configuration → MQTT emitter](./configuration.md#mqtt-emitter).
 
+The MQTT source prints one line at every change of its health, with
+or without an `onStatus` handler. `source degraded` at `warn` marks a
+yellow edge, and `source error` at `error` a red one. `source
+recovered` at `warn` marks the return to green, with the length of
+the episode.
+
+The source's per-record faults print through the same facade. A
+payload that could not be decoded prints one `warn` line per record.
+So does a message your `transform` threw on. Two print in full per
+episode, then one summary a minute. The list is under
+[Configuration → MQTT source](./configuration.md#mqtt-source).
+
 ## Watching a source: status and metrics
 
 A source reports its health through two callbacks you pass in its
 config: `onStatus` and `onMetrics`. Both are optional. Without them the
-source still protects you. A red failure inside a flow is logged by
-the runtime, and error reports fall back to a classified log line.
+source still protects you. Every health change and every skipped
+record prints a classified log line, whether or not you listen. A
+red failure inside a flow is logged by the runtime as well.
 
 ### The status channel (`onStatus`)
 

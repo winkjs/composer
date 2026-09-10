@@ -370,6 +370,18 @@ option name (say `brokerURL` instead of `brokerUrl`) is rejected with an
 - Auto-reconnect every 5 s (`MQTT_RECONNECT_MS`), plus a random share of up to 20% drawn once per client, so a fleet that lost one broker spreads its retries
 - Keepalive: 60s
 
+**What the source logs, and when.** Every change of the source's health prints one line through the [framework log](./observability.md#framework-log-lines), with or without an `onStatus` handler. Nothing prints while a state persists. The lines:
+
+- `source degraded` at `warn` when health turns yellow. The line carries the code and the reason when there is one (`CONNECT_FAILED`, `DECODE_ERROR`, `QUIET_PERIOD_EXCEEDED`), or the phase alone (`offline`, `reconnecting`).
+- `source error` at `error` when health turns red (`SUBSCRIBE_FAILED`, `CONNECTION_LOST`).
+- `source recovered` at `warn` when health returns to green, with the code that cleared and the length of the episode in seconds.
+- `decode failed` at `warn` for each payload that could not be decoded, naming the topic and the payload size. `transform failed` at `warn` for each message your `transform` threw on. The first two of an episode print in full. After that the faults are counted, and one summary line a minute carries the count.
+- `source stopped` at `warn` when a stop ran past its time budget and the socket was forced closed. A clean stop prints nothing.
+
+A retry storm therefore prints one line when it starts and one when it ends. A decode line names the topic and the byte count, never the payload text. The parser's own reason prints at `debug`.
+
+**Limits.** The source has no payload size cap and no intake rate cap. The broker's per-client limits are the first line against a flood, and TCP back-pressure bounds the rest. What that means for a deployment is stated in [Limits of the MQTT source](../resilience.md#limits-of-the-mqtt-source).
+
 **Deduplication:**
 
 MQTT's QoS 1 delivery means "at least once": after a connection break,
