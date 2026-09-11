@@ -47,6 +47,27 @@ import { validateWithSchema } from '../core/utils/validate/index.js';
 import { assetClassSchema } from '../core/semantics/schemas/index.js';
 import { expandTemplateSpec } from './expand-template-spec.js';
 
+/**
+ * Throws the flow's setup error for an adapter config that the
+ * adapter's own schema rejected. The error carries `INVALID_CONFIG`,
+ * the ADR-018 setup code, and the ADR-028 bracket. A program matches
+ * the code; an operator reads the remedy the schema names.
+ *
+ * @param {{valid: boolean, errors: string[]}} validation - The schema result
+ * @param {string} label - `flow.<method>.<adapterId>`, for the message
+ * @throws {Error} INVALID_CONFIG when the config is invalid
+ */
+const throwIfAdapterConfigInvalid = function ( validation, label ) {
+    if ( validation.valid ) {
+        return;
+    }
+    const err = new Error(
+        `winkComposer/${label}: validation failed [INVALID_CONFIG]:\n  - ${validation.errors.join( '\n  - ' )}`
+    );
+    err.code = 'INVALID_CONFIG';
+    throw err;
+}; // throwIfAdapterConfigInvalid()
+
 const flow = function ( flowName = 'flow1' ) {
     const api = Object.create( null );
 
@@ -171,7 +192,7 @@ const flow = function ( flowName = 'flow1' ) {
         // not later inside adapter.start().
         if ( adapter.configSchema ) {
             const validation = validateWithSchema( adapter.configSchema, sourceConfig, 'source' );
-            validation.throwIfInvalid( `flow.source.${adapter.id || 'unknown'}` );
+            throwIfAdapterConfigInvalid( validation, `flow.source.${adapter.id || 'unknown'}` );
         }
 
         runtime.source = { adapter, config: sourceConfig };
@@ -195,7 +216,7 @@ const flow = function ( flowName = 'flow1' ) {
         // not later inside adapter.createEmitter().
         if ( adapter.configSchema ) {
             const validation = validateWithSchema( adapter.configSchema, emitterConfig, 'emitter' );
-            validation.throwIfInvalid( `flow.emitter.${adapter.id}` );
+            throwIfAdapterConfigInvalid( validation, `flow.emitter.${adapter.id}` );
         }
 
         runtime.emitters[ adapter.id ] = { adapter, config: emitterConfig };
@@ -219,7 +240,7 @@ const flow = function ( flowName = 'flow1' ) {
         // not later inside adapter.createStorage().
         if ( adapter.configSchema ) {
             const validation = validateWithSchema( adapter.configSchema, storageConfig, 'storage' );
-            validation.throwIfInvalid( `flow.storage.${adapter.id}` );
+            throwIfAdapterConfigInvalid( validation, `flow.storage.${adapter.id}` );
         }
 
         runtime.storages[ adapter.id ] = { adapter, config: storageConfig };

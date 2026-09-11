@@ -24,6 +24,11 @@
  * - degraded (warn), red (error), restored (warn) carry the token
  *   `DELIVERY_HEALTH`; the restored line names the episode length and
  *   the rows reported lost in it;
+ * - the pause is a red edge (added 2026-09-10, from the RevPi gate):
+ *   `getHealth()` reads red the moment delivery pauses, so the red
+ *   line prints there, before the `CIRCUIT_OPEN` line, and a later
+ *   failed flush adds no second red line; the resume prints no ladder
+ *   line, because the ladder only steps down until a flush lands;
  * - shedding began and shedding ended (warn) carry `STORAGE_FULL`, the
  *   code the refused write returns; the ended line names the count;
  * - the resume line keeps `CIRCUIT_OPEN` and rises to warn.
@@ -68,6 +73,7 @@ const NOW = 1735500000000;
 
 const DEGRADED_LINE = 'winkComposer/questdb: delivery degraded, 1 flush failed [DELIVERY_HEALTH]: disk full';
 const RED_LINE = 'winkComposer/questdb: delivery red after 2 failed flush(es) [DELIVERY_HEALTH]: disk full';
+const PAUSED_RED_LINE = 'winkComposer/questdb: delivery red, paused after 1 failed flush(es) [DELIVERY_HEALTH]: 127.0.0.1:9000 refused';
 
 /** Writes `count` good rows and returns the results. */
 const writeRows = function ( storage, count ) {
@@ -385,6 +391,132 @@ describe( 'QuestDB health edges (ADR-029)', function () {
             );
             expect( linesWith( logSpy, '[CIRCUIT_OPEN]' ) ).to.deep.equal( [] );
 
+            // The pause is the red edge: `getHealth()` reads red the moment
+            // delivery pauses, so the ladder prints its red line there, once,
+            // before the pause line. (Surfaced 2026-09-10 on the RevPi rig:
+            // the red line waited for a second failed flush that a paused
+            // delivery never starts, so the log stayed at "degraded" while
+            // health read red.)
+            expect( linesWith( errorSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [ PAUSED_RED_LINE ] );
+            const red = callWith( errorSpy, 'delivery red' );
+            expect( callWith( warnSpy, 'delivery degraded' ).calledBefore( red ) ).to.equal( true );
+            expect( red.calledBefore( callWith( warnSpy, 'delivery paused' ) ) ).to.equal( true );
+
+            await storage.shutdown();
+        } );
+
+        it( 'a shutdown while paused prints no second red line', async function () {
+            mockSender.flush.rejects( new Error( 'disk full' ) );
+            const storage = await makeStorage();
+            probe.setResult( 'refused' );
+
+            await flushOnce( storage );
+            writeRows( storage, 1 );
+            const err = await storage.shutdown().then( () => null, ( e ) => e );
+
+            expect( err.code ).to.equal( 'DELIVERY_FAILED' );
+            expect( linesWith( warnSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [ DEGRADED_LINE ] );
+            expect( linesWith( errorSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [ PAUSED_RED_LINE ] );
+        } );
+
+        it( 'a shutdown while paused whose drain lands prints one restored line beside the clean stop', async function () {
+            mockSender.flush.onCall( 0 ).rejects( new Error( 'disk full' ) );
+            mockSender.flush.onCall( 1 ).resolves( false );
+            const storage = await makeStorage();
+            probe.setResult( 'refused' );
+
+            await flushOnce( storage );
+            writeRows( storage, 1 );
+            await storage.shutdown();
+
+            // The gate never resumes at shutdown, so the landing itself
+            // clears the pause mirror, once, and the episode closes.
+            expect( linesWith( warnSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [
+                DEGRADED_LINE,
+                'winkComposer/questdb: delivery restored after 0 s, 2 row(s) reported lost meanwhile [DELIVERY_HEALTH]'
+            ] );
+            expect( linesWith( errorSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [ PAUSED_RED_LINE ] );
+            expect( storage.getHealth().pausedSince ).to.equal( null );
+        } );
+    } );
+
+    describe( 'a landing while paused', function () {
+
+        // While the gate runs, only its resume clears the pause mirror.
+        // An explicit flush can land during a pause, and the ladder must
+        // stay red until the probe passes, because the gate still holds
+        // new rows. (Found by the fresh-eyes review of 2026-09-11: the
+        // first cut cleared the mirror on every landing, so health read
+        // green and connected while the gate was still paused.)
+        it( 'an explicit flush that lands while paused keeps red until the resume, which then prints restored', async function () {
+            mockSender.flush.onCall( 0 ).rejects( new Error( 'disk full' ) );
+            mockSender.flush.onCall( 1 ).resolves( false );
+            const storage = await makeStorage();
+            probe.setResult( 'refused' );
+
+            await flushOnce( storage );
+            expect( storage.getHealth().status ).to.equal( 'red' );
+
+            // The endpoint is back, but no probe has run yet. A caller
+            // flushes one held row by hand, and it lands.
+            writeRows( storage, 1 );
+            await storage.flush();
+            const health = storage.getHealth();
+            expect( health.status ).to.equal( 'red' );
+            expect( health.connected ).to.equal( false );
+            expect( health.consecutiveFlushFailures ).to.equal( 0 );
+            expect( health.pausedSince ).to.equal( NOW );
+            expect( linesWith( warnSpy, 'delivery restored' ) ).to.deep.equal( [] );
+
+            // The tick probe passes: resumed, then restored, and green.
+            probe.setResult( 'answers' );
+            await clock.tickAsync( 1000 );
+
+            expect( linesWith( warnSpy, 'winkComposer/questdb' ) ).to.deep.equal( [
+                DEGRADED_LINE,
+                'winkComposer/questdb: delivery paused, 0 row(s) held [CIRCUIT_OPEN]: 127.0.0.1:9000 refused',
+                'winkComposer/questdb: delivery resumed after 1 s, 0 row(s) held [CIRCUIT_OPEN]: 127.0.0.1:9000 answers',
+                'winkComposer/questdb: delivery restored after 1 s, 2 row(s) reported lost meanwhile [DELIVERY_HEALTH]'
+            ] );
+            expect( linesWith( errorSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [ PAUSED_RED_LINE ] );
+            const after = storage.getHealth();
+            expect( after.status ).to.equal( 'green' );
+            expect( after.connected ).to.equal( true );
+            expect( after.pausedSince ).to.equal( null );
+
+            await storage.shutdown();
+        } );
+
+        it( 'a pause that follows a landing starts the episode at the pause, so the restored line reads its true length', async function () {
+            mockSender.flush.onCall( 0 ).rejects( new Error( 'disk full' ) );
+            mockSender.flush.onCall( 1 ).resolves( false );
+            const storage = await makeStorage();
+            probe.hang();
+
+            // The failed flush starts a probe that hangs. A flush by hand
+            // lands meanwhile, so the ladder returns to green before the
+            // probe reports. Then the probe fails and the gate pauses.
+            await flushOnce( storage );
+            writeRows( storage, 2 );
+            await storage.flush();
+            expect( storage.getHealth().status ).to.equal( 'green' );
+            probe.release( 'refused' );
+            await clock.tickAsync( 0 );
+            expect( storage.getHealth().status ).to.equal( 'red' );
+
+            probe.setResult( 'answers' );
+            await clock.tickAsync( 1000 );
+
+            expect( linesWith( errorSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [
+                'winkComposer/questdb: delivery red, paused after 0 failed flush(es) [DELIVERY_HEALTH]: 127.0.0.1:9000 refused'
+            ] );
+            expect( linesWith( warnSpy, '[DELIVERY_HEALTH]' ) ).to.deep.equal( [
+                DEGRADED_LINE,
+                'winkComposer/questdb: delivery restored after 0 s, 2 row(s) reported lost meanwhile [DELIVERY_HEALTH]',
+                'winkComposer/questdb: delivery restored after 1 s, 0 row(s) reported lost meanwhile [DELIVERY_HEALTH]'
+            ] );
+            expect( storage.getHealth().status ).to.equal( 'green' );
+
             await storage.shutdown();
         } );
     } );
@@ -400,6 +532,41 @@ describe( 'QuestDB health edges (ADR-029)', function () {
             expect( deliveryStateOf( { consecutiveFlushFailures: 1, lastFlushError: { abandoned: false } } ) ).to.equal( 'yellow' );
             expect( deliveryStateOf( { consecutiveFlushFailures: 1, lastFlushError: { abandoned: true } } ) ).to.equal( 'red' );
             expect( deliveryStateOf( { consecutiveFlushFailures: 2, lastFlushError: { abandoned: false } } ) ).to.equal( 'red' );
+            // A paused delivery is red whatever the failure count says.
+            expect( deliveryStateOf( { consecutiveFlushFailures: 1, lastFlushError: { abandoned: false }, pausedSince: NOW } ) ).to.equal( 'red' );
+            expect( deliveryStateOf( { consecutiveFlushFailures: 1, lastFlushError: { abandoned: false }, pausedSince: null } ) ).to.equal( 'yellow' );
+        } );
+
+        it( 'agrees with getHealth() at fail, pause, resume, land', async function () {
+            const { deliveryStateOf } = await import( '../flush-tracker.js' );
+            mockSender.flush.onCall( 0 ).rejects( new Error( 'disk full' ) );
+            mockSender.flush.onCall( 1 ).resolves( false );
+            const storage = await makeStorage();
+            probe.setResult( 'refused' );
+            const seen = [];
+            const read = function () {
+                const health = storage.getHealth();
+                seen.push( [ deliveryStateOf( health ), health.status, health.connected ] );
+            };
+
+            await flushOnce( storage );
+            read();
+            probe.setResult( 'answers' );
+            await clock.tickAsync( 1000 );
+            // Nothing was held, so the resume starts no catch-up flush. The
+            // ladder steps down to yellow: one failure stays on the ledger
+            // until a flush lands.
+            read();
+            await flushOnce( storage );
+            read();
+
+            expect( seen ).to.deep.equal( [
+                [ 'red', 'red', false ],
+                [ 'yellow', 'yellow', true ],
+                [ 'green', 'green', true ]
+            ] );
+
+            await storage.shutdown();
         } );
 
         it( 'agrees with getHealth() at every step of fail, fail, land', async function () {

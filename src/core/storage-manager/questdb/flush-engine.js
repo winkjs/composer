@@ -363,18 +363,22 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
     let summaryRows = 0;
 
     // The ledger of flushes in flight (exact counts, deadlines) and the
-    // gate that pauses delivery while the endpoint is unreachable. The
-    // gate reads the engine's state through two small functions and
-    // never calls back into it.
-    const { ledger, track } = createFlushTracker( settings );
+    // gate that pauses delivery while the endpoint is unreachable. Both
+    // read the engine's shutdown state through one small function. The
+    // gate reports its pause and resume to the tracker through two
+    // hooks, and neither calls back into the engine.
+    const isShuttingDown = function () {
+        return shuttingDown;
+    }; // isShuttingDown()
+    const { ledger, track, recordPause, recordResume } = createFlushTracker( settings, isShuttingDown );
     const gate = createDeliveryGate( {
         probe,
         heldRows: function () {
             return bufferedRows;
         },
-        isShuttingDown: function () {
-            return shuttingDown;
-        }
+        isShuttingDown,
+        onPause: recordPause,
+        onResume: recordResume
     } );
 
     // ------------------------------------------------------------------
@@ -743,7 +747,9 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
         // The ladder comes from the tracker's one function, the same
         // one that prints the edge lines, so the two never disagree.
         const delivery = deliveryStateOf( ledger );
-        const connected = !shuttingDown && !gate.isPaused() &&
+        // A paused delivery reads red through the ladder: the ledger
+        // carries the gate's pause instant.
+        const connected = !shuttingDown &&
             ( consecutiveWriteErrors < HEALTH_ERROR_RED_THRESHOLD ) && ( delivery !== 'red' );
 
         let status;
@@ -767,7 +773,7 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
             bufferedRows,
             inFlightRows: ledger.inFlightRows,
             abandonedFlushes: ledger.abandonedFlushes,
-            pausedSince: gate.pausedSince(),
+            pausedSince: ledger.pausedSince,
             consecutiveFlushFailures: ledger.consecutiveFlushFailures,
             lastFlushAt: ledger.lastFlushAt,
             lastFlushError: ledger.lastFlushError

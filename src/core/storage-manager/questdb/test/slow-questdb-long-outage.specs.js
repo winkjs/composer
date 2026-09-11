@@ -352,12 +352,15 @@ describe( 'QuestDB Hardening — outages that outlast every timeout', function (
         expect( result.landed ).to.be.at.least( result.produced - rowsLost );
         expect( result.landed ).to.be.at.most( result.produced );
 
+        // The pause is the red edge (ADR-029): degraded, red, paused,
+        // resumed, restored.
         const lines = adapterLines( result );
-        expect( lines.map( ( l ) => l.level ) ).to.deep.equal( [ 'warn', 'warn', 'warn', 'warn' ] );
+        expect( lines.map( ( l ) => l.level ) ).to.deep.equal( [ 'warn', 'error', 'warn', 'warn', 'warn' ] );
         expect( lines[ 0 ].text ).to.include( 'delivery degraded, 1 flush failed [DELIVERY_HEALTH]' );
-        expect( lines[ 1 ].text ).to.include( 'delivery paused' );
-        expect( lines[ 2 ].text ).to.include( 'delivery resumed' );
-        expect( lines[ 3 ].text ).to.include( `${rowsLost} row(s) reported lost meanwhile [DELIVERY_HEALTH]` );
+        expect( lines[ 1 ].text ).to.include( 'delivery red, paused after 1 failed flush(es) [DELIVERY_HEALTH]' );
+        expect( lines[ 2 ].text ).to.include( 'delivery paused' );
+        expect( lines[ 3 ].text ).to.include( 'delivery resumed' );
+        expect( lines[ 4 ].text ).to.include( `${rowsLost} row(s) reported lost meanwhile [DELIVERY_HEALTH]` );
     } );
 
     it( 'never returns at plant rate: rows held under the ceiling, memory flat, shutdown reports the exact drop', async function () {
@@ -403,7 +406,8 @@ describe( 'QuestDB Hardening — outages that outlast every timeout', function (
 
         const lines = adapterLines( result );
         expect( lines[ 0 ].text ).to.include( 'delivery degraded, 1 flush failed [DELIVERY_HEALTH]' );
-        expect( lines[ 1 ].text ).to.include( 'delivery paused' );
+        expect( lines[ 1 ].text ).to.include( 'delivery red, paused after 1 failed flush(es) [DELIVERY_HEALTH]' );
+        expect( lines[ 2 ].text ).to.include( 'delivery paused' );
         expect( lines.some( ( l ) => l.text.includes( 'delivery resumed' ) ) ).to.equal( false );
         expect( lines.some( ( l ) => l.text.includes( 'delivery restored' ) ) ).to.equal( false );
     } );
@@ -456,7 +460,8 @@ describe( 'QuestDB Hardening — outages that outlast every timeout', function (
 
         const lines = adapterLines( result );
         expect( lines[ 0 ].text ).to.include( 'delivery degraded, 1 flush failed [DELIVERY_HEALTH]' );
-        expect( lines[ 1 ].text ).to.include( 'delivery paused' );
+        expect( lines[ 1 ].text ).to.include( 'delivery red, paused after 1 failed flush(es) [DELIVERY_HEALTH]' );
+        expect( lines[ 2 ].text ).to.include( 'delivery paused' );
         const shedding = lines.filter( ( l ) => l.text.includes( 'shedding began' ) );
         expect( shedding, 'the shedding edge once' ).to.have.lengthOf( 1 );
         expect( shedding[ 0 ].text ).to.include( `ceiling of ${opts.bufferCeilingRows} rows [STORAGE_FULL]` );

@@ -47,8 +47,13 @@
  *
  * The gate never calls back into the engine. `tick()` resolves to true
  * when it resumed delivery, and the engine starts the catch-up flush.
- * `isPaused()` and `pausedSince()` feed the engine's triggers and its
- * health object. One probe runs at a time.
+ * `isPaused()` feeds the engine's triggers. One probe runs at a time.
+ *
+ * The gate does tell the flush tracker's ledger about each pause and
+ * resume, through `onPause` and `onResume`. The ledger's ladder, the one
+ * function behind `getHealth()` and the edge lines, reads red while
+ * delivery is paused. So the red edge prints at the pause, before the
+ * `CIRCUIT_OPEN` line, and a later failed flush adds no second red line.
  *
  * @see ADR-029
  * @see ADR-030
@@ -65,9 +70,11 @@ import { logger } from '../../logger/index.js';
  * @param {function} parts.probe.describe - `( outcome ) => string`, the finding for an operator
  * @param {function} parts.heldRows - `() => number`, rows the engine holds in the buffer now
  * @param {function} parts.isShuttingDown - `() => boolean`
- * @returns {{afterFailure: function, tick: function, isPaused: function, pausedSince: function}}
+ * @param {function} parts.onPause - `( pausedSince, finding ) => void`, tells the ledger delivery paused
+ * @param {function} parts.onResume - `( now ) => void`, tells the ledger delivery resumed, after the resumed line
+ * @returns {{afterFailure: function, tick: function, isPaused: function}}
  */
-const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
+const createDeliveryGate = function ( { probe, heldRows, isShuttingDown, onPause, onResume } ) {
     // `paused` stops the engine's row and timer triggers. `pausedSince`
     // is the time the pause began, for health and the resume line.
     // `probing` keeps one probe in flight at a time.
@@ -118,21 +125,28 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
     const pause = function ( finding ) {
         paused = true;
         pausedSince = Date.now();
+        // The ledger's ladder turns red on the pause and prints its red
+        // edge first, so the log reads red, then paused.
+        onPause( pausedSince, finding );
         logger.warn( `winkComposer/questdb: delivery paused, ${heldRows()} row(s) held [CIRCUIT_OPEN]: ${finding}` );
     }; // pause()
 
     /**
-     * Resumes delivery after a passing tick probe.
+     * Resumes delivery after a passing tick probe. The ledger hears it
+     * after the resumed line, so a restored line, when the ladder lands
+     * on green, reads after resumed.
      *
      * @param {string} finding - The probe's operator text
      */
     const resume = function ( finding ) {
-        const seconds = Math.round( ( Date.now() - pausedSince ) / 1000 );
+        const now = Date.now();
+        const seconds = Math.round( ( now - pausedSince ) / 1000 );
         paused = false;
         pausedSince = null;
         logger.warn(
             `winkComposer/questdb: delivery resumed after ${seconds} s, ${heldRows()} row(s) held [CIRCUIT_OPEN]: ${finding}`
         );
+        onResume( now );
     }; // resume()
 
     /**
@@ -192,9 +206,6 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown } ) {
         tick,
         isPaused: function () {
             return paused;
-        },
-        pausedSince: function () {
-            return pausedSince;
         }
     };
 }; // createDeliveryGate()

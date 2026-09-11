@@ -146,6 +146,13 @@ const storages = ( function () {
     // to assetClass.name if not explicitly specified.
     const wire = async function ( specs, storageConfigs, storageModules, assetClass = null ) {
         const pendingStorages = [];
+        // Names whose factory has been called in THIS wire() call. The
+        // singleton slot is filled only after every pending factory has
+        // settled. Without this set, a flow with several persist-if nodes
+        // on one storage would call the factory once per node and keep
+        // only the last handle. Each orphan would hold a flush timer, an
+        // agent, and a sender for the life of the process.
+        const pendingNames = new Set();
 
         for ( const spec of specs ) {
             // Skip non-persistIf nodes
@@ -155,8 +162,8 @@ const storages = ( function () {
 
             const storageName = spec.storageName;
 
-            // Skip if already in singleton registry
-            if ( singletons[ storageName ] ) {
+            // Skip if already in singleton registry, or already being built
+            if ( singletons[ storageName ] || pendingNames.has( storageName ) ) {
                 continue; // eslint-disable-line no-continue
             }
 
@@ -196,6 +203,7 @@ const storages = ( function () {
 
             // createStorage may return Promise (async) or storage directly (sync)
             const storageOrPromise = module.createStorage( effectiveConfig );
+            pendingNames.add( storageName );
             pendingStorages.push( { storageName, storageOrPromise } );
         }
 

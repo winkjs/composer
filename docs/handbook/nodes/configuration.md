@@ -559,14 +559,14 @@ column 'temp' is wrong-typed (expected float64, received string) in insightType 
 
 A QuestDB restart therefore costs only the send that was on the wire when the port closed. While paused, health reads red with `connected: false` and a `pausedSince` time. A send the server answered and refused, such as a full disk, does not pause delivery. That send is reported lost, with the probe's finding, and the next send proceeds.
 
-**What the adapter logs, and when.** Every change of delivery state prints one line through the [framework log](./observability.md#framework-log-lines), with or without an `onDeliveryFailure` function. Nothing prints while a state persists, however long an outage lasts. The lines, in the order a typical outage shows them:
+**What the adapter logs, and when.** Every step up the delivery ladder, and every return to green, prints one line through the [framework log](./observability.md#framework-log-lines), with or without an `onDeliveryFailure` function. A resume that leaves one failure on the count prints no health line of its own. The restored line comes when the held rows land. Nothing prints while a state persists, however long an outage lasts. The lines, by token:
 
-- `DELIVERY_HEALTH` at `warn` when the first send fails, at `error` when delivery turns red, and at `warn` when it is restored. The restored line names the episode length and the rows reported lost in it.
-- `CIRCUIT_OPEN` at `warn` when delivery pauses, and again when it resumes.
+- `DELIVERY_HEALTH` at `warn` when the first send fails, at `error` when delivery turns red, and at `warn` when it is restored. Delivery turns red on a second failed send, on an abandoned send, or when a failing probe pauses delivery. The restored line names the episode length and the rows reported lost in it.
+- `CIRCUIT_OPEN` at `warn` when delivery pauses, right after the red line, and again when it resumes.
 - `STORAGE_FULL` at `warn` when the first row of an episode is refused at the ceiling, and again when the buffer has room, with the count refused.
-- `DELIVERY_FAILED` at `error` for a lost send, only when no `onDeliveryFailure` function is given. The first two losses of an episode print in full. After that the losses are counted, and one summary line a minute names the sends and rows lost since the last line. A server that answers an error for hours therefore prints one line a minute, not one a second.
+- `DELIVERY_FAILED` at `error` for a lost send, only when no `onDeliveryFailure` function is given. It prints before the red line, because the loss is reported before the probe pauses delivery. The first two losses of an episode print in full. After that the losses are counted, and one summary line a minute names the sends and rows lost since the last line. A server that answers an error for hours therefore prints one line a minute, not one a second.
 
-A whole outage prints six lines at most. All of them print at `warn` or above, so a log level of `warn` still shows every one. A log reader and a health reader see the same story, because one function derives both.
+With an `onDeliveryFailure` function, a whole outage prints seven lines at most: degraded, red, paused, shedding began, resumed, restored, shedding ended. Without one, the loss lines add to that, bounded as above. All of them print at `warn` or above, so a log level of `warn` still shows every one. A log reader and a health reader see the same story, because one function derives both.
 
 **Health monitoring.** The storage handle's `getHealth()` reads delivery as well as buffering. One failed send reads `yellow`. Two failed sends in a row, or one send that passed its deadline, read `red` with `connected: false`. The next delivered send reads `green` again.
 

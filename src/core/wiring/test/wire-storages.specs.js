@@ -177,6 +177,37 @@ describe( 'wire-storages', function () {
             expect( specs1[ 0 ].storage ).to.equal( specs2[ 0 ].storage );
         } );
 
+        // Several persistIf nodes in ONE flow name the same storage (the
+        // paint-shop scorecard has ten). One wire() call must build that
+        // storage once. Surfaced 2026-09-10 on the RevPi rig, in the ADR-029
+        // proof legs: the deployed flow printed the adapter's setup line six
+        // times, one per persistIf node, because the singleton slot is
+        // filled only after every pending factory call has settled.
+        it( 'builds the storage once when several persistIf nodes in one wire() call name it', async function () {
+            const mockStorage = makeMockStorageHandle();
+            let createCount = 0;
+            const mockAdapter = {
+                durabilityClass: 'best-effort',
+                createStorage: function () {
+                    createCount += 1;
+                    return Promise.resolve( mockStorage );
+                }
+            };
+            const storageModules = { testStorage: mockAdapter };
+            const specs = [
+                { nodeType: 'Persist If', storageName: 'testStorage', name: 'persist1' },
+                { nodeType: 'Persist If', storageName: 'testStorage', name: 'persist2' },
+                { nodeType: 'Persist If', storageName: 'testStorage', name: 'persist3' }
+            ];
+
+            await storages.wire( specs, {}, storageModules );
+
+            expect( createCount ).to.equal( 1 );
+            expect( specs[ 0 ].storage ).to.equal( mockStorage );
+            expect( specs[ 1 ].storage ).to.equal( mockStorage );
+            expect( specs[ 2 ].storage ).to.equal( mockStorage );
+        } );
+
         it( 'creates separate singletons for different storage names', async function () {
             let createCount = 0;
             const mockStorage1 = makeMockStorageHandle( {

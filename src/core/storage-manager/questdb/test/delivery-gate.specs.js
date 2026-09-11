@@ -55,7 +55,12 @@ describe( 'QuestDB delivery gate — release before report (ADR-029)', function 
             run: sinon.stub().resolves( { ok: true } ),
             describe: () => '127.0.0.1:9000 answers'
         };
-        gate = createDeliveryGate( { probe, heldRows: () => 0, isShuttingDown: () => false } );
+        // The ledger hooks are required. A failing probe would call
+        // onPause, so the stubs keep a future case from throwing inside
+        // the probe chain, where the trap above would swallow it.
+        gate = createDeliveryGate( {
+            probe, heldRows: () => 0, isShuttingDown: () => false, onPause: sinon.stub(), onResume: sinon.stub()
+        } );
     } );
 
     it( 'after the probe, the guard is released before the loss is reported', async function () {

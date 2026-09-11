@@ -241,8 +241,10 @@
  * - `DELIVERY_HEALTH` — the delivery ladder changed state. One
  *   `logger.warn` line when it enters yellow (the first failed flush),
  *   one `logger.error` line when it enters red (two failed in a row,
- *   or one abandoned), and one `logger.warn` line when it returns to
- *   green, naming the episode length and the rows reported lost in it.
+ *   one abandoned, or a failing probe pausing delivery, printed just
+ *   before the `CIRCUIT_OPEN` line), and one `logger.warn` line when
+ *   it returns to green, naming the episode length and the rows
+ *   reported lost in it.
  *   Nothing while a state persists, whatever the outage length, and
  *   the lines print with or without `onDeliveryFailure`. Remediation:
  *   the detail is the client's message or the deadline; a red with no

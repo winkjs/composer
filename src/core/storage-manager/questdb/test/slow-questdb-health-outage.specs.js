@@ -48,12 +48,13 @@
  *
  * The log is asserted too. Every change of delivery state prints one
  * line through the facade, so a live outage must read, in order:
- * degraded at the failed batch, paused, resumed, restored, and nothing
- * else from the adapter. Health reads red throughout the pause, from
- * the pause itself, while the ladder sits at yellow with one failure.
- * The restored line names the rows reported lost, which must equal
- * the sum the callback received. That makes the log an event-driven
- * record of the outage, not a sampled one.
+ * degraded at the failed batch, red at the pause, paused, resumed,
+ * restored, and nothing else from the adapter. The pause is the red
+ * edge (ADR-029), so health and the ladder both read red from the
+ * pause itself, with one failure on the count. The restored line
+ * names the rows reported lost, which must equal the sum the callback
+ * received. That makes the log an event-driven record of the outage,
+ * not a sampled one.
  */
 
 /* eslint-disable no-process-env, no-await-in-loop, no-invalid-this */
@@ -383,15 +384,17 @@ describe( 'QuestDB Hardening — health during a live outage', function () {
         expect( landed ).to.be.at.most( opts.messageCount );
 
         // The log carries every edge once, in order: degraded at the
-        // failed batch, paused, resumed, restored. Nothing else from
-        // the adapter, whatever the outage length. The restored line's
-        // row count is the same sum the callback received.
+        // failed batch, red at the pause, paused, resumed, restored.
+        // Nothing else from the adapter, whatever the outage length.
+        // The restored line's row count is the same sum the callback
+        // received.
         const adapterLines = result.lines.filter( ( l ) => l.text.includes( 'winkComposer/questdb' ) );
-        expect( adapterLines.map( ( l ) => l.level ) ).to.deep.equal( [ 'warn', 'warn', 'warn', 'warn' ] );
+        expect( adapterLines.map( ( l ) => l.level ) ).to.deep.equal( [ 'warn', 'error', 'warn', 'warn', 'warn' ] );
         expect( adapterLines[ 0 ].text ).to.include( 'delivery degraded, 1 flush failed [DELIVERY_HEALTH]' );
-        expect( adapterLines[ 1 ].text ).to.include( 'delivery paused' ).and.include( '[CIRCUIT_OPEN]' );
-        expect( adapterLines[ 2 ].text ).to.include( 'delivery resumed' ).and.include( '[CIRCUIT_OPEN]' );
-        expect( adapterLines[ 3 ].text ).to.include( `${rowsLost} row(s) reported lost meanwhile [DELIVERY_HEALTH]` );
+        expect( adapterLines[ 1 ].text ).to.include( 'delivery red, paused after 1 failed flush(es) [DELIVERY_HEALTH]' );
+        expect( adapterLines[ 2 ].text ).to.include( 'delivery paused' ).and.include( '[CIRCUIT_OPEN]' );
+        expect( adapterLines[ 3 ].text ).to.include( 'delivery resumed' ).and.include( '[CIRCUIT_OPEN]' );
+        expect( adapterLines[ 4 ].text ).to.include( `${rowsLost} row(s) reported lost meanwhile [DELIVERY_HEALTH]` );
     };
 
     it( 'producer at rate: one fast failure, red with pausedSince while the endpoint is dead, green after it returns', async function () {
