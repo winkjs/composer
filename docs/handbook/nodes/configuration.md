@@ -81,7 +81,7 @@ Registers an output adapter for broadcasting messages to external systems. Nodes
 
 #### MQTT Emitter
 
-Production emitter for reliable message delivery to MQTT brokers. Features an in-memory outage buffer and persistent sessions.
+Production emitter for reliable message delivery to MQTT brokers. It holds undelivered messages in an in-memory outage buffer and sends them when the broker returns.
 
 ```javascript
 import { mqttEmitter } from '@winkjs/composer';
@@ -90,7 +90,7 @@ flow('pipeline')
     .emitter(mqttEmitter, {
         brokerUrl: 'mqtt://broker:1883',
         codec: { pack: ( msg ) => Buffer.from( JSON.stringify( msg ) ) },
-        clientId: 'composer-edge-001',
+        clientId: 'paintshop-line1-emitter',
         maxQueueSize: 10000
     })
 ```
@@ -106,12 +106,12 @@ flow('pipeline')
 | `maxQueueSize` | number | `10000` | Max undelivered messages held in memory (hard ceiling 60,000 — see Delivery guarantees below) |
 | `debug` | boolean | `false` | Enable debug logging |
 | `will` | object | `null` | MQTT Last Will and Testament (see below) |
-| `onCritical` | function | `null` | Fires once when buffer pressure climbs past 80%. It fires again only after pressure has fallen below 66% and climbed past 80% a second time |
+| `onCritical` | function | `null` | Fires once when buffer pressure, the share of `maxQueueSize` in flight from 0 to 1, climbs past 80%. It fires again only after pressure has fallen below 66% and climbed past 80% a second time |
 | `onBackpressure` | function | `null` | Pressure callback, fired with the current pressure every time an accepted publish completes (refused attempts never fire it) |
-| `onDeliveryFailure` | function | `null` | Callback when an accepted message fails to deliver. Without one, the failure surfaces as an unhandled rejection — loud by design |
+| `onDeliveryFailure` | function | `null` | Callback when an accepted message fails to deliver. Without one, the failure surfaces as an unhandled rejection — loud by design. The QuestDB adapter differs: without a handler it prints a bounded `DELIVERY_FAILED` line |
 | `mqttConnectFn` | function | `mqtt.connect` | Advanced: inject a custom MQTT connect function (tests, benchmarks) |
 
-The three callbacks are guarded. If one throws or rejects, the emitter keeps publishing and the fault is reported as a `CALLBACK_FAILED` console line. The report is bounded per callback: the first two faults of an episode print in full, then one summary a minute carries the count. A bug in your callback costs its own output, never the emitter.
+The three callbacks are guarded. If one throws or rejects, the emitter keeps publishing and the fault is reported as a `CALLBACK_FAILED` console line. The report is bounded per callback. An episode is a run of faults with no quiet minute between them. The first two faults of an episode print in full, then one summary a minute carries the count. A bug in your callback costs its own output, never the emitter.
 
 Config is checked when the flow is defined, before anything runs. A misspelled
 option name (say `brokerURL` instead of `brokerUrl`) — or an option retired by
@@ -153,18 +153,18 @@ Every accepted publish counts as in flight until the broker acknowledges it.
 
 - The buffer holds at most 60,000 messages, whatever `maxQueueSize` says. The ceiling comes from the MQTT protocol: every unacknowledged message needs a packet id, a packet id is a 16-bit number, and one connection can therefore never carry more than 65,535 of them. A `maxQueueSize` above 60,000 is clamped back with a printed warning. For how long 60,000 lasts at your message rate, see [Environment Variables → the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-60000-messages).
 - The ceiling does not limit throughput. In steady operation the number of unacknowledged messages equals your message rate times the broker's response time. Measured against a local broker at about 14,300 messages per second, that number stayed between 312 and 400.
-- At 90% of buffer capacity, `publishNow` refuses new messages with a `STORAGE_FULL` error. The refusal is immediate. composer never accepts a message it would later drop in silence.
+- At 90% of buffer capacity, the emitter refuses new messages with a `STORAGE_FULL` error. The refusal is immediate. composer never accepts a message it would later drop in silence.
 - A message the codec cannot encode (for example, a value JSON cannot represent) is refused on the spot with an `ENCODE_ERROR`. The message never occupies buffer space, later messages are unaffected, and the running count appears in `stats.encodeErrors`. Fix the flow that produces the value; the transport is fine.
-- The emitter's `shutdown()` result states exactly what was delivered. A clean resolve means every accepted message reached a settled outcome — acknowledged by the broker, or failed and reported loudly through `onDeliveryFailure`. When unacknowledged messages remain at the deadline, shutdown rejects with a `SHUTDOWN_TIMEOUT` error carrying the exact count in `dropped: { count }` — whether the connection was up or not, because nothing survives the process. Inside a flow, the framework catches this rejection and logs it — one classified line naming the emitter, the code, and the count — so the flow's own shutdown still completes for the other sinks.
+- The emitter's `shutdown()` result states exactly what was delivered. A clean resolve means every accepted message reached a settled outcome — acknowledged by the broker, or failed and reported loudly through `onDeliveryFailure`. When unacknowledged messages remain at the deadline, shutdown rejects with a `SHUTDOWN_TIMEOUT` error carrying the exact count in `dropped: { count }`. That holds whether the connection was up or not, because nothing survives the process. Inside a flow, the framework logs this rejection as one classified line naming the emitter, the code, and the count. The other sinks finish their drain. Then the flow's own `shutdown()` rejects with the same error, and the process exits 1.
 - The emitter's `flush( { timeout } )` waits until every accepted message is acknowledged, without closing the connection or refusing new work. On its deadline (default 5 s) it rejects with a `DELIVERY_FAILED` error carrying the count still pending in `pending: { count }`. The messages stay in flight; a later acknowledgment still settles them.
 
 **What the emitter logs, and when.** Every change of the broker link prints one line through the [framework log](./observability.md#framework-log-lines), with or without the `debug` option. Nothing prints while a state persists, however long an outage lasts. The lines, in the order an outage shows them:
 
 - `DELIVERY_HEALTH` at `error` when the broker goes offline, with the count of messages in flight. The same token at `warn` when the connection is restored, with the outage length and the count.
 - `CONNECT_FAILED` at `warn` for each failed connection attempt, with the reason (a refused connect, a connack timeout). The first two attempts of an episode print in full. After that the attempts are counted, and one summary line a minute carries the count since the last line.
-- `CALLBACK_FAILED` at `error` or `warn` when one of your three callbacks throws or rejects, bounded the same way.
+- `CALLBACK_FAILED` at `error` when one of your three callbacks throws or rejects, bounded the same way.
 
-A night of retries every five seconds therefore prints a few lines an hour, not one every five seconds. All of them print at `warn` or above.
+A night of retries every five seconds therefore prints two lines in full, then one line a minute, not one every five seconds. All of them print at `warn` or above.
 
 **Resolved issue — completing a connection could lose in-flight messages (fixed 2026-07-09).** mqtt.js briefly forgets which packet ids its undelivered messages hold whenever a connection completes; with an asynchronous disk store, a new publish could take an id an undelivered message still owned and overwrite it. composer closed this by running the client's synchronous in-memory store, where the forget-and-rebuild gap has zero width. The library defect is still being pursued upstream with a reproduction. The trade: undelivered messages no longer survive a process restart — the crash cost is stated under "Outage buffer" above.
 
@@ -338,7 +338,7 @@ flow('aggregator')
         brokerUrl: 'mqtt://broker:1883',
         topics: ['edge/+/enriched', 'edge/alerts'],
         codec: msgpackCodec,
-        clientId: 'composer-agg-001',
+        clientId: 'paintshop-line1-source',
         cleanStart: false
     })
 ```
@@ -367,7 +367,7 @@ option name (say `brokerURL` instead of `brokerUrl`) is rejected with an
 **Connection behavior:**
 - MQTT v5 with QoS 1 subscriptions
 - Persistent sessions (7-day expiry) — the broker queues messages while composer is away, and delivers them only if composer returns under the same fixed `clientId` (see [Resilience](../resilience.md))
-- Auto-reconnect every 5 s (`MQTT_RECONNECT_MS`), plus a random share of up to 20% drawn once per client, so a fleet that lost one broker spreads its retries
+- Auto-reconnect every 5 s (`MQTT_RECONNECT_MS`), plus a random share of up to 20% drawn once per client. So a fleet that lost one broker spreads its retries
 - Keepalive: 60s
 
 **What the source logs, and when.** Every change of the source's health prints one line through the [framework log](./observability.md#framework-log-lines), with or without an `onStatus` handler. Nothing prints while a state persists. The lines:
@@ -419,7 +419,7 @@ the pipeline sees each message once.
 | Feature | CSV Source | MQTT Source | MQTT Emitter | Terminal Emitter |
 |---------|-----------|------------|-------------|-----------------|
 | **Use case** | Replay, testing | Aggregation | Production output | Debug |
-| **Reconnect** | No (one-shot) | Auto (5s) | Auto (5s) | N/A |
+| **Reconnect** | No (one-shot) | Auto (5 s plus up to 20% jitter) | Auto (5 s plus up to 20% jitter) | N/A |
 | **Persistence** | N/A | Session (7d) | In-memory buffer | None |
 | **Dedup** | None | Drops repeats (2-min window) | Adds dedupId | None |
 | **Circuit breaker** | None | None | None | None |
@@ -489,31 +489,41 @@ flow('pipeline')
 | `ilpUrl` | string | `127.0.0.1:9000` | ILP endpoint for writes (`host:port`). A literal address or a name, never `localhost`. No IPv6 literal: the QuestDB client cannot read one |
 | `pgUrl` | string | `127.0.0.1:8812` | PostgreSQL endpoint for table creation (`host:port`). A literal address or a name, never `localhost`. `[::1]:8812` is accepted |
 | `tablePrefix` | string | asset class name | Prefix for table names (`{tablePrefix}_{insightType}`). Letters, digits, `_` and `$`, not starting with a digit: the same rule as an asset class name, because QuestDB reads the unquoted table name as one token |
-| `flushMode` | string | — | Deprecated, removed in 0.8.0. Accepted and ignored: composer owns every flush |
-| `idleFlushAfterMs` | number | — | Deprecated, removed in 0.8.0. Accepted and ignored |
-| `idleFlushCheckMs` | number | — | Deprecated, removed in 0.8.0. Maps to `flushIntervalMs` |
-| `autoFlushRows` | number | — | Deprecated, removed in 0.8.0. Maps to `flushRows` |
-| `autoFlushIntervalMs` | number | — | Deprecated, removed in 0.8.0. Accepted and ignored |
+| `flushMode` | string | — | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored: composer owns every flush |
+| `idleFlushAfterMs` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
+| `idleFlushCheckMs` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `flushIntervalMs` |
+| `autoFlushRows` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `flushRows` |
+| `autoFlushIntervalMs` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
 | `flushRows` | number | `5000` | Rows that start a send from inside the write. About 0.65 to 1.5 MB per request |
 | `flushIntervalMs` | number | `1000` | The send timer. Whatever is buffered is sent this often, so rows land within about a second |
-| `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory, counting a send in flight. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1000 rows a second, hours at plant rate. At least 2 × `flushRows`, one batch in flight and one buffering; a smaller value fails setup |
+| `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory, counting a send in flight. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1,000 rows a second, about 80 minutes at 10 rows a second. At least 2 × `flushRows`, one batch in flight and one buffering; a smaller value fails setup |
 | `flushDeadlineMs` | number | derived per send | Longest wait for one send before it is declared failed. Derived from the rows it carries, from 36 seconds for one row to about 9 minutes for a full catch-up send. It outlasts the client's own retries, so a real answer arrives first. Set it to fix one value for every send |
 | `stdlibHttp` | boolean | `true` | The HTTP transport. `true` is Node's standard library, whose requests always end. `false` is the client's undici transport. See the transport note below |
 | `requestTimeout` | number | client default | How long one send may wait for an answer, in milliseconds. The client uses 10 seconds when unset. A longer value lengthens the derived deadline with it |
 | `retryTimeout` | number | client default | How long the client retries a failed send, in milliseconds. The client uses 10 seconds when unset |
 | `initBufSize` | number | client default | Initial size of the client's send buffer, in bytes |
 | `maxBufSize` | number | client default | Largest size the client's send buffer may grow to, in bytes. A row that would exceed it is refused |
-| `partitionBy` | string | — | Partitioning when the adapter creates a table: `NONE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR` |
+| `partitionBy` | string | `DAY` | Partitioning when the adapter creates a table: `NONE`, `HOUR`, `DAY`, `WEEK`, `MONTH`, or `YEAR` |
 | `onWarning` | function | `null` | Called with the warning for each skipped value. When omitted, the adapter logs each warning at `warn`, bounded per column: two in full per episode, then one summary a minute. See the warnings note below |
-| `onDeliveryFailure` | function | `null` | Called once per lost send with the error and `{ trigger, rowsLost, abandoned, probe }`. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported as a `CALLBACK_FAILED` console line, two in full per episode and then one summary a minute |
+| `onDeliveryFailure` | function | `null` | Called once per lost send with the error and `{ trigger, rowsLost, abandoned, probe }`: what started the send (`rows`, `timer`, or `recovery`), the rows it carried, whether it was abandoned at its deadline, and what the probe found, or `null` when no probe ran. Guarded: if your handler itself throws or rejects, the adapter keeps running and the fault is reported as a `CALLBACK_FAILED` console line, two in full per episode and then one summary a minute |
 
 The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_PG_URL` environment variables when omitted. See [Environment Variables](../environment-variables.md).
+
+**Deprecated keys.** The five keys marked deprecated still work in 0.7.0. At setup the adapter prints one `warn` line naming every deprecated key in use, marked `DEPRECATED_OPTION`:
+
+```text
+winkComposer/questdb: deprecated storage options in use [DEPRECATED_OPTION]: autoFlushRows maps to flushRows; flushMode is ignored; all five deprecated keys are removed in 0.8.0
+```
 
 **Addresses.** Write both as a literal IP address. `localhost` is refused when the flow is defined, with `INVALID_CONFIG` and a message that names the literal to use. The name stands for two addresses, and the service may answer on only one.
 
 Any other name is accepted with one startup warning, marked `ADDRESS_IS_NAME`. The adapter then checks both endpoints before it opens a client: every address a name resolves to must answer. See [Resilience](../resilience.md#addresses-use-a-literal-never-a-name) for the reasons.
 
-**Transport.** The QuestDB client can send over two HTTP libraries. The adapter uses Node's standard library by default, because every request it makes ends. A refused connection fails at once, and a send that gets no answer ends within `retryTimeout` plus one `requestTimeout`. The adapter holds one connection open between sends and closes it when the flow shuts down, so a send still on the wire cannot keep the process alive. It also closes that connection itself after 4 seconds without a send. QuestDB closes an idle connection after 5 minutes, and a send that started at that exact moment would be lost. Closing first removes that moment. A flow that sends less often than every 4 seconds opens a new connection per send, which costs well under a millisecond on a local network.
+**Transport.** The QuestDB client can send over two HTTP libraries. The adapter uses Node's standard library by default, because every request it makes ends. A refused connection fails at once. A send that gets no answer ends within `retryTimeout` plus one `requestTimeout`.
+
+The adapter holds one connection open between sends and closes it when the flow shuts down. So a send still on the wire cannot keep the process alive. It also closes that connection itself after 4 seconds without a send. QuestDB closes an idle connection after 5 minutes, and a send that started at that exact moment would be lost. Closing first removes that moment.
+
+A flow that sends less often than every 4 seconds opens a new connection per send. That costs well under a millisecond on a local network.
 
 Set `stdlibHttp: false` to use the client's own default, the undici library. Its retry never gives up on a refused connection, so a send to a stopped server never ends. A flow that shuts down with such a send in flight then stays alive until something kills it. Choose undici only if you have measured a need for it.
 
@@ -543,7 +553,9 @@ Every value is checked before the row is opened, so one bad value can never wedg
 
 A skipped column is simply not written for that row, so it reads as NULL in QuestDB. The rest of the row still persists. The warning goes to your `onWarning` function and names the column, the reason, the insight type, and the asset.
 
-Without an `onWarning` function, each warning prints through the framework log at `warn`, bounded per column. The first two skips of a column in an episode print in full. After that the skips are counted, and one summary line a minute names the count, the latest reason, and the latest asset. A quiet minute on that column ends the episode. So a dead sensor prints one line a minute, not one a second. Rows skipped for a bad designated timestamp share one bound per insight type. Your own `onWarning` function hears every skip.
+Without an `onWarning` function, each warning prints through the framework log at `warn`, bounded per column. The first two skips of a column in an episode print in full. After that the skips are counted, and one summary line a minute names the count, the latest reason, and the latest asset. A quiet minute on that column ends that column's episode. So a dead sensor prints one line a minute, not one a second.
+
+Rows skipped for a bad designated timestamp share one bound per insight type. Your own `onWarning` function hears every skip.
 
 A missing or invalid designated timestamp skips the whole row — with a warning — before anything is written.
 
@@ -557,16 +569,16 @@ column 'temp' is wrong-typed (expected float64, received string) in insightType 
 
 **When QuestDB stops answering, delivery pauses.** A send that fails or passes its deadline makes the adapter probe the ILP address with one TCP connect. If the probe fails, the adapter stops sending and holds new rows in memory, up to `bufferCeilingRows`. One console line marked `CIRCUIT_OPEN` reports the pause and the held count. Every `flushIntervalMs` the adapter probes again, and prints nothing until a probe passes. Then one line reports the resume, and one send carries everything held.
 
-A QuestDB restart therefore costs only the send that was on the wire when the port closed. While paused, health reads red with `connected: false` and a `pausedSince` time. A send the server answered and refused, such as a full disk, does not pause delivery. That send is reported lost, with the probe's finding, and the next send proceeds.
+A QuestDB restart therefore costs only the send that was on the wire when the port closed. While paused, health reads red with `connected: false` and a `pausedSince` time. A send the server answered and refused does not pause delivery. A full disk is one such refusal. That send is reported lost, with the probe's finding, and the next send proceeds.
 
-**What the adapter logs, and when.** Every step up the delivery ladder, and every return to green, prints one line through the [framework log](./observability.md#framework-log-lines), with or without an `onDeliveryFailure` function. A resume that leaves one failure on the count prints no health line of its own. The restored line comes when the held rows land. Nothing prints while a state persists, however long an outage lasts. The lines, by token:
+**What the adapter logs, and when.** Every step up the delivery ladder, and every return to green, prints one line through the [framework log](./observability.md#framework-log-lines), with or without an `onDeliveryFailure` function. A resume prints no health line of its own, because the count of failed sends clears only when a send lands. The restored line prints when the held rows land. Nothing prints while a state persists, however long an outage lasts. The lines, by token:
 
-- `DELIVERY_HEALTH` at `warn` when the first send fails, at `error` when delivery turns red, and at `warn` when it is restored. Delivery turns red on a second failed send, on an abandoned send, or when a failing probe pauses delivery. The restored line names the episode length and the rows reported lost in it.
+- `DELIVERY_HEALTH` at `warn` when the first send fails, at `error` when delivery turns red, and at `warn` when it is restored. Delivery turns red on a second failed send, on an abandoned send, or when a failing probe pauses delivery. An abandoned send is one that passed its deadline with no answer. The restored line names the episode length and the rows reported lost in it.
 - `CIRCUIT_OPEN` at `warn` when delivery pauses, right after the red line, and again when it resumes.
-- `STORAGE_FULL` at `warn` when the first row of an episode is refused at the ceiling, and again when the buffer has room, with the count refused.
-- `DELIVERY_FAILED` at `error` for a lost send, only when no `onDeliveryFailure` function is given. It prints before the red line, because the loss is reported before the probe pauses delivery. The first two losses of an episode print in full. After that the losses are counted, and one summary line a minute names the sends and rows lost since the last line. A server that answers an error for hours therefore prints one line a minute, not one a second.
+- `STORAGE_FULL` at `warn` when the first row of an episode is refused at the ceiling. A second line, with the count refused, prints when the buffer has room again.
+- `DELIVERY_FAILED` at `error` for a lost send, only when no `onDeliveryFailure` function is given. It prints before the `DELIVERY_HEALTH` red line, because the loss is reported before the probe pauses delivery. The first two losses of an episode print in full. After that the losses are counted, and one summary line a minute names the sends and rows lost since the last line. A server that answers an error for hours therefore prints one line a minute, not one a second.
 
-With an `onDeliveryFailure` function, a whole outage prints seven lines at most: degraded, red, paused, shedding began, resumed, restored, shedding ended. Without one, the loss lines add to that, bounded as above. All of them print at `warn` or above, so a log level of `warn` still shows every one. A log reader and a health reader see the same story, because one function derives both.
+With an `onDeliveryFailure` function, a whole outage prints seven lines at most. In order: `DELIVERY_HEALTH` degraded and red, `CIRCUIT_OPEN` paused, `STORAGE_FULL` as shedding begins, `CIRCUIT_OPEN` resumed, `DELIVERY_HEALTH` restored, `STORAGE_FULL` as shedding ends. Shedding is the buffer at its ceiling refusing new rows. Without one, the loss lines add to that, bounded as above. All of them print at `warn` or above, so a log level of `warn` still shows every one. A log reader and a health reader see the same story, because one function derives both.
 
 **Health monitoring.** The storage handle's `getHealth()` reads delivery as well as buffering. One failed send reads `yellow`. Two failed sends in a row, or one send that passed its deadline, read `red` with `connected: false`. The next delivered send reads `green` again.
 
@@ -580,11 +592,13 @@ storage.getHealth()
 //            lastFlushError }           // { message, abandoned, at } of the last failed send, else null
 ```
 
-`connected: false` has two causes, and `pausedSince` tells them apart. With a time in `pausedSince`, QuestDB was unreachable and delivery is paused. With `pausedSince: null`, QuestDB answered and refused twice, so check `lastFlushError.message`. `lastFlushAt` is the staleness number for a long unattended run: alert when it grows older than a few send intervals. `lastFlushError` is never cleared, so the last failure stays readable after recovery, and `consecutiveFlushFailures` says whether it is current. A monitor should act on `red`, or on `yellow` that persists, not on one `yellow` sample.
+`connected: false` has two causes, and `pausedSince` tells them apart. With a time in `pausedSince`, QuestDB was unreachable and delivery is paused. With `pausedSince: null`, QuestDB answered and refused twice, so check `lastFlushError.message`. `lastFlushAt` is the staleness number for a long unattended run: alert when it grows older than a few send intervals. `lastFlushError` is never cleared, so the last failure stays readable after recovery, and `consecutiveFlushFailures` says whether that failure is current. A monitor should act on `red`, or on `yellow` that persists, not on one `yellow` sample.
 
 Inside a flow, the storage handle is not reachable yet. A flow-level `getHealth()` on the run handle is planned for a later release. Until then, a flow learns of delivery trouble through `onDeliveryFailure` and the framework's log lines.
 
-**Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain, shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Rows remain when the final flush failed, or when a hung flush outlived the shutdown budget. Inside a flow, the framework logs this rejection as one classified line naming the storage, the code, and the count. The other sinks finish their drain. Then the flow's own `shutdown()` rejects with the same error. The process exits 1, on the signal path and when a finite source ends the flow itself.
+**Shutdown reports the delivery outcome exactly.** A clean resolve from the adapter's `shutdown()` means every buffered row was flushed. When rows remain, shutdown rejects with a classified error (`DELIVERY_FAILED` or `SHUTDOWN_TIMEOUT`) carrying the exact count in `dropped: { count }`. Rows remain when the final flush failed, or when a hung flush outlived the shutdown budget.
+
+Inside a flow, the framework logs this rejection as one classified line naming the storage, the code, and the count. The other sinks finish their drain. Then the flow's own `shutdown()` rejects with the same error. The process exits 1, on the signal path and when a finite source ends the flow itself.
 
 **A failed startup names its cause.** When the adapter cannot start, the error's `code` tells you which of two different problems you have — so you fix the right thing:
 
@@ -832,7 +846,7 @@ This matters only when something feeds the flow in a tight loop and waits on eac
 
 The default comes from the `YIELD_TIME_THRESHOLD_MS` environment variable (see [Environment Variables](../environment-variables.md)). `.yield()` overrides it for one flow. A breath lets a flush finish once its answer has arrived, but it does not wait for the flush.
 
-The rule for a tight loop that writes to QuestDB follows from that. Between two breaths the QuestDB adapter holds at most `bufferCeilingRows` rows and refuses the rest with `STORAGE_FULL`. At the defaults that is 50,000 rows every 500 ms, so a tight loop delivers at most 100,000 rows a second. A caller that writes faster than that sets a low threshold, and pays one event-loop turn per breath, a few microseconds:
+The rule for a tight loop that writes to QuestDB follows from that. Between two breaths the QuestDB adapter holds at most `bufferCeilingRows` rows and refuses the rest with `STORAGE_FULL`. At the defaults that is 50,000 rows per breath, and a loop that outruns its breaths lands only that. In one measurement, a tight loop feeding 3,000,000 rows landed 50,000 of them at 500 ms and all of them at 1 ms. A caller that writes faster than its flushes settle sets a low threshold, and pays one event-loop turn per breath, a few microseconds:
 
 ```javascript
 flow('bulk-load')

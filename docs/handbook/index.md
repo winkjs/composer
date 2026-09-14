@@ -12,7 +12,7 @@ A practical guide to building streaming intelligence pipelines with winkComposer
 
 4. **[Composition Patterns](./composition-patterns.md)** — Proven recipes for combining nodes: bearing failure detection, drift detection, adaptive diagnostics, and more.
 
-5. **[Headless Flows](./headless-flow.md)** — Running a flow with no source adapter: feeding it yourself with `processMessage`, the await rule, error handling, and shutdown.
+5. **[Headless Flows](./headless-flow.md)** — Running a flow with no source adapter: the headless driver, feeding in order, shutdown, and dropped messages.
 
 6. **[Calibration](./calibration.md)** — How to set every number in a flow against real data: auditing the instrument first, baseline characterisation, classifying each constant as law, knob, or learned, per-regime tunables, and node-by-node tuning for Page Hinkley, trend, kalman1d, and appraise.
 

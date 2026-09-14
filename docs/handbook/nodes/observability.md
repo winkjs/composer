@@ -50,6 +50,11 @@ stopping being refused at the buffer ceiling. Every one of these
 prints at `warn` or above. The lines and their levels are listed under
 [Configuration → storage](./configuration.md#storage).
 
+One more QuestDB line reports losses rather than state.
+`DELIVERY_FAILED` prints only when no `onDeliveryFailure` function
+is given. Two print in full per episode, then one summary a minute
+while losses continue.
+
 The MQTT emitter follows the same rule for its broker link. One
 `DELIVERY_HEALTH` line marks the broker going offline, and one marks
 the connection restored, each with the count of messages in flight.
@@ -59,24 +64,28 @@ with or without the emitter's `debug` option. The list is under
 [Configuration → MQTT emitter](./configuration.md#mqtt-emitter).
 
 The MQTT source prints one line at every change of its health, with
-or without an `onStatus` handler. `source degraded` at `warn` marks a
-yellow edge, and `source error` at `error` a red one. `source
+or without an `onStatus` handler. Each such change is an edge.
+`source degraded` at `warn` marks a yellow edge, and `source error`
+at `error` a red one. `source
 recovered` at `warn` marks the return to green, with the length of
 the episode.
 
 The source's per-record faults print through the same facade. A
-payload that could not be decoded prints one `warn` line per record.
-So does a message your `transform` threw on. Two print in full per
-episode, then one summary a minute. The list is under
+payload that could not be decoded prints a `warn` line, and so does
+a message your `transform` threw on. The lines are bounded: two
+print in full per episode, then one summary a minute. The list is under
 [Configuration → MQTT source](./configuration.md#mqtt-source).
 
 ## Watching a source: status and metrics
 
 A source reports its health through two callbacks you pass in its
 config: `onStatus` and `onMetrics`. Both are optional. Without them the
-source still protects you. Every health change and every skipped
-record prints a classified log line, whether or not you listen. A
-red failure inside a flow is logged by the runtime as well.
+MQTT source still protects you: every health change and every
+skipped record prints a classified log line, whether or not you
+listen. The CSV source reports a skipped record or a read failure
+to your `onStatus` when you supply one. Without one, it prints a
+classified line instead. A red failure inside a flow is logged by
+the runtime as well.
 
 ### The status channel (`onStatus`)
 
@@ -114,8 +123,8 @@ must never do.
 
 | Code | Severity | What it means | What to do |
 |------|----------|---------------|------------|
-| `DECODE_ERROR` | yellow | A payload could not be decoded and was skipped (one report per message). Also raised as a health flip when more than 1 % of the last 1,000 messages failed to decode | Check what the publisher is sending — the topic name is in the message |
-| `CALLBACK_FAILED` | yellow | A function you supplied failed. Either your `transform` threw (that one message was skipped, one report per message), or your `onStatus` / `onMetrics` callback itself threw or rejected (the fault is contained and reported, two in full per episode and then one summary a minute; the stream continues either way) | Fix the named function — the report carries the fault detail |
+| `DECODE_ERROR` | yellow | A payload could not be decoded and was skipped (your `onStatus` hears each one; the log line is bounded, two in full per episode and then one summary a minute). Also raised as a health flip when more than 1 % of the last 1,000 messages failed to decode | Check what the publisher is sending — the topic name is in the message |
+| `CALLBACK_FAILED` | yellow | A function you supplied failed. Either your `transform` threw (that one message was skipped; your `onStatus` hears each one, and the log line is bounded the same way), or your `onStatus` / `onMetrics` callback itself threw or rejected (the fault is contained and reported, two in full per episode and then one summary a minute; the stream continues either way) | Fix the named function — the report carries the fault detail |
 | `SUBSCRIBE_FAILED` | red | The broker refused the subscription. The source is connected but deaf | Check topic permissions (ACLs) on the broker |
 | `CONNECT_FAILED` | yellow | A connection attempt failed; the library keeps retrying | Nothing yet — watch whether it heals |
 | `CONNECTION_LOST` | red | Disconnected for more than 30 seconds and still trying | Check the broker, the network, the credentials |
@@ -196,7 +205,7 @@ A pass-through node that conditionally broadcasts messages to an external system
 
 The node always hands the copy to the emitter, even while the broker is unreachable. The emitter keeps undelivered messages in an in-memory buffer and sends them when the connection returns. Skipping the publish during a disconnect would keep messages out of that buffer — the exact loss it exists to prevent.
 
-A failed publish is loud. The node logs the first failure of an episode and stays quiet until a publish succeeds. An episode is the stretch from a first failure to the next success.
+A failed publish is loud. The node logs the first failure of an episode and stays quiet until a publish succeeds. For this node, an episode is the stretch from a first failed publish to the next success.
 
 **Type:** Condition-based
 **Mode:** Single only
@@ -255,7 +264,7 @@ A pass-through node that conditionally writes messages to storage. Every message
 
 The write hands the record to the storage adapter's buffer and returns at once, so the pipeline never waits on the database. The adapter flushes the buffer in the background.
 
-A failed write is loud. The node logs the first failure of an episode and stays quiet until a write succeeds. An episode is the stretch from a first failure to the next success.
+A failed write is loud. The node logs the first failure of an episode and stays quiet until a write succeeds. For this node, an episode is the stretch from a first failed write to the next success.
 
 **Type:** Condition-based
 **Mode:** Single only (evaluates predicate)

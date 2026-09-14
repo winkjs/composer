@@ -179,8 +179,7 @@ const handle = await flow('pump-monitor')
         msg => Number.isFinite(msg.pump_out_p),
         {
             storageName: 'questdb',       // References storage adapter
-            insightType: 'operational',    // Must match assetClass.insightTypes key
-            timestampField: 'timestamp'   // Optional: field for row timestamp
+            insightType: 'operational'     // Must match assetClass.insightTypes key
         }
     )
 
@@ -203,7 +202,6 @@ Storage tables are named: `{tablePrefix}_{insightType}`. The table prefix defaul
 |--------|------|----------|-------------|
 | `storageName` | string | Yes | References registered storage adapter ID |
 | `insightType` | string | Yes | Must match key in `assetClass.insightTypes` |
-| `timestampField` | string | No | Message field for row timestamp ([milliseconds since epoch](../understanding-composer.md#timestamps)) |
 
 ---
 
@@ -265,8 +263,7 @@ const handle = await flow('pump-analytics')
         (msg) => msg.outlet_pressure_error === null,
         {
             storageName: 'questdb',
-            insightType: 'operational',
-            timestampField: 'timestamp'
+            insightType: 'operational'
         })
 
     // Persist fault events
@@ -274,8 +271,7 @@ const handle = await flow('pump-analytics')
         (msg) => msg.pressureAlarm || msg.tempAlarm,
         {
             storageName: 'questdb',
-            insightType: 'faults',
-            timestampField: 'timestamp'
+            insightType: 'faults'
         })
 
     .run();

@@ -42,7 +42,7 @@ A flow processes messages synchronously. Background work, such as QuestDB flushe
 
 Some callers feed messages in a tight loop and wait on each one. The [headless driver](./headless-flow.md) over an in-memory array is the common case. For such a caller the flow offers the turn itself. Once this many milliseconds have passed, the current message finishes and the caller receives a Promise. Awaiting it gives the event loop one turn.
 
-One turn lets a flush finish once its answer has arrived. It does not wait for the flush. So between two breaths the QuestDB adapter holds at most `bufferCeilingRows` rows and refuses the rest with `STORAGE_FULL`. At the defaults that is 50,000 rows every 500 ms, so a tight loop delivers at most 100,000 rows a second. A caller that writes faster than that sets a threshold of 1 ms. In one measurement, a tight loop feeding 3,000,000 rows landed 50,000 of them at 500 ms and all of them at 1 ms.
+One turn lets a flush finish once its answer has arrived. It does not wait for the flush. So between two breaths the QuestDB adapter holds at most `bufferCeilingRows` rows and refuses the rest with `STORAGE_FULL`. At the defaults that is 50,000 rows per breath, and a loop that outruns its breaths lands only that. In one measurement, a tight loop feeding 3,000,000 rows landed 50,000 of them at 500 ms and all of them at 1 ms. A caller that writes faster than its flushes settle sets a threshold of 1 ms.
 
 The cost of a breath is one event-loop turn, a few microseconds, and the background work it runs is the point. The CSV source does not need a low threshold. It reads its file in chunks, and each chunk read gives the event loop a turn on its own.
 
@@ -104,11 +104,11 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 |----------|---------|--------------|
 | `QUESTDB_ILP_URL` | `127.0.0.1:9000` | Write path — ILP over HTTP; `host:port`, a literal address or a name, never `localhost`, no IPv6 literal |
 | `QUESTDB_PG_URL` | `127.0.0.1:8812` | Read and table-creation path — Postgres wire; `host:port`, a literal address or a name, never `localhost` |
-| `QUESTDB_FLUSH_MODE` | unset | Deprecated, removed in 0.8.0. Accepted and ignored: composer owns every flush |
-| `QUESTDB_IDLE_FLUSH_AFTER_MS` | unset | Deprecated, removed in 0.8.0. Accepted and ignored |
-| `QUESTDB_IDLE_FLUSH_CHECK_MS` | unset | Deprecated, removed in 0.8.0. Maps to `QUESTDB_FLUSH_INTERVAL_MS` |
-| `QUESTDB_AUTO_FLUSH_ROWS` | unset | Deprecated, removed in 0.8.0. Maps to `QUESTDB_FLUSH_ROWS` |
-| `QUESTDB_AUTO_FLUSH_INTERVAL_MS` | unset | Deprecated, removed in 0.8.0. Accepted and ignored |
+| `QUESTDB_FLUSH_MODE` | unset | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored: composer owns every flush |
+| `QUESTDB_IDLE_FLUSH_AFTER_MS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
+| `QUESTDB_IDLE_FLUSH_CHECK_MS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `QUESTDB_FLUSH_INTERVAL_MS` |
+| `QUESTDB_AUTO_FLUSH_ROWS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `QUESTDB_FLUSH_ROWS` |
+| `QUESTDB_AUTO_FLUSH_INTERVAL_MS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
 | `QUESTDB_STDLIB_HTTP` | unset | The HTTP transport, `on` or `off`. `on` is Node's standard library, the default; `off` is the client's undici transport. See [Configuration](./nodes/configuration.md#storage) for what the choice costs |
 | `QUESTDB_REQUEST_TIMEOUT` | unset | How long one send may wait for an answer, milliseconds (the client uses 10 seconds when unset) |
 | `QUESTDB_RETRY_TIMEOUT` | unset | How long the client retries a failed send, milliseconds (the client uses 10 seconds when unset) |
@@ -116,7 +116,7 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 | `QUESTDB_MAX_BUF_SIZE` | unset | Largest size the client's send buffer may grow to, bytes (client default when unset) |
 | `QUESTDB_FLUSH_ROWS` | unset | Rows that start a send; the adapter uses 5000 when unset |
 | `QUESTDB_FLUSH_INTERVAL_MS` | unset | The send timer; the adapter uses 1000 when unset |
-| `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset, and never below twice them |
+| `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset, and never below twice `QUESTDB_FLUSH_ROWS` |
 | `QUESTDB_FLUSH_DEADLINE_MS` | unset | A fixed longest wait for one send; derived from the send's size when unset |
 | `QUESTDB_DATABASE` | `qdb` | Database name |
 | `QUESTDB_USER` | `admin` | User |

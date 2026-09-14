@@ -45,8 +45,8 @@ session is persistent, so this cannot be forgotten silently.
 
 The broker allows one live connection per name. If a second client
 connects with a name already in use, the broker disconnects the
-first. Two clients sharing a name therefore take the session from
-each other on every reconnect, for as long as both run. Four rules
+first. Two clients sharing a name therefore disconnect each other on
+every reconnect, for as long as both run. Four rules
 keep names safe.
 
 - **One name per client, not per device.** A source and an emitter
@@ -60,8 +60,9 @@ keep names safe.
   bytes made of letters and digits only. Longer names and hyphens
   work on most brokers, Mosquitto included, but are not guaranteed.
 - **Treat the auto-generated name as a development convenience.**
-  Without a configured `clientId`, composer uses
-  `wink-source-<start time>-<random>`. The name is unique, but it
+  Without a configured `clientId`, the source uses
+  `wink-source-<start time>-<random>` and the emitter
+  `wink-<start time>-<random>`. The name is unique, but it
   changes on every start, so a saved backlog is never claimed.
   Production sets a fixed name.
 
@@ -103,7 +104,7 @@ an address. On most machines it stands for two addresses: `127.0.0.1`
 the operating system. A service may listen on only one of them.
 
 On a test rig, QuestDB listened on IPv4 only, and the box resolved
-`localhost` to `::1` first. For a day and a half the connection
+`localhost` to `::1` first. For 32 hours the connection
 happened to land on the right address. Then it stopped. Every write
 went to an address nothing answered, and nothing reported it for
 four hours.
@@ -260,7 +261,7 @@ instead, so you can size a deployment with the limit in view.
   The broker's queue does, up to its own limit.
 - **Sinks shed visibly.** The MQTT emitter and the QuestDB adapter
   refuse new messages at their buffer ceilings with a classified
-  code, and log each edge. A flood shows up as `STORAGE_FULL` lines,
+  code, and log the change each way. A flood shows up as `STORAGE_FULL` lines,
   never as a silent loss.
 - **One event loop.** A flood of messages that decode and pass
   through the flow occupies the process. Nothing else in that

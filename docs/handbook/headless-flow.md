@@ -92,7 +92,7 @@ If you feed messages yourself with `feedOne`, keep to the same rule — one at a
 
 A flow with a source stops when the source runs out of data. A headless flow has no source, so it never stops on its own. You decide when the data is done. Two things shut the flow down, and most programs use both.
 
-**You call `handle.shutdown()` when your data ends.** With `feedAll`, that is the line right after it returns. With `feedOne`, wire it to whatever ends your input, such as the socket's `close` event shown above. `shutdown()` flushes the emitters and the storage, so stop feeding before you call it. It is safe to call more than once.
+**You call `handle.shutdown()` when your data ends.** With `feedAll`, that is the line right after it returns. With `feedOne`, wire it to whatever ends your input, such as the socket's `close` event shown above. `shutdown()` flushes the emitters and the storage, so stop feeding before you call it. It is safe to call more than once. It resolves when every sink delivered what it held, and rejects when one lost data, as the delivery-failure paragraph below explains.
 
 **The process is asked to stop.** When you called `.run()`, the flow registered itself with the framework's signal handlers. So `Ctrl-C` (SIGINT) or `kill` (SIGTERM) drains every running flow and exits, with nothing wired by you. A long-running push service often relies on this alone and never calls `shutdown()` itself. If a drain runs longer than 30 seconds (`SHUTDOWN_FORCE_TIMEOUT_MS`), the process exits anyway, so a stuck sink cannot hang it forever.
 
