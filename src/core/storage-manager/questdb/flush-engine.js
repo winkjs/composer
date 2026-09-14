@@ -43,10 +43,12 @@
  *
  * The lines are bounded during a streak. A server that answers an
  * error for hours never pauses delivery, because the probe passes, so
- * a flush fails every interval. The first two losses of an episode
- * print in full. After that the losses are counted, and one summary
- * line prints per minute of streak with the counts. The handler still
- * hears every loss.
+ * a flush fails every interval. The first two reported losses of an
+ * episode print in full. After that the losses are counted, and one
+ * summary line prints per minute of streak with the counts. An
+ * episode ends at a landing. An explicit `flush()` that fails rejects
+ * to its caller and spends none of the lines. The handler still hears
+ * every loss.
  *
  * One count is off by one row per rare event. When the client refuses
  * an append at its byte ceiling, its promise rejects after the plan
@@ -356,8 +358,16 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
     let shedding = false;
     let shedRows = 0;
 
-    // The loss-line summary during a streak with no handler: when the
-    // last line printed, and the losses counted since.
+    // The loss lines during a streak with no handler. An episode is a
+    // run of reported losses with no landing between them. The engine
+    // counts its own reports per episode. The ledger's failure count
+    // cannot serve, because it also counts explicit flush() failures,
+    // which their caller owns and nothing reports here. Deciding the
+    // line by that count let two owned failures push the first reported
+    // loss straight into a summary, measured from a stamp no line had
+    // set. A landing is detected by the ledger's last-landed stamp.
+    let reportedInEpisode = 0;
+    let landedAtLastReport = null;
     let summarySince = 0;
     let summaryFlushes = 0;
     let summaryRows = 0;
@@ -407,15 +417,21 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
         }
         // The lines are bounded during a streak. A server that answers
         // an error for hours never pauses delivery, because the probe
-        // passes, so a flush fails every interval. The first losses of
-        // an episode print in full, beside the ladder's edge lines. The
-        // rest are counted, and one summary line prints per interval of
-        // streak. The restored edge line closes the episode with its
-        // totals. The ledger already counts this loss, and single
-        // flight means no other flush settles before this report.
+        // passes, so a flush fails every interval. The first reported
+        // losses of an episode print in full, beside the ladder's edge
+        // lines. The rest are counted, and one summary line prints per
+        // interval of streak. The restored edge line closes the episode
+        // with its totals. The ledger already counts this loss, and
+        // single flight means no other flush settles before this report.
         const finding = ( probed === null ) ? '' : `; probe: ${probed.finding}`;
         const now = Date.now();
-        if ( ledger.consecutiveFlushFailures <= FULL_LOSS_LINES_PER_EPISODE ) {
+        if ( ledger.lastFlushAt !== landedAtLastReport ) {
+            // A flush landed since the last report: a new episode.
+            landedAtLastReport = ledger.lastFlushAt;
+            reportedInEpisode = 0;
+        }
+        reportedInEpisode += 1;
+        if ( reportedInEpisode <= FULL_LOSS_LINES_PER_EPISODE ) {
             const line = abandoned ?
                 err.message :
                 `winkComposer/questdb: flush failed, ${rows} row(s) lost [DELIVERY_FAILED]: ${err.message}`;

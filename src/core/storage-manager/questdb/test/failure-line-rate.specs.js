@@ -11,12 +11,14 @@
  * pauses, so a flush fails every interval. One line per second for a
  * night is a log the operator cannot read.
  *
- * The rule now: the first two lost flushes of an episode print in
+ * The rule now: the first two reported losses of an episode print in
  * full, beside the degraded and red edge lines. From the third on, the
  * losses are counted, and one summary line prints when a minute has
  * passed since the last line. The restored edge line still closes the
  * episode with its totals. The handler, when given, still hears every
- * lost flush; the lines are for people.
+ * lost flush; the lines are for people. An explicit `flush()` that
+ * fails rejects to its caller and is reported nowhere else, so it
+ * spends none of the episode's lines. An episode ends at a landing.
  *
  * The clock is fake, so every minute has a value the spec can name.
  * Every case here was written before the engine changed and proven red
@@ -167,6 +169,52 @@ describe( 'QuestDB per-flush loss lines are bounded during a streak (ADR-029)', 
             FULL_LINE, FULL_LINE, FULL_LINE, FULL_LINE
         ] );
         expect( linesWith( console.warn, 'delivery restored' ) ).to.have.lengthOf( 1 );
+
+        await storage.shutdown().catch( () => undefined );
+    } );
+
+    it( 'a loss the caller owns through flush() does not spend the episode\'s full lines', async function () {
+        mockSender.flush.rejects( new Error( 'disk full' ) );
+        const storage = await makeStorageNoHandler();
+
+        // Two explicit flushes fail and reject to their caller. The
+        // ledger counts them, and no loss line prints. The first engine
+        // loss is then the third failure on the ledger, but the first
+        // loss reported, so it prints in full, and so does the second.
+        storage.write( 'monitoring', GOOD_MSG, 'p1' );
+        await storage.flush().catch( () => undefined );
+        storage.write( 'monitoring', GOOD_MSG, 'p1' );
+        await storage.flush().catch( () => undefined );
+        expect( storage.getHealth().consecutiveFlushFailures ).to.equal( 2 );
+        expect( linesWith( errorSpy, '[DELIVERY_FAILED]' ) ).to.deep.equal( [] );
+
+        await failEverySecond( storage, 2 );
+
+        expect( linesWith( errorSpy, '[DELIVERY_FAILED]' ) ).to.deep.equal( [ FULL_LINE, FULL_LINE ] );
+
+        await storage.shutdown().catch( () => undefined );
+    } );
+
+    it( 'a new episode after a landing prints in full even when losses the caller owns came first', async function () {
+        mockSender.flush.rejects( new Error( 'disk full' ) );
+        mockSender.flush.onCall( 3 ).resolves( false );
+        const storage = await makeStorageNoHandler();
+
+        // Fail, fail, fail (counted), land. The episode's last line
+        // printed at 2 s.
+        await failEverySecond( storage, 4 );
+        expect( linesWith( errorSpy, '[DELIVERY_FAILED]' ) ).to.have.lengthOf( 2 );
+
+        // Two explicit flushes fail and reject to their caller. The
+        // next engine loss opens a new episode, so it prints in full.
+        // It must not be counted into a summary measured from 2 s.
+        storage.write( 'monitoring', GOOD_MSG, 'p1' );
+        await storage.flush().catch( () => undefined );
+        storage.write( 'monitoring', GOOD_MSG, 'p1' );
+        await storage.flush().catch( () => undefined );
+        await failEverySecond( storage, 1 );
+
+        expect( linesWith( errorSpy, '[DELIVERY_FAILED]' ) ).to.deep.equal( [ FULL_LINE, FULL_LINE, FULL_LINE ] );
 
         await storage.shutdown().catch( () => undefined );
     } );

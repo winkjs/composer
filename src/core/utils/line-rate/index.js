@@ -26,20 +26,27 @@
 /**
  * Creates a line bound.
  *
- * The returned function takes up to three arguments and forwards them by
- * identity to `printFull` for the first `fullLines` events of an
- * episode. Later events inside the interval are counted. The first event
- * a full interval after the last printed line calls `printSummary` with
- * the count since that line, the seconds elapsed, and the latest
- * arguments. When an episode ends with counted events, their summary
- * prints before the next episode's first full line.
+ * The returned function takes the event's arguments, up to three, and
+ * forwards them by identity to `printFull` for the first `fullLines`
+ * events of an episode. What the arguments mean is the caller's
+ * business: the callback guard passes a severity, a callback name and
+ * a fault description; the row-skip warning passes a raw value and a
+ * partition id. Later events inside the interval are counted. The
+ * first event a full interval after the last printed line calls
+ * `printSummary` with the count since that line, the seconds elapsed,
+ * and the latest arguments. When an episode ends with counted events,
+ * their summary prints before the next episode's first full line.
+ *
+ * Three named parameters stand in for a rest parameter on purpose. A
+ * rest parameter builds an array on every call, and the row-skip
+ * warning runs once per skipped row.
  *
  * @param {Object} options
  * @param {number} options.fullLines - How many events per episode print in full.
  * @param {number} options.intervalMs - The summary interval, also the quiet gap that ends an episode.
- * @param {Function} options.printFull - Called as `printFull( a, b, c )` with the event's arguments.
- * @param {Function} options.printSummary - Called as `printSummary( count, seconds, a, b, c )`.
- * @returns {Function} `( a, b, c ) => void`.
+ * @param {Function} options.printFull - Called as `printFull( arg1, arg2, arg3 )` with the event's arguments.
+ * @param {Function} options.printSummary - Called as `printSummary( count, seconds, arg1, arg2, arg3 )`.
+ * @returns {Function} `( arg1, arg2, arg3 ) => void`.
  */
 export const createLineBound = function ( { fullLines, intervalMs, printFull, printSummary } ) {
     let lastEventAt = 0;
@@ -47,42 +54,47 @@ export const createLineBound = function ( { fullLines, intervalMs, printFull, pr
     let printed = 0;
     let counted = 0;
 
-    const summarize = function ( now, a, b, c ) {
+    // The state clears before the printer runs, as on the full-line
+    // path. A printer that throws then costs that one line only. With
+    // the old order a throw left the count and the stamp behind, and
+    // every later event ran straight into the printer again.
+    const summarize = function ( now, arg1, arg2, arg3 ) {
         const seconds = Math.round( ( now - lastLineAt ) / 1000 );
-        printSummary( counted, seconds, a, b, c );
+        const count = counted;
         lastLineAt = now;
         counted = 0;
+        printSummary( count, seconds, arg1, arg2, arg3 );
     }; // summarize()
 
     // The latest arguments are kept for the summary that closes an
     // episode. They belong to the last counted event, not the new one.
-    let lastA;
-    let lastB;
-    let lastC;
+    let lastArg1;
+    let lastArg2;
+    let lastArg3;
 
-    return function ( a, b, c ) {
+    return function ( arg1, arg2, arg3 ) {
         const now = Date.now();
         if ( ( now - lastEventAt ) >= intervalMs ) {
             // A quiet interval ended the previous episode.
             if ( counted > 0 ) {
-                summarize( now, lastA, lastB, lastC );
+                summarize( now, lastArg1, lastArg2, lastArg3 );
             }
             printed = 0;
         }
         lastEventAt = now;
-        lastA = a;
-        lastB = b;
-        lastC = c;
+        lastArg1 = arg1;
+        lastArg2 = arg2;
+        lastArg3 = arg3;
         if ( printed < fullLines ) {
             printed += 1;
             lastLineAt = now;
-            printFull( a, b, c );
+            printFull( arg1, arg2, arg3 );
             return;
         }
         counted += 1;
         if ( ( now - lastLineAt ) < intervalMs ) {
             return;
         }
-        summarize( now, a, b, c );
+        summarize( now, arg1, arg2, arg3 );
     };
 }; // createLineBound()

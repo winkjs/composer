@@ -154,9 +154,11 @@
  *         accepts `[::1]:8812`;
  *     (h) the ILP client rejected the sender configuration for a
  *         reason that is not a network error (`fromConfig`);
- *     (i) `bufferCeilingRows` is below `flushRows` (ADR-029). Such a
- *         ceiling would shed rows before a row-triggered flush could
- *         start. Checked in `resolve-options.js`;
+ *     (i) `bufferCeilingRows` is below twice `flushRows` (ADR-029).
+ *         Rows in flight count against the ceiling, so it must hold
+ *         one batch in flight and one batch buffering. A smaller
+ *         ceiling would refuse every row that arrives during a
+ *         row-triggered flush. Checked in `resolve-options.js`;
  *     (j) `tablePrefix` is not an identifier: letters, digits, `_`
  *         and `$`, not starting with a digit. The prefix opens every
  *         table name, and `ensure-tables.js` writes that name unquoted

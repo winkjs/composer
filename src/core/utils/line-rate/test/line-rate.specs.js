@@ -148,6 +148,42 @@ describe( 'line bound — the first lines in full, then one summary per interval
         expect( printSummary.called ).to.equal( false );
     } );
 
+    it( 'a summary printer that throws costs that one line, and the cadence resumes from it', function () {
+        // The bound clears its count and stamps the line before it
+        // calls the printer, so a throw from the printer leaves nothing
+        // behind. The throw reaches the caller once. The next interval
+        // is counted from the failed line, as if it had printed.
+        const throwingSummary = sinon.stub();
+        throwingSummary.onFirstCall().throws( new Error( 'report channel down' ) );
+        const bound = createLineBound( {
+            fullLines: 2, intervalMs: INTERVAL_MS, printFull, printSummary: throwingSummary
+        } );
+        const everySecond = function ( count ) {
+            for ( let i = 0; i < count; i += 1 ) {
+                bound( 'v', 'p' );
+                clock.tick( 1000 );
+            }
+        };
+
+        // Full lines at 0 s and 1 s, 59 counted to 60 s. The event at
+        // 61 s is the 60th counted and calls the printer, which throws.
+        everySecond( 61 );
+        expect( () => bound( 'v', 'p' ) ).to.throw( 'report channel down' );
+        expect( throwingSummary.firstCall.args[ 0 ] ).to.equal( 60 );
+
+        // Events at 62 s to 120 s are inside the next interval: nothing
+        // prints. The event at 121 s is 60 s after the failed line and
+        // carries exactly the 60 events since it.
+        clock.tick( 1000 );
+        everySecond( 59 );
+        expect( throwingSummary.callCount ).to.equal( 1 );
+        bound( 'v', 'p' );
+
+        expect( throwingSummary.callCount ).to.equal( 2 );
+        expect( throwingSummary.secondCall.args ).to.deep.equal( [ 60, 60, 'v', 'p', undefined ] );
+        expect( printFull.callCount ).to.equal( 2 );
+    } );
+
     it( 'a bound with one full line prints one, and counts from the second event on', function () {
         const one = createLineBound( { fullLines: 1, intervalMs: INTERVAL_MS, printFull, printSummary } );
 

@@ -6,7 +6,7 @@
  * @fileoverview Integration-level tests for QuestDB setup-time error
  * classification.
  *
- * The unit tests in `storage.specs.js`,
+ * The unit tests in `init.specs.js`,
  * `assert-columns.specs.js`, and `ensure-tables.specs.js` cover the
  * happy-path of error classification using mocked `Sender` / `pg.Client`.
  * This file complements them by exercising **real** network and auth
@@ -101,7 +101,7 @@ describe( 'QuestDB E2E — setup-time error classification', function () {
 
     // --------------------------------------------------------------------
     // Config-shape errors: thrown before any network call.
-    // Already unit-tested with mocks in storage.specs.js — these are
+    // Already unit-tested with mocks in init.specs.js — these are
     // integration-level confirmations that the same classification
     // survives the full createQuestDBStorage() path.
     // --------------------------------------------------------------------

@@ -119,10 +119,12 @@ describe( 'mqtt emitter — backpressure', function () {
         } );
 
         it( 'surfaces DELIVERY_FAILED as unhandledRejection when no onDeliveryFailure provided', async function () {
-            // Mirrors persist-plan.specs.js's contract: without a
-            // handler, the adapter's default is loud failure via
-            // Promise.reject → unhandledRejection. Listener catches it
-            // for assertion; settled flag guards against re-entry.
+            // The emitter's own contract: without a handler, the
+            // default is loud failure via Promise.reject →
+            // unhandledRejection. (The QuestDB adapter's no-handler
+            // path prints a classified line instead, ADR-029.)
+            // Listener catches it for assertion; settled flag guards
+            // against re-entry.
             emitter = await createEmitter( {
                 brokerUrl: 'mqtt://127.0.0.1',
                 connectGraceMs: 0,
