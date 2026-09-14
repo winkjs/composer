@@ -35,6 +35,7 @@ import mqtt from 'mqtt';
 
 import { createEmitter } from '../emitter.js';
 import { testCodec } from './test-helpers.js';
+import { monotonicNow } from '../../../utils/clock/index.js';
 
 /** CONNACK, MQTT 5: session present 0, reason code 0, no properties. */
 const CONNACK_V5 = Buffer.from( [ 0x20, 0x03, 0x00, 0x00, 0x00 ] );
@@ -204,9 +205,9 @@ describe( 'mqtt emitter — shutdown detaches the transport (fake broker)', func
         const acked = await until( () => emitter.getHealth().stats.unacked === 0, 500 );
         expect( acked, 'the fake broker acknowledges the publish' ).to.equal( true );
 
-        const started = Date.now();
+        const started = monotonicNow();
         await emitter.shutdown( { timeout: 400 } );
-        const elapsed = Date.now() - started;
+        const elapsed = monotonicNow() - started;
 
         // The drain had nothing to wait for, so the whole budget was the
         // close budget, and the broker hung the DISCONNECT for all of it.

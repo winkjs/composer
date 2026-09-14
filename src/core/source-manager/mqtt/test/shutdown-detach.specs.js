@@ -32,6 +32,8 @@ import sinon from 'sinon';
 
 import { createMQTTSourceClient } from '../client.js';
 import { startFakeBroker, stopFakeBroker } from './fake-broker.js';
+import { monotonicNow } from '../../../utils/clock/index.js';
+import { TIMER_FLOOR_MARGIN_MS } from '../../../test/timer-floor.js';
 
 const sleep = ( ms ) => new Promise( ( r ) => setTimeout( r, ms ) );
 
@@ -151,12 +153,14 @@ describe( 'MQTT source — stop detaches the transport (fake broker)', function 
             broker.sockets[ 0 ].once( 'close', resolve );
         } );
 
-        const started = Date.now();
+        const started = monotonicNow();
         await stop( { timeout: 300 } );
-        const elapsed = Date.now() - started;
+        const elapsed = monotonicNow() - started;
         stop = null;
 
-        expect( elapsed ).to.be.at.least( 300 );
+        // The floor is the budget less the early-fire margin (see
+        // core/test/timer-floor.js).
+        expect( elapsed ).to.be.at.least( 300 - TIMER_FLOOR_MARGIN_MS );
         expect( elapsed ).to.be.below( 1500 );
         expect( client.stream.destroyed, 'the timer must destroy the stream' ).to.equal( true );
 

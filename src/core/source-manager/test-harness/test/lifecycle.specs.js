@@ -17,6 +17,8 @@
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
 import { start } from '../start.js';
+import { monotonicNow } from '../../../utils/clock/index.js';
+import { TIMER_FLOOR_MARGIN_MS } from '../../../test/timer-floor.js';
 
 const baseAssetClass = {
     columns: {
@@ -186,7 +188,7 @@ describe( 'testHarness — happy path', function () {
     } );
 
     it( 'paces messages by intervalMs when set', async function () {
-        const t0 = Date.now();
+        const t0 = monotonicNow();
         const { messages } = await driveHarness( {
             messageTemplate: {
                 seed: 1,
@@ -195,11 +197,13 @@ describe( 'testHarness — happy path', function () {
                 fields: { temperature: { type: 'float64' } }
             }
         } );
-        const elapsed = Date.now() - t0;
+        const elapsed = monotonicNow() - t0;
         expect( messages ).to.have.length( 3 );
         // Three messages with a 30ms gap → at least ~60ms total, since
         // the first message sends right away and the gaps run after.
-        expect( elapsed ).to.be.at.least( 50 );
+        // Two timers in a chain, so two early-fire margins (see
+        // core/test/timer-floor.js).
+        expect( elapsed ).to.be.at.least( ( 2 * 30 ) - ( 2 * TIMER_FLOOR_MARGIN_MS ) );
     } );
 
 } );
@@ -411,9 +415,9 @@ describe( 'testHarness — stop with timeout', function () {
             }
         } );
 
-        const t0 = Date.now();
+        const t0 = monotonicNow();
         await stopFn( { timeout: 5000 } );
-        const elapsed = Date.now() - t0;
+        const elapsed = monotonicNow() - t0;
         expect( elapsed ).to.be.lessThan( 100 );
     } );
 
@@ -439,12 +443,14 @@ describe( 'testHarness — stop with timeout', function () {
         // Wait briefly for the loop to wedge inside the first onMessage.
         await new Promise( ( r ) => setTimeout( r, 50 ) );
 
-        const t0 = Date.now();
+        const t0 = monotonicNow();
         await stopFn( { timeout: 100 } );
-        const elapsed = Date.now() - t0;
+        const elapsed = monotonicNow() - t0;
         resolved = true;
         expect( resolved ).to.equal( true );
-        expect( elapsed ).to.be.at.least( 90 );
+        // The floor is the budget less the early-fire margin (see
+        // core/test/timer-floor.js).
+        expect( elapsed ).to.be.at.least( 100 - TIMER_FLOOR_MARGIN_MS );
         expect( elapsed ).to.be.lessThan( 1000 );
     } );
 

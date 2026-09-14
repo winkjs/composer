@@ -35,6 +35,8 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 import { createEmitter } from '../emitter.js';
 import { jsonCodec, msgpackCodec } from '../../../codec/index.js';
 import { makeMockClient, fireConnect, waitForCallbacks } from './test-helpers.js';
+import { monotonicNow } from '../../../utils/clock/index.js';
+import { TIMER_FLOOR_MARGIN_MS } from '../../../test/timer-floor.js';
 
 // ============================================================================
 // SHUTDOWN DRAIN + TIMEOUT
@@ -74,9 +76,9 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             }
             await waitForCallbacks();
 
-            const start = Date.now();
+            const start = monotonicNow();
             await emitter.shutdown( { timeout: 5000 } );
-            const elapsed = Date.now() - start;
+            const elapsed = monotonicNow() - start;
 
             expect( publishCalls.length ).to.equal( 5 );
             expect( elapsed ).to.be.below( 1000 );
@@ -94,9 +96,9 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             fireConnect( eventHandlers );
 
             await emitter.shutdown( { timeout: 5000 } );
-            const start = Date.now();
+            const start = monotonicNow();
             await emitter.shutdown( { timeout: 5000 } );
-            const elapsed = Date.now() - start;
+            const elapsed = monotonicNow() - start;
 
             // The latched second call returns without re-running a drain —
             // far under the 5000 ms budget. 500 ms keeps the assertion's
@@ -120,14 +122,16 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             createdEmitters.push( emitter );
             fireConnect( eventHandlers );
 
-            const start = Date.now();
+            const start = monotonicNow();
             await emitter.shutdown( { timeout: 200 } );
-            const elapsed = Date.now() - start;
+            const elapsed = monotonicNow() - start;
 
-            // Allow ~150ms grace for store close + scheduling jitter on
-            // CI hardware. The contract is "returns within timeout + grace,"
-            // not "returns at exactly timeout."
-            expect( elapsed ).to.be.at.least( 200 );
+            // The floor proves the drain waited its budget, less the
+            // margin a timer may fire early by (see timer-floor.js).
+            // The cap allows store close and scheduling jitter on CI
+            // hardware. The contract is "returns within timeout plus
+            // grace," not "returns at exactly timeout."
+            expect( elapsed ).to.be.at.least( 200 - TIMER_FLOOR_MARGIN_MS );
             expect( elapsed ).to.be.below( 700 );
 
             // The graceful end() hangs, and a second end() would be a
@@ -159,17 +163,18 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
                 emitter.publishNow( 'test/stuck', { i } );
             }
 
-            const start = Date.now();
+            const start = monotonicNow();
             let thrown = null;
             await emitter.shutdown( { timeout: 100 } ).catch( ( err ) => {
                 thrown = err;
             } );
-            const elapsed = Date.now() - start;
+            const elapsed = monotonicNow() - start;
 
             // The drain uses the whole 100 ms budget (no early
-            // give-up), then the closeBudget force-close fires.
-            // Cap is 700 ms to allow for jitter; floor is 100 ms (timeout).
-            expect( elapsed ).to.be.at.least( 100 );
+            // give-up), then the closeBudget force-close fires. The
+            // floor is the budget less the early-fire margin (see
+            // timer-floor.js); the cap allows for jitter.
+            expect( elapsed ).to.be.at.least( 100 - TIMER_FLOOR_MARGIN_MS );
             expect( elapsed ).to.be.below( 700 );
 
             // A lossy drain forces the close at once: a graceful end()
@@ -200,9 +205,9 @@ describe( 'MQTT emitter E2E — flush, shutdown, codec round-trip', function () 
             } );
             createdEmitters.push( emitter );
 
-            const start = Date.now();
+            const start = monotonicNow();
             await emitter.shutdown( { timeout: 5000 } );
-            const elapsed = Date.now() - start;
+            const elapsed = monotonicNow() - start;
 
             expect( elapsed ).to.be.below( 200 );
             // Force close used immediately, no graceful end attempt.

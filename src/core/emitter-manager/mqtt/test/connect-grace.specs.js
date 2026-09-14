@@ -25,6 +25,8 @@ import sinon from 'sinon';
 import { createEmitter } from '../emitter.js';
 import { ENV_VARS } from '../../../env-vars.js';
 import { makeMockClient, fireConnect, refusalOf, testCodec } from './test-helpers.js';
+import { monotonicNow } from '../../../utils/clock/index.js';
+import { TIMER_FLOOR_MARGIN_MS } from '../../../test/timer-floor.js';
 
 describe( 'mqtt emitter — first-connack grace', function () {
 
@@ -93,12 +95,12 @@ describe( 'mqtt emitter — first-connack grace', function () {
         it( 'resolves promptly on connack, well under the budget, already connected', async function () {
             // A generous budget: if the factory waited it out instead of
             // resolving on the event, the elapsed assertion fails.
-            const started = Date.now();
+            const started = monotonicNow();
             const result = createEmitter( makeConfig( { connectGraceMs: 2000 } ) );
 
             setImmediate( () => fireConnect( mock.eventHandlers, mock.onceHandlers ) );
             emitter = await result;
-            const elapsed = Date.now() - started;
+            const elapsed = monotonicNow() - started;
 
             expect( elapsed ).to.be.below( 1000 );
             // Attach-order invariant: the permanent state handler runs
@@ -125,11 +127,11 @@ describe( 'mqtt emitter — first-connack grace', function () {
     describe( 'expiry path — the recovering posture', function () {
 
         it( 'resolves after the budget when connect never fires; the handle works and buffers', async function () {
-            const started = Date.now();
+            const started = monotonicNow();
             emitter = await createEmitter( makeConfig( { connectGraceMs: 30 } ) );
-            const elapsed = Date.now() - started;
+            const elapsed = monotonicNow() - started;
 
-            expect( elapsed ).to.be.at.least( 25 );
+            expect( elapsed ).to.be.at.least( 30 - TIMER_FLOOR_MARGIN_MS );
             expect( emitter.getHealth().connected ).to.equal( false );
 
             // Recovering posture: the handle is fully functional — a
@@ -174,14 +176,14 @@ describe( 'mqtt emitter — first-connack grace', function () {
         it( 'falls back to the env value when the key is omitted', async function () {
             sinon.stub( ENV_VARS, 'mqttConnectGraceMs' ).value( 30 );
 
-            const started = Date.now();
+            const started = monotonicNow();
             const result = createEmitter( makeConfig() );
             expect( typeof result.then ).to.equal( 'function' );
 
             emitter = await result;
-            const elapsed = Date.now() - started;
+            const elapsed = monotonicNow() - started;
 
-            expect( elapsed ).to.be.at.least( 25 );
+            expect( elapsed ).to.be.at.least( 30 - TIMER_FLOOR_MARGIN_MS );
             expect( emitter.getHealth().connected ).to.equal( false );
         } );
 

@@ -58,6 +58,8 @@ import mqtt from 'mqtt';
 import { jsonCodec } from '../../../codec/index.js';
 import { createEmitter } from '../emitter.js';
 import { startProxy, stopProxy } from '../../../test-utils/tcp-proxy.js';
+import { monotonicNow } from '../../../utils/clock/index.js';
+import { TIMER_FLOOR_MARGIN_MS } from '../../../test/timer-floor.js';
 
 const MQTT_BROKER_DIRECT = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
 const PROXY_PORT         = 11883;
@@ -584,19 +586,21 @@ describe( 'MQTT Emitter Hardening — broker outage and window overflow', functi
         const captured = await subscribeAndCollect( TOPIC, jsonCodec, ID_CAPACITY );
         activeSubscriber = captured.subscriber;
 
-        const t0 = Date.now();
+        const t0 = monotonicNow();
         activeEmitter = await createEmitter( {
             brokerUrl: PROXY_BROKER_URL,
             connectGraceMs: GRACE_MS,
             codec: jsonCodec,
             maxQueueSize: 5_000
         } );
-        const elapsed = Date.now() - t0;
+        const elapsed = monotonicNow() - t0;
         const emitter = activeEmitter;
 
         // Bounded: the factory waited its budget, not the 30 s connect
-        // timeout. The upper bound is generous for CI scheduling noise.
-        expect( elapsed, 'grace must run its full budget' ).to.be.at.least( GRACE_MS - 20 );
+        // timeout. The floor is the budget less the early-fire margin
+        // (see timer-floor.js). The upper bound is generous for CI
+        // scheduling noise.
+        expect( elapsed, 'grace must run its full budget' ).to.be.at.least( GRACE_MS - TIMER_FLOOR_MARGIN_MS );
         expect( elapsed, 'grace must stay bounded on a dead broker' ).to.be.below( 5_000 );
         expect( emitter.getHealth().connected ).to.equal( false );
 
