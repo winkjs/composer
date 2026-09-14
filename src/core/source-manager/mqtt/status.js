@@ -102,9 +102,9 @@
  *   2. Counters are plain JS numbers: exact to 2^53. At one million
  *      messages per second that is ~285 years of uptime — not the
  *      binding constraint.
- *   3. The per-record line bound paces on the wall clock (the shared
- *      line-rate helper). A clock step can only move when a summary
- *      prints, never what the health rules decide.
+ *   3. The per-record line bound paces on the stopwatch clock too
+ *      (the shared line-rate helper), so a wall-clock step moves
+ *      neither a summary nor what the health rules decide.
  *
  * @see src/core/source-manager/mqtt/client.js - The transport wiring
  * @see ADR-018 - lifecycle phases, status shapes, error codes

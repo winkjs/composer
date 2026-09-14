@@ -466,9 +466,10 @@ describe( 'MQTT Source Status Reporter — the facade lines (ADR-028)', function
     } );
 
     it( 'after a quiet minute, the next decode failure prints the summary of the counted ones, then a full line', function () {
-        // The line bound paces on the wall clock; the reporter keeps
-        // its own injected clock.
-        const wallClock = sinon.useFakeTimers( { toFake: [ 'Date' ] } );
+        // The line bound paces on the stopwatch; the reporter keeps
+        // its own injected clock. Only the two clocks are faked, so
+        // the timers stay real.
+        const stopwatch = sinon.useFakeTimers( { toFake: [ 'Date', 'performance' ] } );
         const { reporter } = runningReporter();
         primeRing( reporter );
 
@@ -476,7 +477,7 @@ describe( 'MQTT Source Status Reporter — the facade lines (ADR-028)', function
         reporter.decodeFailed( 'bad payload 2' );
         reporter.decodeFailed( 'bad payload 3' );
         reporter.decodeFailed( 'bad payload 4' );
-        wallClock.tick( 60_000 );
+        stopwatch.tick( 60_000 );
         reporter.decodeFailed( 'bad payload 5' );
 
         const lines = linesOf( warnSpy, 'DECODE_ERROR' );
@@ -486,7 +487,7 @@ describe( 'MQTT Source Status Reporter — the facade lines (ADR-028)', function
     } );
 
     it( 'transform faults are summarised on their own count, apart from decode faults', function () {
-        const wallClock = sinon.useFakeTimers( { toFake: [ 'Date' ] } );
+        const stopwatch = sinon.useFakeTimers( { toFake: [ 'Date', 'performance' ] } );
         const { reporter } = runningReporter();
         primeRing( reporter );
 
@@ -494,7 +495,7 @@ describe( 'MQTT Source Status Reporter — the facade lines (ADR-028)', function
         reporter.transformFailed( 'transform threw: boom 2' );
         reporter.transformFailed( 'transform threw: boom 3' );
         reporter.decodeFailed( 'bad payload' );
-        wallClock.tick( 60_000 );
+        stopwatch.tick( 60_000 );
         reporter.transformFailed( 'transform threw: boom 4' );
 
         const lines = linesOf( warnSpy, 'CALLBACK_FAILED' );

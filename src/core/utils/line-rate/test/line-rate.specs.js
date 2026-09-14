@@ -137,6 +137,23 @@ describe( 'line bound — the first lines in full, then one summary per interval
         expect( printSummary.firstCall.calledBefore( printFull.thirdCall ) ).to.equal( true );
     } );
 
+    it( 'a step in the wall clock neither ends the episode nor prints a summary', function () {
+        // Two in full, one counted. Then the wall clock jumps an hour
+        // while the stopwatch stands still: NTP corrected the board, or
+        // an operator set the time. The bound reads the stopwatch, so
+        // the next event is still inside the interval: counted, not
+        // printed, and no summary.
+        report( 'v', 'p' );
+        report( 'v', 'p' );
+        report( 'v', 'p' );
+        clock.setSystemTime( NOW + ( 3600 * 1000 ) );
+
+        report( 'v', 'p' );
+
+        expect( printFull.callCount ).to.equal( 2 );
+        expect( printSummary.called ).to.equal( false );
+    } );
+
     it( 'a quiet interval just short of the bound keeps the episode open', function () {
         report( 'v', 'p' );
         report( 'v', 'p' );

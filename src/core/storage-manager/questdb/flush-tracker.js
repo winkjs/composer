@@ -89,6 +89,7 @@
 
 import { logger } from '../../logger/index.js';
 import { flushDeadlineFor } from './resolve-options.js';
+import { monotonicNow } from '../../utils/clock/index.js';
 
 /**
  * Consecutive failed flushes that read as red delivery. One failure is
@@ -164,7 +165,9 @@ const createFlushTracker = function ( settings, isShuttingDown ) {
     };
 
     // The episode behind the restored line: when delivery left green,
-    // and the rows reported lost since. Both reset when green returns.
+    // on the stopwatch so a step in the wall clock cannot change the
+    // length (ADR-018), and the rows reported lost since. Both reset
+    // when green returns.
     let episodeStartedAt = null;
     let episodeRowsLost = 0;
 
@@ -175,9 +178,8 @@ const createFlushTracker = function ( settings, isShuttingDown ) {
      *
      * @param {'green'|'yellow'|'red'} after - The state just entered
      * @param {Error|null} err - The failure that caused the edge, null on restore
-     * @param {number} now - The settle time
      */
-    const printEdge = function ( after, err, now ) {
+    const printEdge = function ( after, err ) {
         if ( after === 'yellow' ) {
             logger.warn( `winkComposer/questdb: delivery degraded, 1 flush failed [DELIVERY_HEALTH]: ${err.message}` );
             return;
@@ -191,7 +193,7 @@ const createFlushTracker = function ( settings, isShuttingDown ) {
             logger.error( `winkComposer/questdb: delivery red${cause} [DELIVERY_HEALTH]: ${err.message}` );
             return;
         }
-        const seconds = Math.round( ( now - episodeStartedAt ) / 1000 );
+        const seconds = Math.round( ( monotonicNow() - episodeStartedAt ) / 1000 );
         logger.warn(
             `winkComposer/questdb: delivery restored after ${seconds} s, ${episodeRowsLost} row(s) reported lost meanwhile [DELIVERY_HEALTH]`
         );
@@ -205,17 +207,16 @@ const createFlushTracker = function ( settings, isShuttingDown ) {
      *
      * @param {'green'|'yellow'|'red'} before - The state before the change
      * @param {Error|null} err - The failure behind the edge, null on a landing or resume
-     * @param {number} now - The instant of the change
      */
-    const stepLadder = function ( before, err, now ) {
+    const stepLadder = function ( before, err ) {
         const after = deliveryStateOf( ledger );
         if ( after === before ) {
             return;
         }
         if ( before === 'green' ) {
-            episodeStartedAt = now;
+            episodeStartedAt = monotonicNow();
         }
-        printEdge( after, err, now );
+        printEdge( after, err );
         if ( after === 'green' ) {
             episodeStartedAt = null;
             episodeRowsLost = 0;
@@ -249,7 +250,7 @@ const createFlushTracker = function ( settings, isShuttingDown ) {
             ledger.lastFlushError = { message: err.message, abandoned, at: now };
             episodeRowsLost += rows;
         }
-        stepLadder( before, err, now );
+        stepLadder( before, err );
     }; // recordOutcome()
 
     /**
@@ -264,7 +265,7 @@ const createFlushTracker = function ( settings, isShuttingDown ) {
     const recordPause = function ( pausedSince, finding ) {
         const before = deliveryStateOf( ledger );
         ledger.pausedSince = pausedSince;
-        stepLadder( before, { message: finding }, pausedSince );
+        stepLadder( before, { message: finding } );
     }; // recordPause()
 
     /**
@@ -273,13 +274,11 @@ const createFlushTracker = function ( settings, isShuttingDown ) {
      * the restored line comes then. Red to green happens when a flush
      * landed during the pause, and the restored line prints here, after
      * the gate's resumed line.
-     *
-     * @param {number} now - The resume instant
      */
-    const recordResume = function ( now ) {
+    const recordResume = function () {
         ledger.pausedSince = null;
         if ( deliveryStateOf( ledger ) === 'green' ) {
-            stepLadder( 'red', null, now );
+            stepLadder( 'red', null );
         }
     }; // recordResume()
 

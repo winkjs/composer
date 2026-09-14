@@ -174,6 +174,7 @@ import { wrapCallback } from '../../utils/callback-guard/index.js';
 import { createFlushTracker, deliveryStateOf } from './flush-tracker.js';
 import { createDeliveryGate } from './delivery-gate.js';
 import { createShutdownDrain } from './shutdown-drain.js';
+import { monotonicNow } from '../../utils/clock/index.js';
 
 // ============================================================================
 // HOT-PATH SINGLETONS
@@ -423,8 +424,10 @@ const createFlushEngine = function ( { sender, persistPlans, settings, onDeliver
         // interval of streak. The restored edge line closes the episode
         // with its totals. The ledger already counts this loss, and
         // single flight means no other flush settles before this report.
+        // The cadence reads the stopwatch, so a step in the wall clock
+        // cannot print a summary early or late (ADR-018).
         const finding = ( probed === null ) ? '' : `; probe: ${probed.finding}`;
-        const now = Date.now();
+        const now = monotonicNow();
         if ( ledger.lastFlushAt !== landedAtLastReport ) {
             // A flush landed since the last report: a new episode.
             landedAtLastReport = ledger.lastFlushAt;

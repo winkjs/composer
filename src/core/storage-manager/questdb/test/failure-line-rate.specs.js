@@ -157,6 +157,22 @@ describe( 'QuestDB per-flush loss lines are bounded during a streak (ADR-029)', 
         await storage.shutdown().catch( () => undefined );
     } );
 
+    it( 'a step in the wall clock does not print a summary early', async function () {
+        mockSender.flush.rejects( new Error( 'disk full' ) );
+        const storage = await makeStorageNoHandler();
+
+        // Two full lines, then 28 counted losses. The wall clock then
+        // jumps an hour while the stopwatch stands still. The next
+        // loss is 31 s into the streak on the stopwatch, so no summary.
+        await failEverySecond( storage, 30 );
+        clock.setSystemTime( NOW + ( 3600 * 1000 ) );
+        await failEverySecond( storage, 1 );
+
+        expect( linesWith( errorSpy, '[DELIVERY_FAILED]' ) ).to.deep.equal( [ FULL_LINE, FULL_LINE ] );
+
+        await storage.shutdown().catch( () => undefined );
+    } );
+
     it( 'a landed flush ends the episode, and the next episode prints its first two in full again', async function () {
         mockSender.flush.rejects( new Error( 'disk full' ) );
         mockSender.flush.onCall( 3 ).resolves( false );

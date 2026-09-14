@@ -60,6 +60,7 @@
  */
 
 import { logger } from '../../logger/index.js';
+import { monotonicNow } from '../../utils/clock/index.js';
 
 /**
  * Builds the gate.
@@ -71,15 +72,19 @@ import { logger } from '../../logger/index.js';
  * @param {function} parts.heldRows - `() => number`, rows the engine holds in the buffer now
  * @param {function} parts.isShuttingDown - `() => boolean`
  * @param {function} parts.onPause - `( pausedSince, finding ) => void`, tells the ledger delivery paused
- * @param {function} parts.onResume - `( now ) => void`, tells the ledger delivery resumed, after the resumed line
+ * @param {function} parts.onResume - `() => void`, tells the ledger delivery resumed, after the resumed line
  * @returns {{afterFailure: function, tick: function, isPaused: function}}
  */
 const createDeliveryGate = function ( { probe, heldRows, isShuttingDown, onPause, onResume } ) {
     // `paused` stops the engine's row and timer triggers. `pausedSince`
-    // is the time the pause began, for health and the resume line.
-    // `probing` keeps one probe in flight at a time.
+    // is the wall-clock time the pause began, for health, where it
+    // leaves the process. `pausedAt` is the same instant on the
+    // stopwatch, for the resume line's length, so a step in the wall
+    // clock cannot change it (ADR-018). `probing` keeps one probe in
+    // flight at a time.
     let paused = false;
     let pausedSince = null;
+    let pausedAt = 0;
     let probing = false;
 
     /**
@@ -125,6 +130,7 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown, onPause
     const pause = function ( finding ) {
         paused = true;
         pausedSince = Date.now();
+        pausedAt = monotonicNow();
         // The ledger's ladder turns red on the pause and prints its red
         // edge first, so the log reads red, then paused.
         onPause( pausedSince, finding );
@@ -139,14 +145,13 @@ const createDeliveryGate = function ( { probe, heldRows, isShuttingDown, onPause
      * @param {string} finding - The probe's operator text
      */
     const resume = function ( finding ) {
-        const now = Date.now();
-        const seconds = Math.round( ( now - pausedSince ) / 1000 );
+        const seconds = Math.round( ( monotonicNow() - pausedAt ) / 1000 );
         paused = false;
         pausedSince = null;
         logger.warn(
             `winkComposer/questdb: delivery resumed after ${seconds} s, ${heldRows()} row(s) held [CIRCUIT_OPEN]: ${finding}`
         );
-        onResume( now );
+        onResume();
     }; // resume()
 
     /**

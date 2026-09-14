@@ -11,8 +11,10 @@
  * is a run of events with no quiet interval between them. A quiet
  * interval ends the episode, so the next event prints in full again.
  *
- * The bound is a pure closure over a wall-clock timestamp. It holds no
- * timer, so it needs no shutdown and cannot keep a process alive. The
+ * The bound is a pure closure over a stopwatch reading, `monotonicNow`,
+ * so a step in the wall clock can neither end an episode nor move a
+ * summary (ADR-018, long-running stability). It holds no timer, so it
+ * needs no shutdown and cannot keep a process alive. The
  * summary prints at the next event after the interval, never on a
  * timer. So a burst that stops shows its count only when the next
  * episode starts, or never. That is the accepted trade for zero timers.
@@ -22,6 +24,8 @@
  * The adapter's default row-skip warning and the callback guard's
  * `CALLBACK_FAILED` line both use this module.
  */
+
+import { monotonicNow } from '../clock/index.js';
 
 /**
  * Creates a line bound.
@@ -73,7 +77,7 @@ export const createLineBound = function ( { fullLines, intervalMs, printFull, pr
     let lastArg3;
 
     return function ( arg1, arg2, arg3 ) {
-        const now = Date.now();
+        const now = monotonicNow();
         if ( ( now - lastEventAt ) >= intervalMs ) {
             // A quiet interval ended the previous episode.
             if ( counted > 0 ) {

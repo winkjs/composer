@@ -71,9 +71,10 @@ describe( 'mqtt emitter — connection lines', function () {
     }; // makeEmitter()
 
     beforeEach( function () {
-        // Only the wall clock is fake. The mock's acks and the drain's
-        // timers stay real, so shutdown in afterEach runs unchanged.
-        clock = sinon.useFakeTimers( { now: NOW, toFake: [ 'Date' ] } );
+        // Only the two clocks are fake, the wall clock and the
+        // stopwatch. The mock's acks and the drain's timers stay real,
+        // so shutdown in afterEach runs unchanged.
+        clock = sinon.useFakeTimers( { now: NOW, toFake: [ 'Date', 'performance' ] } );
         mock = makeMockClient();
         warnSpy = sinon.stub( console, 'warn' );
         errorSpy = sinon.stub( console, 'error' );
@@ -124,6 +125,20 @@ describe( 'mqtt emitter — connection lines', function () {
         mock.eventHandlers.connect();
         expect( lines( warnSpy ) ).to.deep.equal( [ restoredLine( 5 ) ] );
         expect( emitter.getHealth().stats.reconnects ).to.equal( 0 );
+    } );
+
+    it( 'the restored line measures the outage on the stopwatch, not the wall clock', async function () {
+        emitter = await makeEmitter();
+        mock.eventHandlers.connect();
+        mock.eventHandlers.offline();
+
+        // The wall clock jumps an hour during the outage while the
+        // stopwatch advances 5 s. The line reads 5 s.
+        clock.setSystemTime( NOW + ( 3600 * 1000 ) );
+        clock.tick( 5000 );
+        mock.eventHandlers.connect();
+
+        expect( lines( warnSpy ) ).to.deep.equal( [ restoredLine( 5 ) ] );
     } );
 
     it( 'bounds the attempt lines: two in full, then one summary a minute', async function () {

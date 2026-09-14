@@ -185,6 +185,29 @@ describe( 'QuestDB health edges (ADR-029)', function () {
             await storage.shutdown();
         } );
 
+        it( 'a step in the wall clock during the episode does not change the restored line', async function () {
+            mockSender.flush.onCall( 0 ).rejects( new Error( 'disk full' ) );
+            mockSender.flush.onCall( 1 ).rejects( new Error( 'disk full' ) );
+            mockSender.flush.onCall( 2 ).resolves( false );
+            const storage = await makeStorage();
+
+            // The same fail, fail, land as above, with the wall clock
+            // jumping an hour in the middle while the stopwatch stands
+            // still. The episode is measured on the stopwatch: 5 s.
+            await flushOnce( storage );
+            await clock.tickAsync( 2000 );
+            clock.setSystemTime( NOW + ( 3600 * 1000 ) );
+            await flushOnce( storage );
+            await clock.tickAsync( 3000 );
+            await flushOnce( storage );
+
+            expect( linesWith( warnSpy, 'delivery restored' ) ).to.deep.equal( [
+                'winkComposer/questdb: delivery restored after 5 s, 4 row(s) reported lost meanwhile [DELIVERY_HEALTH]'
+            ] );
+
+            await storage.shutdown();
+        } );
+
         it( 'abandon, land: red then restored, and no degraded line', async function () {
             mockSender.flush.onCall( 0 ).returns( NEVER_SETTLES );
             mockSender.flush.onCall( 1 ).resolves( false );

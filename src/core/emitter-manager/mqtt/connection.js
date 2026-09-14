@@ -29,7 +29,8 @@
  * cannot: a refused connect, a connack timeout, or a keepalive
  * timeout just before the link drops. The shared line bound keeps
  * two per episode in full, then one summary a minute, so a night of
- * retries every five seconds costs a few lines an hour. A stream
+ * retries every five seconds costs one line a minute, not one every
+ * five seconds. A stream
  * error without a `code` never reaches this handler; the library
  * swallows it (mqtt.js 5.15.1, `client.js:294-305`).
  *
@@ -47,6 +48,7 @@
 import { logger } from '../../logger/index.js';
 import { nameWarningMessage } from '../../utils/address/index.js';
 import { createLineBound } from '../../utils/line-rate/index.js';
+import { monotonicNow } from '../../utils/clock/index.js';
 import { invalidConfig } from './resolve-config.js';
 
 /** How many failed attempts per episode print in full. */
@@ -155,8 +157,9 @@ const createAttemptLine = function () {
  */
 export const attachConnectionHandlers = function ( { client, state, debug, redactedBrokerUrl } ) {
     // The link edge. `linkDown` is true from an offline event until
-    // the next connack; `downSince` is when that outage began, for
-    // the restored line.
+    // the next connack; `downSince` is when that outage began on the
+    // stopwatch, for the restored line, so a step in the wall clock
+    // cannot change the length it names (ADR-018).
     let linkDown = false;
     let downSince = 0;
     const attemptFailed = createAttemptLine();
@@ -173,7 +176,7 @@ export const attachConnectionHandlers = function ( { client, state, debug, redac
         state.hasConnectedOnce = true;
         if ( linkDown ) {
             linkDown = false;
-            const seconds = Math.round( ( Date.now() - downSince ) / 1000 );
+            const seconds = Math.round( ( monotonicNow() - downSince ) / 1000 );
             logger.warn(
                 `winkComposer/mqttEmitter: broker connection restored after ${seconds} s, ${state.unacked} message(s) in flight [DELIVERY_HEALTH]`
             );
@@ -192,7 +195,7 @@ export const attachConnectionHandlers = function ( { client, state, debug, redac
             return;
         }
         linkDown = true;
-        downSince = Date.now();
+        downSince = monotonicNow();
         logger.error( `winkComposer/mqttEmitter: broker offline, ${state.unacked} message(s) in flight [DELIVERY_HEALTH]` );
     } );
 

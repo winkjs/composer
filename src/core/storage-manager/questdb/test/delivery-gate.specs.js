@@ -88,6 +88,36 @@ describe( 'QuestDB delivery gate — release before report (ADR-029)', function 
         expect( report.calledOnce ).to.equal( true );
     } );
 
+    it( 'the resumed line measures the pause on the stopwatch, not the wall clock', async function () {
+        // Only the two clocks are fake, so `settle()` keeps its real
+        // setImmediate. The wall clock jumps an hour during the pause
+        // while the stopwatch advances 5 s. The line reads 5 s.
+        const clock = sinon.useFakeTimers( { now: 1735500000000, toFake: [ 'Date', 'performance' ] } );
+        const warnStub = sinon.stub( console, 'warn' );
+        try {
+            probe.run.resolves( { ok: false } );
+            gate.afterFailure( () => undefined, () => undefined );
+            await settle();
+            expect( gate.isPaused() ).to.equal( true );
+
+            clock.setSystemTime( 1735500000000 + ( 3600 * 1000 ) );
+            clock.tick( 5000 );
+            probe.run.resolves( { ok: true } );
+            const resumed = await gate.tick();
+
+            expect( resumed ).to.equal( true );
+            const resumedLine = warnStub.getCalls()
+                .map( ( call ) => String( call.args[ 0 ] ) )
+                .find( ( line ) => line.includes( 'delivery resumed' ) );
+            expect( resumedLine ).to.equal(
+                'winkComposer/questdb: delivery resumed after 5 s, 0 row(s) held [CIRCUIT_OPEN]: 127.0.0.1:9000 answers'
+            );
+        } finally {
+            warnStub.restore();
+            clock.restore();
+        }
+    } );
+
     it( 'while a probe is running, the guard is released before the finding-less report', function () {
         probe.run.returns( new Promise( () => undefined ) );
         gate.afterFailure( () => undefined, () => undefined );
