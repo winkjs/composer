@@ -28,6 +28,162 @@
   always names its replacement.
 -->
 
+# [Delivery truth for QuestDB](https://github.com/winkjs/composer/releases/tag/0.7.0)
+## Version 0.7.0 — September 15, 2026
+
+### 💥 Breaking
+
+- `localhost` is refused in every adapter address: `ilpUrl`, `pgUrl`,
+  `brokerUrl`, and the variables `QUESTDB_ILP_URL`, `QUESTDB_PG_URL`,
+  and `MQTT_BROKER_URL`. The name can stand for two addresses, and a
+  service may answer on only one. A flow that uses it fails at
+  definition with `INVALID_CONFIG`. A variable that uses it stops the
+  process at import. The QuestDB defaults move from `localhost` to
+  `127.0.0.1:9000` and `127.0.0.1:8812`. Action: write the literal
+  address, `127.0.0.1`. `pgUrl` and `brokerUrl` also take a bracketed
+  IPv6 literal such as `[::1]:8812`. `ilpUrl` does not, because the
+  QuestDB client cannot read one.
+- `maxBufSize` now sets the client's byte ceiling, `max_buf_size`. It
+  used to set the initial buffer size, `init_buf_size`. Action: use
+  the new `initBufSize` for the old meaning.
+- The QuestDB `onDeliveryFailure` report has a new shape. The handler
+  now receives `( err, { trigger, rowsLost, abandoned, probe } )`,
+  once per failed send. `trigger` is `rows`, `timer`, or `recovery`.
+  The old keys `idleFlush` and `recovery` are gone. Action: read
+  `trigger` instead.
+- `handle.shutdown()` now rejects when a sink loses buffered data at
+  drain, with the sink's error, `err.code`, and `err.dropped.count`.
+  It used to resolve over the loss, so a process could exit 0 over
+  lost rows. Action: catch the rejection when your program calls
+  `shutdown()` itself. The signal path exits 1 over the same loss.
+- The MQTT emitter factory, when called directly, now always returns
+  a promise, and a configuration error rejects it with
+  `INVALID_CONFIG`. It used to return the handle at once at
+  `connectGraceMs: 0` and throw. Flows are unaffected. Action:
+  `await` the factory and catch the rejection.
+- A custom emitter's handle must have `flush()`, as a storage handle
+  already must. Wiring refuses a handle without it. Action: add
+  `flush()`. A trivial emitter can resolve at once.
+
+### ✨ Features
+
+- Composer starts every QuestDB send itself, and the client's own
+  trigger is off. A write that fills the buffer to `flushRows` starts
+  a send at once, and a timer sends whatever is buffered every
+  `flushIntervalMs`. One send runs at a time, so health and pressure
+  report exact counts.
+- Four new QuestDB options, each with a `QUESTDB_*` variable:
+  `flushRows`, `flushIntervalMs`, `bufferCeilingRows`, and
+  `flushDeadlineMs`. When the rows buffered plus the rows in flight
+  reach the ceiling, `write()` refuses new rows with `STORAGE_FULL`.
+  The ceiling defaults to ten times `flushRows` and must be at least
+  twice it.
+- Every send has a deadline, and delivery pauses while QuestDB is
+  unreachable. After a failed or abandoned send, the adapter probes
+  `ilpUrl`. While the probe fails, delivery stays paused and each
+  interval probes again. When one passes, a single send carries
+  everything held. So a restart costs only the batch on the wire when
+  the port closed. Before, a 30-second restart lost every row written
+  during it.
+- `getHealth()` on the QuestDB adapter now reads delivery. One failed
+  send reads `yellow`. Two in a row, one abandoned, or a pause read
+  `red` with `connected: false`. The next delivered send reads
+  `green`. Five fields join the report: `consecutiveFlushFailures`,
+  `lastFlushAt`, `lastFlushError`, `pausedSince`, and
+  `abandonedFlushes`.
+- Each change of delivery state prints one line, with or without an
+  `onDeliveryFailure` handler. The codes are `DELIVERY_HEALTH` for
+  the ladder, `CIRCUIT_OPEN` for a pause or resume, and
+  `STORAGE_FULL` for shedding. Nothing repeats while a state
+  persists. The restored line names the outage length and the rows
+  reported lost.
+- The QuestDB transport fails fast by default. `stdlibHttp: true`
+  (`QUESTDB_STDLIB_HTTP=on`) selects the client's standard-library
+  HTTP transport, whose requests always end. The client's own
+  default, undici, retries a refused connection without end. A send
+  into a stopped server then hung and held the process open. New
+  `requestTimeout` (`QUESTDB_REQUEST_TIMEOUT`) and `initBufSize`
+  (`QUESTDB_INIT_BUF_SIZE`) join the schema.
+- The QuestDB adapter checks `pgUrl` and `ilpUrl` at setup, with one
+  TCP connect per address the name resolves to. An address that does
+  not answer throws `TRANSPORT_UNREACHABLE`, and the message lists
+  each address with its result. Every adapter warns once per address,
+  with `ADDRESS_IS_NAME`, on any host name.
+- The MQTT source prints one line at every change of its health, with
+  or without an `onStatus` handler. Yellow prints at `warn`, red at
+  `error`, and the return to green at `warn` with the episode length.
+- Every repeating fault line is bounded: two lines in full per
+  episode, then one summary a minute. That covers `DELIVERY_FAILED`,
+  `CALLBACK_FAILED`, `CONNECT_FAILED`, the QuestDB default
+  `onWarning`, and the MQTT source's decode and transform faults. A
+  dead sensor that sends NaN all night costs two lines, then one a
+  minute.
+- The MQTT emitter prints one `DELIVERY_HEALTH` line per change of
+  the broker link. `onCritical` fires once when pressure climbs past
+  80% and re-arms below 66%. Both MQTT adapters add a random share of
+  up to 20% to the reconnect period, drawn once at startup. So a
+  fleet that lost one broker does not retry in step.
+- The handbook gains sections on the address rule, MQTT client
+  names, and the limits of the MQTT source. It also covers the yield
+  rule for tight loops and the QuestDB delivery lines.
+
+### 🐛 Fixes
+
+- A dead QuestDB endpoint no longer loses rows in silence while
+  health reads green. In a long soak run, `localhost` stopped
+  resolving to the answering address after 32 hours. The write path
+  was then lost for four hours with no report. The refusal, the
+  probes, the deadlines, and the delivery ladder above close it
+  together.
+- A flow with several `persistIf` nodes on one storage built the
+  adapter once per node. Each orphan kept a timer, an HTTP agent, and
+  a sender for the life of the process. The storage is now built once.
+- `.source()`, `.emitter()`, and `.storage()` now throw
+  `INVALID_CONFIG` when an adapter's schema rejects a config, in place
+  of a plain error with no code.
+- The QuestDB red health line waited for a failed send that a paused
+  delivery never starts. A pause is now the red edge, so the lines
+  read degraded, red, paused, resumed, restored.
+- An empty recovery send after a mid-row throw stamped a delivery
+  that never happened, so health read green over a poison write. It
+  now stays red.
+- The MQTT source's `stop()` could leave the socket open, so a pending
+  connect or a hung broker held the process. The socket now detaches
+  at once, or a timer destroys it at the deadline. The MQTT emitter's
+  shutdown got the same fix.
+- Two MQTT sources started in the same millisecond got the same
+  generated client name, and the broker disconnected the older one.
+  The name now carries a random part.
+- An MQTT emitter `options.type` of `'constructor'` could poison the
+  connection through the expiry table's prototype. The table has no
+  prototype now.
+- Durations now read a stopwatch clock that a wall-clock step cannot
+  move. Before, an NTP step after boot could fire the MQTT source's
+  30-second red early. It could also expire every dedup entry at
+  once, or report an hour for a five-second outage.
+- A decode failure on the MQTT source reports the topic and the byte
+  count, never the payload text, which a parser's message can echo.
+- A dedup id that is not a string now bypasses the cache and counts
+  in `dedupBypassed`.
+- `tablePrefix` must be an identifier, because QuestDB reads the
+  unquoted table name as one token.
+- The environment validator printed `QUESTDBRETRYTIMEOUT` for
+  `QUESTDB_RETRY_TIMEOUT` in its error line.
+- The handbook said the MQTT emitter keeps a persistent session. The
+  session has been clean in every public release, and the page now
+  says so.
+
+### ⚙️ Updates
+
+- Five QuestDB options are deprecated and will be removed in 0.8.0:
+  `flushMode`, `idleFlushAfterMs`, `idleFlushCheckMs`, `autoFlushRows`,
+  and `autoFlushIntervalMs`, with their `QUESTDB_*` variables. Until
+  then `autoFlushRows` maps to `flushRows`, and `idleFlushCheckMs`
+  maps to `flushIntervalMs`. The other three are accepted and ignored.
+  Setup prints one `DEPRECATED_OPTION` line naming the keys in use.
+- `@questdb/nodejs-client` is pinned to `~4.2.0`. The adapter depends
+  on the client's retry lists and timeouts.
+
 # [Routable logs and contained faults](https://github.com/winkjs/composer/releases/tag/0.6.0)
 ## Version 0.6.0 — September 1, 2026
 
