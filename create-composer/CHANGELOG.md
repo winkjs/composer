@@ -32,6 +32,22 @@
   option always names its replacement.
 -->
 
+# [New projects start on composer 0.7.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.2)
+## Version 0.2.2 — September 15, 2026
+
+Bundled templates pin `@winkjs/composer` 0.7.0.
+
+### ⚙️ Updates
+
+- Scaffolded projects now install composer 0.7.0. That release makes
+  the QuestDB write path report what it delivers. Composer starts
+  every send, delivery pauses while QuestDB is unreachable, and
+  health reads the outcome of every send. It also refuses
+  `localhost` in every adapter address. The hello-flow template
+  needs no change, because it runs without services. The composer
+  0.7.0 release notes carry the details.
+- The scaffolder's own code is unchanged from 0.2.1.
+
 # [New projects start on composer 0.6.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.1)
 ## Version 0.2.1 — September 1, 2026
 
