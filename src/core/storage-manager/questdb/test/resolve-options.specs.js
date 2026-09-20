@@ -12,12 +12,13 @@
  * - the edge-first defaults and the derived buffer ceiling;
  * - the deadline of one flush, computed from the rows it carries unless
  *   the operator fixed it;
- * - the precedence order: explicit new key, explicit legacy key, new
- *   environment variable, legacy environment variable, default;
+ * - the precedence order: explicit key, environment variable, default;
  * - the one relation it enforces: the ceiling is never below the
  *   threshold.
  *
- * The deprecation report is covered in `deprecated-options.specs.js`.
+ * The five legacy keys of 0.7.0 are gone since 0.8.0 (ADR-029 item
+ * 10). The resolver never sees them: the schema refuses them as
+ * unknown keys before setup, pinned in `config-schema.specs.js`.
  */
 
 import { expect } from 'chai';
@@ -46,7 +47,7 @@ const BASE_ENV = {
 describe( 'resolveOptions — defaults', function () {
 
     it( 'uses the edge-first defaults when nothing is supplied', function () {
-        const { settings } = resolveOptions( {}, BASE_ENV );
+        const settings = resolveOptions( {}, BASE_ENV );
 
         expect( settings.flushRows ).to.equal( 5000 );
         expect( settings.flushIntervalMs ).to.equal( 1000 );
@@ -59,14 +60,14 @@ describe( 'resolveOptions — defaults', function () {
     } );
 
     it( 'takes ilpUrl and pgUrl from the environment when the config omits them', function () {
-        const { settings } = resolveOptions( {}, BASE_ENV );
+        const settings = resolveOptions( {}, BASE_ENV );
 
         expect( settings.ilpUrl ).to.equal( '127.0.0.1:9000' );
         expect( settings.pgUrl ).to.equal( '127.0.0.1:8812' );
     } );
 
     it( 'lets explicit ilpUrl and pgUrl win over the environment', function () {
-        const { settings } = resolveOptions(
+        const settings = resolveOptions(
             { ilpUrl: '10.0.0.5:9000', pgUrl: '10.0.0.5:8812' },
             BASE_ENV
         );
@@ -78,7 +79,7 @@ describe( 'resolveOptions — defaults', function () {
     it( 'passes the callbacks, partitionBy, maxBufSize and retryTimeout through', function () {
         const onWarning = function () {};
         const onDeliveryFailure = function () {};
-        const { settings } = resolveOptions( {
+        const settings = resolveOptions( {
             onWarning,
             onDeliveryFailure,
             partitionBy: 'HOUR',
@@ -94,7 +95,7 @@ describe( 'resolveOptions — defaults', function () {
     } );
 
     it( 'takes maxBufSize and retryTimeout from the environment when the config omits them', function () {
-        const { settings } = resolveOptions( {}, {
+        const settings = resolveOptions( {}, {
             ...BASE_ENV,
             questdbMaxBufSize: 2097152,
             questdbRetryTimeout: 20000
@@ -104,20 +105,22 @@ describe( 'resolveOptions — defaults', function () {
         expect( settings.retryTimeout ).to.equal( 20000 );
     } );
 
-    it( 'reports no deprecations when only new keys are supplied', function () {
-        const { deprecations } = resolveOptions( {
+    it( 'returns the settings object itself, with no wrapper around it', function () {
+        const settings = resolveOptions( {
             flushRows: 100,
             flushIntervalMs: 200,
             bufferCeilingRows: 400,
             flushDeadlineMs: 3000
         }, BASE_ENV );
 
-        expect( deprecations ).to.deep.equal( [] );
+        expect( settings.flushRows ).to.equal( 100 );
+        expect( settings.flushIntervalMs ).to.equal( 200 );
+        expect( settings ).to.not.have.any.keys( 'settings', 'deprecations' );
     } );
 
     it( 'does not mutate the options or the environment objects', function () {
-        const options = { flushRows: 100, autoFlushRows: 50 };
-        const env = { ...BASE_ENV, questdbFlushMode: 'auto' };
+        const options = { flushRows: 100, bufferCeilingRows: 400 };
+        const env = { ...BASE_ENV, questdbStdlibHttp: 'off' };
         const optionsBefore = JSON.stringify( options );
         const envBefore = JSON.stringify( env );
 
@@ -136,32 +139,25 @@ describe( 'resolveOptions — defaults', function () {
 describe( 'resolveOptions — the derived ceiling', function () {
 
     it( 'derives the ceiling as ten times an explicit flushRows', function () {
-        const { settings } = resolveOptions( { flushRows: 50000 }, BASE_ENV );
+        const settings = resolveOptions( { flushRows: 50000 }, BASE_ENV );
 
         expect( settings.bufferCeilingRows ).to.equal( 500000 );
     } );
 
     it( 'derives the ceiling from a flushRows that came from the environment', function () {
-        const { settings } = resolveOptions( {}, { ...BASE_ENV, questdbFlushRows: 250 } );
+        const settings = resolveOptions( {}, { ...BASE_ENV, questdbFlushRows: 250 } );
 
         expect( settings.bufferCeilingRows ).to.equal( 2500 );
     } );
 
-    it( 'derives the ceiling from a flushRows that came from the legacy autoFlushRows', function () {
-        const { settings } = resolveOptions( { autoFlushRows: 300 }, BASE_ENV );
-
-        expect( settings.flushRows ).to.equal( 300 );
-        expect( settings.bufferCeilingRows ).to.equal( 3000 );
-    } );
-
     it( 'lets an explicit bufferCeilingRows win over the derivation', function () {
-        const { settings } = resolveOptions( { flushRows: 5000, bufferCeilingRows: 12500 }, BASE_ENV );
+        const settings = resolveOptions( { flushRows: 5000, bufferCeilingRows: 12500 }, BASE_ENV );
 
         expect( settings.bufferCeilingRows ).to.equal( 12500 );
     } );
 
     it( 'lets a bufferCeilingRows from the environment win over the derivation', function () {
-        const { settings } = resolveOptions( {}, { ...BASE_ENV, questdbBufferCeilingRows: 30000 } );
+        const settings = resolveOptions( {}, { ...BASE_ENV, questdbBufferCeilingRows: 30000 } );
 
         expect( settings.bufferCeilingRows ).to.equal( 30000 );
     } );
@@ -182,7 +178,7 @@ describe( 'flushDeadlineFor — the deadline of one flush', function () {
     // attempts around the window, plus the longest backoff (1 s). The
     // margin is 5 s. The numbers below are those constants by hand:
     // retry + 2 × ( request + 5 × rows ) + 1000 + 5000.
-    const DEFAULTS = resolveOptions( {}, BASE_ENV ).settings;
+    const DEFAULTS = resolveOptions( {}, BASE_ENV );
 
     it( 'gives a one-row flush about 36 seconds', function () {
         expect( flushDeadlineFor( 1, DEFAULTS ) ).to.equal( 36010 );
@@ -210,27 +206,27 @@ describe( 'flushDeadlineFor — the deadline of one flush', function () {
     } );
 
     it( 'grows with an explicit retryTimeout', function () {
-        const { settings } = resolveOptions( { retryTimeout: 30000 }, BASE_ENV );
+        const settings = resolveOptions( { retryTimeout: 30000 }, BASE_ENV );
 
         expect( flushDeadlineFor( 5000, settings ) ).to.equal( 106000 );
     } );
 
     it( 'grows with a retryTimeout from the environment', function () {
-        const { settings } = resolveOptions( {}, { ...BASE_ENV, questdbRetryTimeout: 2000 } );
+        const settings = resolveOptions( {}, { ...BASE_ENV, questdbRetryTimeout: 2000 } );
 
         expect( flushDeadlineFor( 1, settings ) ).to.equal( 28010 );
     } );
 
     it( 'grows with an explicit requestTimeout in place of the client default, twice over', function () {
         // 10000 retry + 2 × ( 30000 request + 5 transfer ) + 1000 backoff + 5000 margin.
-        const { settings } = resolveOptions( { requestTimeout: 30000 }, BASE_ENV );
+        const settings = resolveOptions( { requestTimeout: 30000 }, BASE_ENV );
 
         expect( flushDeadlineFor( 1, settings ) ).to.equal( 76010 );
     } );
 
     it( 'shrinks with both timeouts set short, from the environment', function () {
         // 1000 retry + 2 × ( 2000 request + 5 transfer ) + 1000 backoff + 5000 margin.
-        const { settings } = resolveOptions( {}, {
+        const settings = resolveOptions( {}, {
             ...BASE_ENV,
             questdbRetryTimeout: 1000,
             questdbRequestTimeout: 2000
@@ -240,14 +236,14 @@ describe( 'flushDeadlineFor — the deadline of one flush', function () {
     } );
 
     it( 'uses a fixed flushDeadlineMs for every flush, whatever its size', function () {
-        const { settings } = resolveOptions( { retryTimeout: 30000, flushDeadlineMs: 4000 }, BASE_ENV );
+        const settings = resolveOptions( { retryTimeout: 30000, flushDeadlineMs: 4000 }, BASE_ENV );
 
         expect( flushDeadlineFor( 1, settings ) ).to.equal( 4000 );
         expect( flushDeadlineFor( 50000, settings ) ).to.equal( 4000 );
     } );
 
     it( 'takes the fixed value from the environment too', function () {
-        const { settings } = resolveOptions( {}, { ...BASE_ENV, questdbFlushDeadlineMs: 6000 } );
+        const settings = resolveOptions( {}, { ...BASE_ENV, questdbFlushDeadlineMs: 6000 } );
 
         expect( settings.flushDeadlineMs ).to.equal( 6000 );
         expect( flushDeadlineFor( 50000, settings ) ).to.equal( 6000 );
@@ -262,7 +258,7 @@ describe( 'flushDeadlineFor — the deadline of one flush', function () {
 describe( 'resolveOptions — the transport settings (ADR-029)', function () {
 
     it( 'selects the standard-library transport by default, with no timeout or buffer sizes', function () {
-        const { settings } = resolveOptions( {}, BASE_ENV );
+        const settings = resolveOptions( {}, BASE_ENV );
 
         expect( settings.stdlibHttp ).to.equal( true );
         expect( settings.requestTimeout ).to.equal( undefined );
@@ -270,30 +266,30 @@ describe( 'resolveOptions — the transport settings (ADR-029)', function () {
     } );
 
     it( 'reads QUESTDB_STDLIB_HTTP as the words on and off', function () {
-        const off = resolveOptions( {}, { ...BASE_ENV, questdbStdlibHttp: 'off' } ).settings;
-        const on = resolveOptions( {}, { ...BASE_ENV, questdbStdlibHttp: 'on' } ).settings;
+        const off = resolveOptions( {}, { ...BASE_ENV, questdbStdlibHttp: 'off' } );
+        const on = resolveOptions( {}, { ...BASE_ENV, questdbStdlibHttp: 'on' } );
 
         expect( off.stdlibHttp ).to.equal( false );
         expect( on.stdlibHttp ).to.equal( true );
     } );
 
     it( 'lets an explicit stdlibHttp win over the environment, in both directions', function () {
-        const optOut = resolveOptions( { stdlibHttp: false }, { ...BASE_ENV, questdbStdlibHttp: 'on' } ).settings;
-        const optIn = resolveOptions( { stdlibHttp: true }, { ...BASE_ENV, questdbStdlibHttp: 'off' } ).settings;
+        const optOut = resolveOptions( { stdlibHttp: false }, { ...BASE_ENV, questdbStdlibHttp: 'on' } );
+        const optIn = resolveOptions( { stdlibHttp: true }, { ...BASE_ENV, questdbStdlibHttp: 'off' } );
 
         expect( optOut.stdlibHttp ).to.equal( false );
         expect( optIn.stdlibHttp ).to.equal( true );
     } );
 
     it( 'passes requestTimeout and initBufSize through from the config', function () {
-        const { settings } = resolveOptions( { requestTimeout: 2000, initBufSize: 65536 }, BASE_ENV );
+        const settings = resolveOptions( { requestTimeout: 2000, initBufSize: 65536 }, BASE_ENV );
 
         expect( settings.requestTimeout ).to.equal( 2000 );
         expect( settings.initBufSize ).to.equal( 65536 );
     } );
 
     it( 'takes requestTimeout and initBufSize from the environment when the config omits them', function () {
-        const { settings } = resolveOptions( {}, {
+        const settings = resolveOptions( {}, {
             ...BASE_ENV,
             questdbRequestTimeout: 3000,
             questdbInitBufSize: 131072
@@ -304,7 +300,7 @@ describe( 'resolveOptions — the transport settings (ADR-029)', function () {
     } );
 
     it( 'lets the config win over the environment for both', function () {
-        const { settings } = resolveOptions( { requestTimeout: 2000, initBufSize: 65536 }, {
+        const settings = resolveOptions( { requestTimeout: 2000, initBufSize: 65536 }, {
             ...BASE_ENV,
             questdbRequestTimeout: 3000,
             questdbInitBufSize: 131072
@@ -322,77 +318,50 @@ describe( 'resolveOptions — the transport settings (ADR-029)', function () {
 
 describe( 'resolveOptions — precedence', function () {
 
-    // The two settings with a legacy alias. Every layer gets a distinct
+    // The two settings with a default. Every layer gets a distinct
     // value, so the assertion can only pass when the right layer won.
-    const MAPPED_SETTINGS = [
-        {
-            setting: 'flushRows',
-            newKey: 'flushRows',
-            legacyKey: 'autoFlushRows',
-            newEnv: 'questdbFlushRows',
-            legacyEnv: 'questdbAutoFlushRows',
-            fallback: 5000
-        },
-        {
-            setting: 'flushIntervalMs',
-            newKey: 'flushIntervalMs',
-            legacyKey: 'idleFlushCheckMs',
-            newEnv: 'questdbFlushIntervalMs',
-            legacyEnv: 'questdbIdleFlushCheckMs',
-            fallback: 1000
-        }
+    const DEFAULTED_SETTINGS = [
+        { setting: 'flushRows', env: 'questdbFlushRows', fallback: 5000 },
+        { setting: 'flushIntervalMs', env: 'questdbFlushIntervalMs', fallback: 1000 }
     ];
 
-    MAPPED_SETTINGS.forEach( function ( row ) {
+    DEFAULTED_SETTINGS.forEach( function ( row ) {
 
         describe( row.setting, function () {
 
-            it( 'explicit new key wins over the legacy key and both environment values', function () {
-                const options = { [ row.newKey ]: 11, [ row.legacyKey ]: 22 };
-                const env = { ...BASE_ENV, [ row.newEnv ]: 33, [ row.legacyEnv ]: 44 };
+            it( 'explicit key wins over the environment value', function () {
+                const options = { [ row.setting ]: 11 };
+                const env = { ...BASE_ENV, [ row.env ]: 33 };
 
-                expect( resolveOptions( options, env ).settings[ row.setting ] ).to.equal( 11 );
+                expect( resolveOptions( options, env )[ row.setting ] ).to.equal( 11 );
             } );
 
-            it( 'explicit legacy key wins over both environment values', function () {
-                const options = { [ row.legacyKey ]: 22 };
-                const env = { ...BASE_ENV, [ row.newEnv ]: 33, [ row.legacyEnv ]: 44 };
+            it( 'environment variable wins over the default', function () {
+                const env = { ...BASE_ENV, [ row.env ]: 33 };
 
-                expect( resolveOptions( options, env ).settings[ row.setting ] ).to.equal( 22 );
-            } );
-
-            it( 'new environment variable wins over the legacy environment variable', function () {
-                const env = { ...BASE_ENV, [ row.newEnv ]: 33, [ row.legacyEnv ]: 44 };
-
-                expect( resolveOptions( {}, env ).settings[ row.setting ] ).to.equal( 33 );
-            } );
-
-            it( 'legacy environment variable wins over the default', function () {
-                const env = { ...BASE_ENV, [ row.legacyEnv ]: 44 };
-
-                expect( resolveOptions( {}, env ).settings[ row.setting ] ).to.equal( 44 );
+                expect( resolveOptions( {}, env )[ row.setting ] ).to.equal( 33 );
             } );
 
             it( 'the default applies when no layer supplies a value', function () {
-                expect( resolveOptions( {}, BASE_ENV ).settings[ row.setting ] ).to.equal( row.fallback );
+                expect( resolveOptions( {}, BASE_ENV )[ row.setting ] ).to.equal( row.fallback );
             } );
 
         } );
 
     } );
 
-    // The two settings without a legacy alias: explicit, environment,
-    // then the derivation.
+    // The two settings without a default: explicit, environment, then
+    // the derivation.
     it( 'bufferCeilingRows: explicit key wins over the environment', function () {
         const env = { ...BASE_ENV, questdbBufferCeilingRows: 30000 };
 
-        expect( resolveOptions( { bufferCeilingRows: 25000 }, env ).settings.bufferCeilingRows ).to.equal( 25000 );
+        expect( resolveOptions( { bufferCeilingRows: 25000 }, env ).bufferCeilingRows ).to.equal( 25000 );
     } );
 
     it( 'flushDeadlineMs: explicit key wins over the environment', function () {
         const env = { ...BASE_ENV, questdbFlushDeadlineMs: 6000 };
 
-        expect( resolveOptions( { flushDeadlineMs: 3000 }, env ).settings.flushDeadlineMs ).to.equal( 3000 );
+        expect( resolveOptions( { flushDeadlineMs: 3000 }, env ).flushDeadlineMs ).to.equal( 3000 );
     } );
 
 } );
@@ -410,7 +379,7 @@ describe( 'resolveOptions — the ceiling is never below twice the threshold', f
     // flight and one batch buffering (fresh-eyes review, 2026-09-08).
 
     it( 'accepts a ceiling of twice the threshold', function () {
-        const { settings } = resolveOptions( { flushRows: 5000, bufferCeilingRows: 10000 }, BASE_ENV );
+        const settings = resolveOptions( { flushRows: 5000, bufferCeilingRows: 10000 }, BASE_ENV );
 
         expect( settings.bufferCeilingRows ).to.equal( 10000 );
     } );
@@ -440,56 +409,6 @@ describe( 'resolveOptions — the ceiling is never below twice the threshold', f
         const env = { ...BASE_ENV, questdbBufferCeilingRows: 100 };
 
         expect( () => resolveOptions( {}, env ) ).to.throw( Error ).with.property( 'code', 'INVALID_CONFIG' );
-    } );
-
-    it( 'applies the check when the threshold came from the legacy autoFlushRows', function () {
-        expect( () => resolveOptions( { autoFlushRows: 600, bufferCeilingRows: 500 }, BASE_ENV ) )
-            .to.throw( Error ).with.property( 'code', 'INVALID_CONFIG' );
-    } );
-
-} );
-
-// ============================================================================
-// LEGACY KEYS THAT CHANGE NOTHING
-// ============================================================================
-
-describe( 'resolveOptions — legacy keys that are accepted and ignored', function () {
-
-    it( 'flushMode, idleFlushAfterMs and autoFlushIntervalMs change no setting', function () {
-        const withLegacy = resolveOptions( {
-            flushMode: 'manual',
-            idleFlushAfterMs: 5000,
-            autoFlushIntervalMs: 250
-        }, BASE_ENV ).settings;
-        const withoutLegacy = resolveOptions( {}, BASE_ENV ).settings;
-
-        expect( withLegacy ).to.deep.equal( withoutLegacy );
-    } );
-
-    it( 'the same three keys from the environment change no setting', function () {
-        const withLegacy = resolveOptions( {}, {
-            ...BASE_ENV,
-            questdbFlushMode: 'auto',
-            questdbIdleFlushAfterMs: 5000,
-            questdbAutoFlushIntervalMs: 250
-        } ).settings;
-        const withoutLegacy = resolveOptions( {}, BASE_ENV ).settings;
-
-        expect( withLegacy ).to.deep.equal( withoutLegacy );
-    } );
-
-    it( 'the settings object carries no legacy key', function () {
-        const { settings } = resolveOptions( {
-            flushMode: 'manual',
-            idleFlushAfterMs: 5000,
-            idleFlushCheckMs: 100,
-            autoFlushRows: 10,
-            autoFlushIntervalMs: 250
-        }, BASE_ENV );
-
-        expect( settings ).to.not.have.any.keys(
-            'flushMode', 'idleFlushAfterMs', 'idleFlushCheckMs', 'autoFlushRows', 'autoFlushIntervalMs'
-        );
     } );
 
 } );

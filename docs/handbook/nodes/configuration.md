@@ -489,11 +489,6 @@ flow('pipeline')
 | `ilpUrl` | string | `127.0.0.1:9000` | ILP endpoint for writes (`host:port`). A literal address or a name, never `localhost`. No IPv6 literal: the QuestDB client cannot read one |
 | `pgUrl` | string | `127.0.0.1:8812` | PostgreSQL endpoint for table creation (`host:port`). A literal address or a name, never `localhost`. `[::1]:8812` is accepted |
 | `tablePrefix` | string | asset class name | Prefix for table names (`{tablePrefix}_{insightType}`). Letters, digits, `_` and `$`, not starting with a digit: the same rule as an asset class name, because QuestDB reads the unquoted table name as one token |
-| `flushMode` | string | — | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored: composer owns every flush |
-| `idleFlushAfterMs` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
-| `idleFlushCheckMs` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `flushIntervalMs` |
-| `autoFlushRows` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `flushRows` |
-| `autoFlushIntervalMs` | number | — | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
 | `flushRows` | number | `5000` | Rows that start a send from inside the write. About 0.65 to 1.5 MB per request |
 | `flushIntervalMs` | number | `1000` | The send timer. Whatever is buffered is sent this often, so rows land within about a second |
 | `bufferCeilingRows` | number | 10 × `flushRows` | Most rows held in memory, counting a send in flight. Past it, a write is refused with `STORAGE_FULL`. This is the outage the adapter rides through without loss: 50 seconds at 1,000 rows a second, about 80 minutes at 10 rows a second. At least 2 × `flushRows`, one batch in flight and one buffering; a smaller value fails setup |
@@ -509,11 +504,7 @@ flow('pipeline')
 
 The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_PG_URL` environment variables when omitted. See [Environment Variables](../environment-variables.md).
 
-**Deprecated keys.** The five keys marked deprecated still work in 0.7.0. At setup the adapter prints one `warn` line naming every deprecated key in use, marked `DEPRECATED_OPTION`:
-
-```text
-winkComposer/questdb: deprecated storage options in use [DEPRECATED_OPTION]: autoFlushRows maps to flushRows; flushMode is ignored; all five deprecated keys are removed in 0.8.0
-```
+**Removed keys.** Five keys from releases before 0.7.0 are gone since 0.8.0: `flushMode`, `idleFlushAfterMs`, `idleFlushCheckMs`, `autoFlushRows`, and `autoFlushIntervalMs`. A flow that still sets one fails at definition with `INVALID_CONFIG` and a message such as `Unknown property 'flushMode'`. Replace `autoFlushRows` with `flushRows` and `idleFlushCheckMs` with `flushIntervalMs`. Delete the other three: composer owns every flush, so a flush mode and an idle timer have nothing left to set.
 
 **Addresses.** Write both as a literal IP address. `localhost` is refused when the flow is defined, with `INVALID_CONFIG` and a message that names the literal to use. The name stands for two addresses, and the service may answer on only one.
 

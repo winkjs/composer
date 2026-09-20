@@ -104,11 +104,6 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 |----------|---------|--------------|
 | `QUESTDB_ILP_URL` | `127.0.0.1:9000` | Write path — ILP over HTTP; `host:port`, a literal address or a name, never `localhost`, no IPv6 literal |
 | `QUESTDB_PG_URL` | `127.0.0.1:8812` | Read and table-creation path — Postgres wire; `host:port`, a literal address or a name, never `localhost` |
-| `QUESTDB_FLUSH_MODE` | unset | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored: composer owns every flush |
-| `QUESTDB_IDLE_FLUSH_AFTER_MS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
-| `QUESTDB_IDLE_FLUSH_CHECK_MS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `QUESTDB_FLUSH_INTERVAL_MS` |
-| `QUESTDB_AUTO_FLUSH_ROWS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Until then it maps to `QUESTDB_FLUSH_ROWS` |
-| `QUESTDB_AUTO_FLUSH_INTERVAL_MS` | unset | Deprecated in 0.7.0, removed in 0.8.0. Accepted until then and ignored |
 | `QUESTDB_STDLIB_HTTP` | unset | The HTTP transport, `on` or `off`. `on` is Node's standard library, the default; `off` is the client's undici transport. See [Configuration](./nodes/configuration.md#storage) for what the choice costs |
 | `QUESTDB_REQUEST_TIMEOUT` | unset | How long one send may wait for an answer, milliseconds (the client uses 10 seconds when unset) |
 | `QUESTDB_RETRY_TIMEOUT` | unset | How long the client retries a failed send, milliseconds (the client uses 10 seconds when unset) |
@@ -121,6 +116,8 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 | `QUESTDB_DATABASE` | `qdb` | Database name |
 | `QUESTDB_USER` | `admin` | User |
 | `QUESTDB_PASSWORD` | `quest` | Password; may be empty for passwordless auth |
+
+Five variables from releases before 0.7.0 are refused at import since 0.8.0: `QUESTDB_FLUSH_MODE`, `QUESTDB_IDLE_FLUSH_AFTER_MS`, `QUESTDB_IDLE_FLUSH_CHECK_MS`, `QUESTDB_AUTO_FLUSH_ROWS`, and `QUESTDB_AUTO_FLUSH_INTERVAL_MS`. A process that finds one set stops with exit code 1, and the failure line names the variable and what to do instead. Replace `QUESTDB_AUTO_FLUSH_ROWS` with `QUESTDB_FLUSH_ROWS` and `QUESTDB_IDLE_FLUSH_CHECK_MS` with `QUESTDB_FLUSH_INTERVAL_MS`. Delete the other three. An empty value counts as set, so a leftover line in an environment file is found too.
 
 ### Addresses: a literal, never `localhost`
 

@@ -12,13 +12,14 @@
  * from the values that won, so a fixed default here would fight a
  * threshold raised in the flow's config.
  *
- * The three legacy flush variables, `QUESTDB_FLUSH_MODE`,
- * `QUESTDB_IDLE_FLUSH_AFTER_MS` and `QUESTDB_IDLE_FLUSH_CHECK_MS`, also
- * carry a value only when set. They used to have fixed defaults. With
- * the defaults in place, the adapter's deprecation line would have
- * named them for every operator, including the ones who never set
- * them. Their validators accept undefined and otherwise keep the rules
- * they had.
+ * The five flush variables 0.7.0 deprecated are gone since 0.8.0
+ * (ADR-029 item 10): `QUESTDB_FLUSH_MODE`, `QUESTDB_IDLE_FLUSH_AFTER_MS`,
+ * `QUESTDB_IDLE_FLUSH_CHECK_MS`, `QUESTDB_AUTO_FLUSH_ROWS` and
+ * `QUESTDB_AUTO_FLUSH_INTERVAL_MS`. A deployment that still sets one
+ * stops at import, the way a wrong value does, and the failure line
+ * names the variable and what to do instead. Ignoring the variable
+ * would let an operator believe a setting took effect when it did not.
+ * The cases below pin that refusal for each of the five.
  *
  * The label case pins a fix. The validation runner used to build the
  * label by uppercasing the field name and then looking for a
@@ -46,11 +47,40 @@ const TRANSPORT_INT_VARS = [
     { field: 'questdbInitBufSize', envVar: 'QUESTDB_INIT_BUF_SIZE', sample: '65536' }
 ];
 
-// The legacy variables and one value each of them accepted before.
-const LEGACY_VARS = [
-    { field: 'questdbFlushMode', envVar: 'QUESTDB_FLUSH_MODE', sample: 'manual' },
-    { field: 'questdbIdleFlushAfterMs', envVar: 'QUESTDB_IDLE_FLUSH_AFTER_MS', sample: '0' },
-    { field: 'questdbIdleFlushCheckMs', envVar: 'QUESTDB_IDLE_FLUSH_CHECK_MS', sample: '250' }
+// The five variables removed in 0.8.0: the field 0.7.0 parsed each one
+// into, one value 0.7.0 accepted, and the action the failure line
+// must name.
+const REMOVED_VARS = [
+    {
+        field: 'questdbFlushMode',
+        envVar: 'QUESTDB_FLUSH_MODE',
+        sample: 'manual',
+        action: 'delete it, composer owns every flush'
+    },
+    {
+        field: 'questdbIdleFlushAfterMs',
+        envVar: 'QUESTDB_IDLE_FLUSH_AFTER_MS',
+        sample: '0',
+        action: 'delete it, composer owns every flush'
+    },
+    {
+        field: 'questdbIdleFlushCheckMs',
+        envVar: 'QUESTDB_IDLE_FLUSH_CHECK_MS',
+        sample: '250',
+        action: 'use QUESTDB_FLUSH_INTERVAL_MS'
+    },
+    {
+        field: 'questdbAutoFlushRows',
+        envVar: 'QUESTDB_AUTO_FLUSH_ROWS',
+        sample: '5000',
+        action: 'use QUESTDB_FLUSH_ROWS'
+    },
+    {
+        field: 'questdbAutoFlushIntervalMs',
+        envVar: 'QUESTDB_AUTO_FLUSH_INTERVAL_MS',
+        sample: '2000',
+        action: 'delete it, composer owns every flush'
+    }
 ];
 
 /**
@@ -152,48 +182,58 @@ describe( 'env-vars — QuestDB transport settings (ADR-029)', function () {
 
 } );
 
-describe( 'env-vars — the legacy QuestDB flush variables carry a value only when set (ADR-029)', function () {
+describe( 'env-vars — the five QuestDB flush variables removed in 0.8.0 are refused at import (ADR-029)', function () {
 
-    it( 'the three fields are undefined when their variables are unset', async function () {
+    it( 'ENV_VARS carries no field for any of them', async function () {
         const { ENV_VARS } = await import( '../env-vars.js' );
 
-        LEGACY_VARS.forEach( function ( row ) {
-            expect( ENV_VARS ).to.have.property( row.field );
-            expect( ENV_VARS[ row.field ], row.field ).to.equal( undefined );
+        REMOVED_VARS.forEach( function ( row ) {
+            expect( ENV_VARS, row.field ).to.not.have.property( row.field );
         } );
     } );
 
-    LEGACY_VARS.forEach( function ( row ) {
+    REMOVED_VARS.forEach( function ( row ) {
 
-        it( `still accepts ${row.envVar} when set`, async function () {
+        it( `refuses ${row.envVar} by name and says what to do instead`, async function () {
             const result = await runWithEnv( {
                 NODE_ENV: 'test',
                 [ row.envVar ]: row.sample
             } );
-            expect( result.code ).to.equal( 0 );
-            expect( result.stderr ).to.equal( '' );
+            expect( result.code ).to.equal( 1 );
+            expect( result.stderr ).to.include( 'winkComposer/envVars: Environment variable validation failed:' );
+            expect( result.stderr ).to.include( `   - ${row.envVar}: Removed in 0.8.0; ${row.action}` );
         } );
 
     } );
 
-    describe( 'the validators behind them', function () {
-
-        it( 'questdbFlushMode accepts undefined and still rejects an unknown mode', async function () {
-            const { validators } = await import( '../env-vars.js' );
-
-            expect( validators.questdbFlushMode( undefined ) ).to.equal( null );
-            expect( validators.questdbFlushMode( 'batch' ) ).to.include( 'Must be one of' );
+    it( 'refuses an empty value too, so a leftover line in an env file is found', async function () {
+        const result = await runWithEnv( {
+            NODE_ENV: 'test',
+            QUESTDB_FLUSH_MODE: ''
         } );
+        expect( result.code ).to.equal( 1 );
+        expect( result.stderr ).to.include( 'QUESTDB_FLUSH_MODE: Removed in 0.8.0; delete it, composer owns every flush' );
+    } );
 
-        it( 'nonNegativeIntOrUndefined accepts undefined and zero, rejects a negative or non-numeric value', async function () {
-            const { validators } = await import( '../env-vars.js' );
-
-            expect( validators.nonNegativeIntOrUndefined( undefined ) ).to.equal( null );
-            expect( validators.nonNegativeIntOrUndefined( 0, '0' ) ).to.equal( null );
-            expect( validators.nonNegativeIntOrUndefined( -5, '-5' ) ).to.include( 'Must be non-negative integer, got: "-5"' );
-            expect( validators.nonNegativeIntOrUndefined( NaN, 'soon' ) ).to.include( 'Must be non-negative integer, got: "soon"' );
+    it( 'names every removed variable that is set, in one failure block', async function () {
+        const env = { NODE_ENV: 'test' };
+        REMOVED_VARS.forEach( function ( row ) {
+            env[ row.envVar ] = row.sample;
         } );
+        const result = await runWithEnv( env );
 
+        expect( result.code ).to.equal( 1 );
+        REMOVED_VARS.forEach( function ( row ) {
+            expect( result.stderr, row.envVar ).to.include( `   - ${row.envVar}: Removed in 0.8.0; ${row.action}` );
+        } );
+        expect( result.stderr.split( 'Environment variable validation failed' ) ).to.have.lengthOf( 2 );
+    } );
+
+    it( 'the validators that served the removed variables are gone', async function () {
+        const { validators } = await import( '../env-vars.js' );
+
+        expect( validators ).to.not.have.property( 'questdbFlushMode' );
+        expect( validators ).to.not.have.property( 'nonNegativeIntOrUndefined' );
     } );
 
 } );

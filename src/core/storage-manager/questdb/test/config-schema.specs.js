@@ -10,7 +10,11 @@
  * - Required fields (ilpUrl, pgUrl)
  * - Optional fields validation
  * - Function validator (onWarning)
- * - Enum validators (flushMode, partitionBy)
+ * - Enum validators (partitionBy)
+ * - The five keys 0.7.0 deprecated are unknown keys since 0.8.0:
+ *   `flushMode`, `idleFlushAfterMs`, `idleFlushCheckMs`, `autoFlushRows`
+ *   and `autoFlushIntervalMs`. A flow that still sets one fails at
+ *   definition, the same way a typo does (ADR-029 item 10).
  * - Unknown-key rejection via `_propertyNames`: typos fail
  *   loudly at DSL time instead of being silently ignored. Two keys are
  *   deliberately NOT accepted: `assetClass` (wire-storages injects it from
@@ -72,11 +76,6 @@ describe( 'QuestDB Storage — configSchema Export', function () {
     } );
 
     it( 'configSchema has optional field definitions', function () {
-        expect( configSchema ).to.have.property( 'flushMode' );
-        expect( configSchema ).to.have.property( 'idleFlushAfterMs' );
-        expect( configSchema ).to.have.property( 'idleFlushCheckMs' );
-        expect( configSchema ).to.have.property( 'autoFlushRows' );
-        expect( configSchema ).to.have.property( 'autoFlushIntervalMs' );
         // The flush settings composer owns (ADR-029).
         expect( configSchema ).to.have.property( 'flushRows' );
         expect( configSchema ).to.have.property( 'flushIntervalMs' );
@@ -186,110 +185,39 @@ describe( 'QuestDB Storage — pgUrl Validation', function () {
 
 } );
 
-describe( 'QuestDB Storage — flushMode Validation', function () {
+describe( 'QuestDB Storage — the five keys removed in 0.8.0 (ADR-029 item 10)', function () {
 
-    it( 'accepts flushMode="auto"', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            flushMode: 'auto'
+    // Each key with a value 0.7.0 accepted. The schema no longer lists
+    // them, so the unknown-key check refuses each one by name. The
+    // replacement is in the CHANGELOG and the handbook, not here.
+    const REMOVED_KEYS = [
+        { key: 'flushMode', value: 'auto' },
+        { key: 'idleFlushAfterMs', value: 5000 },
+        { key: 'idleFlushCheckMs', value: 1000 },
+        { key: 'autoFlushRows', value: 1000 },
+        { key: 'autoFlushIntervalMs', value: 1000 }
+    ];
+
+    REMOVED_KEYS.forEach( function ( row ) {
+
+        it( `refuses ${row.key} as an unknown property`, function () {
+            const result = validate( {
+                ...minimalValidConfig,
+                [ row.key ]: row.value
+            } );
+
+            expect( result.valid ).to.equal( false );
+            expect( result.errors ).to.have.lengthOf( 1 );
+            expect( result.errors[ 0 ] ).to.include( `Unknown property '${row.key}'` );
         } );
 
-        expect( result.valid ).to.equal( true );
     } );
 
-    it( 'accepts flushMode="manual"', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            flushMode: 'manual'
+    it( 'the schema declares none of the five keys', function () {
+        REMOVED_KEYS.forEach( function ( row ) {
+            expect( configSchema, row.key ).to.not.have.property( row.key );
+            expect( configSchema._propertyNames, row.key ).to.not.include( row.key );
         } );
-
-        expect( result.valid ).to.equal( true );
-    } );
-
-    it( 'rejects invalid flushMode', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            flushMode: 'immediate'
-        } );
-
-        expect( result.valid ).to.equal( false );
-        expect( result.errors[ 0 ] ).to.include( 'flushMode' );
-    } );
-
-    it( 'rejects flushMode as number', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            flushMode: 1
-        } );
-
-        expect( result.valid ).to.equal( false );
-    } );
-
-} );
-
-describe( 'QuestDB Storage — Timing Fields Validation', function () {
-
-    it( 'accepts valid idleFlushAfterMs', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            idleFlushAfterMs: 5000
-        } );
-
-        expect( result.valid ).to.equal( true );
-    } );
-
-    it( 'rejects idleFlushAfterMs as zero', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            idleFlushAfterMs: 0
-        } );
-
-        expect( result.valid ).to.equal( false );
-    } );
-
-    it( 'rejects idleFlushAfterMs as negative', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            idleFlushAfterMs: -1000
-        } );
-
-        expect( result.valid ).to.equal( false );
-    } );
-
-    it( 'rejects idleFlushAfterMs as float', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            idleFlushAfterMs: 5000.5
-        } );
-
-        expect( result.valid ).to.equal( false );
-    } );
-
-    it( 'accepts valid idleFlushCheckMs', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            idleFlushCheckMs: 1000
-        } );
-
-        expect( result.valid ).to.equal( true );
-    } );
-
-    it( 'accepts valid autoFlushRows', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            autoFlushRows: 1000
-        } );
-
-        expect( result.valid ).to.equal( true );
-    } );
-
-    it( 'accepts valid autoFlushIntervalMs', function () {
-        const result = validate( {
-            ...minimalValidConfig,
-            autoFlushIntervalMs: 1000
-        } );
-
-        expect( result.valid ).to.equal( true );
     } );
 
 } );
@@ -513,11 +441,8 @@ describe( 'QuestDB Storage — Full Config Validation', function () {
         const result = validate( {
             ilpUrl: 'questdb.local:9000',
             pgUrl: 'questdb.local:8812',
-            flushMode: 'manual',
-            idleFlushAfterMs: 5000,
-            idleFlushCheckMs: 1000,
-            autoFlushRows: 1000,
-            autoFlushIntervalMs: 1000,
+            flushRows: 1000,
+            flushIntervalMs: 1000,
             maxBufSize: 65536,
             retryTimeout: 30000,
             partitionBy: 'DAY',
@@ -539,26 +464,22 @@ describe( 'QuestDB Storage — throwIfInvalid', function () {
     } );
 
     it( 'throws TypeError for invalid config', function () {
-        const result = validate( { flushMode: 'invalid' } );
+        const result = validate( { partitionBy: 'invalid' } );
 
         expect( () => result.throwIfInvalid( 'questdb' ) ).to.throw( TypeError );
     } );
 
     it( 'includes nodeType in error message', function () {
-        const result = validate( { flushMode: 'invalid' } );
+        const result = validate( { partitionBy: 'invalid' } );
 
         expect( () => result.throwIfInvalid( 'flow/storage:questdb' ) )
             .to.throw( /flow\/storage:questdb/ );
     } );
 
     it( 'includes validation errors in message', function () {
-        const result = validate( { flushMode: 'invalid' } );
+        const result = validate( { partitionBy: 'invalid' } );
 
-        try {
-            result.throwIfInvalid( 'questdb' );
-        } catch ( e ) {
-            expect( e.message ).to.include( 'flushMode' );
-        }
+        expect( () => result.throwIfInvalid( 'questdb' ) ).to.throw( /partitionBy/ );
     } );
 
 } );
@@ -612,11 +533,13 @@ describe( 'QuestDB Storage — Unknown-Key Rejection', function () {
             ilpUrl: '127.0.0.1:9000',
             pgUrl: '127.0.0.1:8812',
             tablePrefix: 'plantA',
-            flushMode: 'manual',
-            idleFlushAfterMs: 5000,
-            idleFlushCheckMs: 1000,
-            autoFlushRows: 1000,
-            autoFlushIntervalMs: 2000,
+            flushRows: 1000,
+            flushIntervalMs: 2000,
+            bufferCeilingRows: 10000,
+            flushDeadlineMs: 30000,
+            stdlibHttp: true,
+            requestTimeout: 10000,
+            initBufSize: 65536,
             maxBufSize: 65536,
             retryTimeout: 5000,
             partitionBy: 'DAY',

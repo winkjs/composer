@@ -914,19 +914,6 @@ describe( 'env-vars', function () {
             expect( v.hostPort( 'just-a-host' ) ).to.include( 'Must be host:port' );
         } );
 
-        // questdbFlushMode
-        it( 'questdbFlushMode: returns null for auto', function () {
-            expect( v.questdbFlushMode( 'auto' ) ).to.equal( null );
-        } );
-
-        it( 'questdbFlushMode: returns null for manual', function () {
-            expect( v.questdbFlushMode( 'manual' ) ).to.equal( null );
-        } );
-
-        it( 'questdbFlushMode: rejects invalid mode', function () {
-            expect( v.questdbFlushMode( 'batch' ) ).to.include( 'Must be one of' );
-        } );
-
         // positiveIntOrUndefined
         it( 'positiveIntOrUndefined: returns null for undefined', function () {
             expect( v.positiveIntOrUndefined( undefined ) ).to.equal( null );
@@ -986,22 +973,6 @@ describe( 'env-vars', function () {
 
     describe( 'QuestDB optional env var set branches', function () {
 
-        it( 'parses QUESTDB_AUTO_FLUSH_ROWS when set', async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                QUESTDB_AUTO_FLUSH_ROWS: '5000'
-            } );
-            expect( result.code ).to.equal( 0 );
-        } );
-
-        it( 'parses QUESTDB_AUTO_FLUSH_INTERVAL_MS when set', async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                QUESTDB_AUTO_FLUSH_INTERVAL_MS: '2000'
-            } );
-            expect( result.code ).to.equal( 0 );
-        } );
-
         it( 'parses QUESTDB_MAX_BUF_SIZE when set', async function () {
             const result = await runWithEnv( {
                 NODE_ENV: 'test',
@@ -1016,41 +987,6 @@ describe( 'env-vars', function () {
                 QUESTDB_RETRY_TIMEOUT: '30000'
             } );
             expect( result.code ).to.equal( 0 );
-        } );
-
-        it( 'rejects invalid QUESTDB_AUTO_FLUSH_ROWS', async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                QUESTDB_AUTO_FLUSH_ROWS: '-1'
-            } );
-            expect( result.code ).to.equal( 1 );
-            expect( result.stderr ).to.include( 'Must be positive integer' );
-        } );
-
-        it( 'rejects invalid QUESTDB_IDLE_FLUSH_AFTER_MS', async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                QUESTDB_IDLE_FLUSH_AFTER_MS: '-5'
-            } );
-            expect( result.code ).to.equal( 1 );
-            expect( result.stderr ).to.include( 'Must be non-negative integer' );
-        } );
-
-        it( 'parses QUESTDB_FLUSH_MODE when set', async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                QUESTDB_FLUSH_MODE: 'manual'
-            } );
-            expect( result.code ).to.equal( 0 );
-        } );
-
-        it( 'rejects invalid QUESTDB_FLUSH_MODE', async function () {
-            const result = await runWithEnv( {
-                NODE_ENV: 'test',
-                QUESTDB_FLUSH_MODE: 'batch'
-            } );
-            expect( result.code ).to.equal( 1 );
-            expect( result.stderr ).to.include( 'Must be one of' );
         } );
 
         it( 'rejects invalid QUESTDB_ILP_URL format', async function () {

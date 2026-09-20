@@ -24,11 +24,10 @@
  * every flush start and settle. Pressure is the fill of the buffer
  * against `bufferCeilingRows`, the point where writes are refused.
  *
- * The five legacy keys (`flushMode`, `idleFlushAfterMs`,
- * `idleFlushCheckMs`, `autoFlushRows`, `autoFlushIntervalMs`) are
- * still accepted. One `DEPRECATED_OPTION` line names them at setup.
- * That line and the mapped keys are pinned in
- * deprecated-options.specs.js.
+ * The five legacy keys of 0.7.0 (`flushMode`, `idleFlushAfterMs`,
+ * `idleFlushCheckMs`, `autoFlushRows`, `autoFlushIntervalMs`) are gone
+ * since 0.8.0. The schema refuses them as unknown keys, pinned in
+ * config-schema.specs.js.
  *
  * Every case here was written before the engine and proven red.
  */
@@ -234,19 +233,6 @@ describe( 'QuestDB flush engine (ADR-029)', function () {
             await clock.tickAsync( 1000 );
 
             expect( mockSender.flush.called ).to.equal( false );
-
-            await storage.shutdown();
-        } );
-
-        it( 'the legacy idleFlushCheckMs sets the interval', async function () {
-            clock = sinon.useFakeTimers();
-            sinon.stub( console, 'warn' );
-            const storage = await makeStorage( { idleFlushCheckMs: 250 } );
-
-            storage.write( 'monitoring', GOOD_MSG, 'p1' );
-            await clock.tickAsync( 250 );
-
-            expect( mockSender.flush.callCount ).to.equal( 1 );
 
             await storage.shutdown();
         } );

@@ -116,12 +116,13 @@
  * `consecutiveFlushFailures`, `lastFlushAt`, and `lastFlushError`.
  * `flush-engine.js` documents the derivation.
  *
- * Deprecated options (ADR-029, removed in 0.8.0). `autoFlushRows` maps
- * to `flushRows` and `idleFlushCheckMs` maps to `flushIntervalMs`.
- * `flushMode`, `idleFlushAfterMs` and `autoFlushIntervalMs` are
- * accepted and ignored. The same holds for their `QUESTDB_*`
- * variables. Setup prints one `DEPRECATED_OPTION` line naming every
- * legacy key in use and what happened to it.
+ * The five legacy flush keys of 0.7.0 (`flushMode`, `idleFlushAfterMs`,
+ * `idleFlushCheckMs`, `autoFlushRows`, `autoFlushIntervalMs`) are gone
+ * since 0.8.0 (ADR-029 item 10). The schema refuses each one as an
+ * unknown key at flow definition, with `INVALID_CONFIG`. `env-vars.js`
+ * refuses their `QUESTDB_*` variables at import. `autoFlushRows`
+ * became `flushRows` and `idleFlushCheckMs` became `flushIntervalMs`.
+ * The other three have no replacement: composer owns every flush.
  *
  * `err.code` vocabulary (per-adapter; ADR-018 has each adapter document
  * its own codes in this header):
@@ -258,8 +259,6 @@
  *   interval. Remediation: the endpoint is not taking rows; read the
  *   `CIRCUIT_OPEN` and `DELIVERY_HEALTH` lines beside it, and raise
  *   `bufferCeilingRows` when a longer outage must be ridden through.
- * - `DEPRECATED_OPTION` — one `logger.warn` line at setup naming the
- *   legacy keys in use (see Deprecated options above).
  * - `ADDRESS_IS_NAME`  — `ilpUrl` or `pgUrl` is a name other than
  *   `localhost`. One `logger.warn` line per field at setup, before any
  *   socket opens (ADR-030). A name is allowed and the adapter
@@ -356,13 +355,12 @@ import { Sender } from '@questdb/nodejs-client';
 import pg from 'pg';
 
 import { ENV_VARS } from '../../env-vars.js';
-import { logger } from '../../logger/index.js';
 import { validators } from '../../utils/validate/index.js';
 import { probeAddress, describeProbe } from '../../utils/address/probe.js';
 import { buildPersistPlans } from './persist-plan.js';
 import { ensureTables } from './ensure-tables.js';
 import { assertColumnFacts } from './assert-columns.js';
-import { resolveOptions, deprecationMessage } from './resolve-options.js';
+import { resolveOptions } from './resolve-options.js';
 import {
     isAllowedIlpUrl,
     isAllowedPgUrl,
@@ -505,9 +503,8 @@ const openTransport = async function ( { SenderClass, senderConfig, ilpUrl, stdl
  * Create QuestDB storage adapter.
  *
  * The options are resolved by `resolve-options.js` (config over
- * environment over default; legacy aliases mapped or ignored). Only the
- * keys that reach the engine are listed here; the resolver documents
- * the rest.
+ * environment over default). Only the keys that reach the engine are
+ * listed here; the resolver documents the rest.
  *
  * @param {Object} assetClass - Asset class definition with columns and insightTypes
  * @param {string} tablePrefix - Prefix for table names (typically assetClass.name)
@@ -536,16 +533,11 @@ const openTransport = async function ( { SenderClass, senderConfig, ilpUrl, stdl
 const createQuestDBStorage = async function ( assetClass, tablePrefix, options, deps = {} ) {
     // Options become settings here, once (ADR-029). A ceiling below the
     // threshold fails setup inside the resolver with INVALID_CONFIG.
-    const { settings, deprecations } = resolveOptions( options, ENV_VARS );
+    const settings = resolveOptions( options, ENV_VARS );
     const {
         ilpUrl, pgUrl, stdlibHttp, requestTimeout, retryTimeout, initBufSize, maxBufSize,
         partitionBy, onWarning, onDeliveryFailure
     } = settings;
-
-    // One line names every legacy key in use and what happened to it.
-    if ( deprecations.length > 0 ) {
-        logger.warn( deprecationMessage( deprecations ) );
-    }
 
     // Runtime validation — required from either DSL config or ENV_VARS.
     // Per ADR-018, setup-time throws carry classified err.code.
@@ -716,11 +708,6 @@ const configSchema = {
         'ilpUrl',
         'pgUrl',
         'tablePrefix',
-        'flushMode',
-        'idleFlushAfterMs',
-        'idleFlushCheckMs',
-        'autoFlushRows',
-        'autoFlushIntervalMs',
         'flushRows',
         'flushIntervalMs',
         'bufferCeilingRows',
@@ -759,40 +746,6 @@ const configSchema = {
         validator: validators.identifier,
         error: 'tablePrefix must use letters, digits, _ and $ only, and not start with a digit ' +
             '(defaults to assetClass.name when omitted)'
-    },
-    // The five legacy keys (deprecated, ADR-029; removed in 0.8.0). They
-    // keep their old validation so an existing flow still passes the
-    // schema. The option resolver maps or ignores them and setup prints
-    // one DEPRECATED_OPTION line.
-    flushMode: {
-        type: 'string',
-        required: false,
-        validator: validators.oneOf( [ 'auto', 'manual' ] ),
-        error: 'flushMode must be "auto" or "manual" (deprecated: composer owns every flush)'
-    },
-    idleFlushAfterMs: {
-        type: 'number',
-        required: false,
-        validator: validators.positiveInteger,
-        error: 'idleFlushAfterMs must be a positive integer (deprecated: ignored)'
-    },
-    idleFlushCheckMs: {
-        type: 'number',
-        required: false,
-        validator: validators.positiveInteger,
-        error: 'idleFlushCheckMs must be a positive integer (deprecated: use flushIntervalMs)'
-    },
-    autoFlushRows: {
-        type: 'number',
-        required: false,
-        validator: validators.positiveInteger,
-        error: 'autoFlushRows must be a positive integer (deprecated: use flushRows)'
-    },
-    autoFlushIntervalMs: {
-        type: 'number',
-        required: false,
-        validator: validators.positiveInteger,
-        error: 'autoFlushIntervalMs must be a positive integer (deprecated: ignored)'
     },
     // The flush settings composer owns (ADR-029). The relation between
     // the ceiling and the threshold is checked by the option resolver
