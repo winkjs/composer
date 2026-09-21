@@ -123,7 +123,7 @@ Reproduce them from a repo clone. `node benchmark/compare.js 10 500` reports the
 
 Write a flow once and run it anywhere Node.js does — an industrial-grade Raspberry Pi, a production server, a Kubernetes cluster. Each asset's state is isolated, so a fault in one stays in one. Messages [queue locally](docs/handbook/resilience.md) when the network drops and drain cleanly on reconnect. Shutdown is ordered and deterministic: sources close first, storage last. A misconfigured flow fails when you define it, not in production — unknown options, output collisions, and bad triggers are all caught at definition time.
 
-The test suite holds over 6,500 tests behind a 99.5% coverage gate. Integration tests run against real Mosquitto and QuestDB services, not mocks. Every npm release carries SLSA provenance — a public, verifiable link from the package back to the exact source commit and the build that produced it. `npm audit signatures` verifies it.
+The test suite holds over 7,000 tests behind a 100% coverage gate on statements, branches, functions, and lines. Integration tests run against real Mosquitto and QuestDB services, not mocks. Every npm release carries SLSA provenance — a public, verifiable link from the package back to the exact source commit and the build that produced it. `npm audit signatures` verifies it.
 
 The documentation also relates winkComposer's concepts to two industrial standards: [ISO 13374](https://composer.winkjs.org/docs/reference/iso-13374-mapping) for condition monitoring, the [NIST AI RMF](https://composer.winkjs.org/docs/reference/nist-ai-rmf-mapping) for AI risk management.
 

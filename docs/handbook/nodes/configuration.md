@@ -504,7 +504,7 @@ flow('pipeline')
 
 The `ilpUrl` and `pgUrl` values fall back to the `QUESTDB_ILP_URL` and `QUESTDB_PG_URL` environment variables when omitted. See [Environment Variables](../environment-variables.md).
 
-**Removed keys.** Five keys from releases before 0.7.0 are gone since 0.8.0: `flushMode`, `idleFlushAfterMs`, `idleFlushCheckMs`, `autoFlushRows`, and `autoFlushIntervalMs`. A flow that still sets one fails at definition with `INVALID_CONFIG` and a message such as `Unknown property 'flushMode'`. Replace `autoFlushRows` with `flushRows` and `idleFlushCheckMs` with `flushIntervalMs`. Delete the other three: composer owns every flush, so a flush mode and an idle timer have nothing left to set.
+**Removed keys.** Five keys that 0.7.0 deprecated are gone since 0.8.0: `flushMode`, `idleFlushAfterMs`, `idleFlushCheckMs`, `autoFlushRows`, and `autoFlushIntervalMs`. A flow that still sets one fails at definition with `INVALID_CONFIG` and a message such as `Unknown property 'flushMode'`. Replace `autoFlushRows` with `flushRows` and `idleFlushCheckMs` with `flushIntervalMs`. Delete the other three. Composer owns every flush, so a flush mode and an idle timer have nothing left to set.
 
 **Addresses.** Write both as a literal IP address. `localhost` is refused when the flow is defined, with `INVALID_CONFIG` and a message that names the literal to use. The name stands for two addresses, and the service may answer on only one.
 

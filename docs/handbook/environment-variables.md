@@ -111,13 +111,13 @@ Only tagged messages are filtered. Messages from publishers that don't stamp ids
 | `QUESTDB_MAX_BUF_SIZE` | unset | Largest size the client's send buffer may grow to, bytes (client default when unset) |
 | `QUESTDB_FLUSH_ROWS` | unset | Rows that start a send; the adapter uses 5000 when unset |
 | `QUESTDB_FLUSH_INTERVAL_MS` | unset | The send timer; the adapter uses 1000 when unset |
-| `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset, and never below twice `QUESTDB_FLUSH_ROWS` |
+| `QUESTDB_BUFFER_CEILING_ROWS` | unset | Most rows held in memory before writes are refused; ten times the flush rows when unset, and never below twice the flush rows in effect |
 | `QUESTDB_FLUSH_DEADLINE_MS` | unset | A fixed longest wait for one send; derived from the send's size when unset |
 | `QUESTDB_DATABASE` | `qdb` | Database name |
 | `QUESTDB_USER` | `admin` | User |
 | `QUESTDB_PASSWORD` | `quest` | Password; may be empty for passwordless auth |
 
-Five variables from releases before 0.7.0 are refused at import since 0.8.0: `QUESTDB_FLUSH_MODE`, `QUESTDB_IDLE_FLUSH_AFTER_MS`, `QUESTDB_IDLE_FLUSH_CHECK_MS`, `QUESTDB_AUTO_FLUSH_ROWS`, and `QUESTDB_AUTO_FLUSH_INTERVAL_MS`. A process that finds one set stops with exit code 1, and the failure line names the variable and what to do instead. Replace `QUESTDB_AUTO_FLUSH_ROWS` with `QUESTDB_FLUSH_ROWS` and `QUESTDB_IDLE_FLUSH_CHECK_MS` with `QUESTDB_FLUSH_INTERVAL_MS`. Delete the other three. An empty value counts as set, so a leftover line in an environment file is found too.
+Five variables that 0.7.0 deprecated are refused at import since 0.8.0: `QUESTDB_FLUSH_MODE`, `QUESTDB_IDLE_FLUSH_AFTER_MS`, `QUESTDB_IDLE_FLUSH_CHECK_MS`, `QUESTDB_AUTO_FLUSH_ROWS`, and `QUESTDB_AUTO_FLUSH_INTERVAL_MS`. A process that finds one set stops with exit code 1, and the failure line names the variable and what to do instead. Replace `QUESTDB_AUTO_FLUSH_ROWS` with `QUESTDB_FLUSH_ROWS` and `QUESTDB_IDLE_FLUSH_CHECK_MS` with `QUESTDB_FLUSH_INTERVAL_MS`. Delete the other three. An empty value counts as set, so a leftover line in an environment file is found too.
 
 ### Addresses: a literal, never `localhost`
 
