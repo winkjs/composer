@@ -28,6 +28,44 @@
   always names its replacement.
 -->
 
+# [Retired QuestDB keys](https://github.com/winkjs/composer/releases/tag/0.8.0)
+## Version 0.8.0 — September 21, 2026
+
+### 💥 Breaking
+
+- Five QuestDB storage options are removed, as 0.7.0 announced:
+  `flushMode`, `idleFlushAfterMs`, `idleFlushCheckMs`, `autoFlushRows`,
+  and `autoFlushIntervalMs`. A flow that still sets one fails at
+  definition with `INVALID_CONFIG` and a message such as
+  `Unknown property 'flushMode'`. Action: rename `autoFlushRows` to
+  `flushRows` and `idleFlushCheckMs` to `flushIntervalMs`. Delete the
+  other three. Composer owns every flush, so a flush mode and an idle
+  timer have nothing left to set.
+- Their five environment variables are removed with them:
+  `QUESTDB_FLUSH_MODE`, `QUESTDB_IDLE_FLUSH_AFTER_MS`,
+  `QUESTDB_IDLE_FLUSH_CHECK_MS`, `QUESTDB_AUTO_FLUSH_ROWS`, and
+  `QUESTDB_AUTO_FLUSH_INTERVAL_MS`. A process that finds one set stops
+  at import with exit code 1. The failure line names the variable and
+  what to do instead. An empty value counts as set. Action: rename
+  `QUESTDB_AUTO_FLUSH_ROWS` to `QUESTDB_FLUSH_ROWS` and
+  `QUESTDB_IDLE_FLUSH_CHECK_MS` to `QUESTDB_FLUSH_INTERVAL_MS`. Delete
+  the other three.
+
+### 🐛 Fixes
+
+- The README said the test suite holds over 6,500 tests behind a
+  99.5% coverage gate. The gate is 100% on statements, branches,
+  functions, and lines, and the suite holds over 7,000 tests. The
+  line now says so.
+
+### ⚙️ Updates
+
+- The 0.7.0 code ran four days without interruption at twice its
+  planned message rate. The device was an industrial Raspberry Pi, a
+  Revolution Pi Connect 5 (Compute Module 5, 8 GB RAM, 32 GB eMMC).
+  Every message was accounted for and none was lost. The source of
+  0.8.0 is that code with the removals above and nothing else.
+
 # [Delivery truth for QuestDB](https://github.com/winkjs/composer/releases/tag/0.7.0)
 ## Version 0.7.0 — September 15, 2026
 
