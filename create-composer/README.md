@@ -25,7 +25,7 @@ Next steps:
     npm install
     npm start
 
-npm install fetches @winkjs/composer 0.7.0 — the exact version this template is tested against.
+npm install fetches @winkjs/composer 0.8.0 — the exact version this template is tested against.
 The project README says what to expect.
 ```
 

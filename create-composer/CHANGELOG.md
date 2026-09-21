@@ -32,6 +32,22 @@
   option always names its replacement.
 -->
 
+# [New projects start on composer 0.8.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.3)
+## Version 0.2.3 — September 21, 2026
+
+Bundled templates pin `@winkjs/composer` 0.8.0.
+
+### ⚙️ Updates
+
+- Scaffolded projects now install composer 0.8.0. That release has
+  one breaking change. It removes the five QuestDB flush options
+  that 0.7.0 deprecated, and it refuses their five `QUESTDB_*`
+  environment variables at import. The hello-flow template needs no
+  change, because it runs without services and never set those
+  keys. The composer 0.8.0 release notes name each removed key and
+  its replacement.
+- The scaffolder's own code is unchanged from 0.2.2.
+
 # [New projects start on composer 0.7.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.2)
 ## Version 0.2.2 — September 15, 2026
 
