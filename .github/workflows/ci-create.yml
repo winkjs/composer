@@ -18,6 +18,12 @@
 #                    node because CI has no TTY and `npm create`
 #                    would prompt to install an uncached package.
 #
+# Node lines. Composer supports Node 22, 24 and 26 and certifies each
+# release on the newest Active LTS line (26 since 2026-10-28).
+# lint-and-test runs the creator's gate on all three lines.
+# scaffold-smoke runs every OS on the certified line and the other two
+# lines on Ubuntu. byte-identity compares bytes, so one line is enough.
+#
 # No repository guard here: CI must run in the private repo too.
 # Only the publish workflow (release-create.yml) is guarded.
 
@@ -42,13 +48,17 @@ permissions:
 
 jobs:
   lint-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [ 22, 24, 26 ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
 
       # The creator's ESLint config imports the repo root config,
       # whose plugins resolve from the root node_modules — so both
@@ -79,7 +89,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
 
       - name: Pack the creator (prepack builds templates/)
         working-directory: create-composer
@@ -130,8 +140,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
-        node: [ 22 ]
+        node: [ 26 ]
         include:
+          - os: ubuntu-latest
+            node: 22
           - os: ubuntu-latest
             node: 24
     runs-on: ${{ matrix.os }}
