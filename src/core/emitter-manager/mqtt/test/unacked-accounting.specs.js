@@ -88,23 +88,25 @@ describe( 'mqtt emitter — unacked accounting (ADR-021)', function () {
             expect( capturedOpts.outgoingStore ).to.equal( undefined );
         } );
 
-        it( 'clamps maxQueueSize to the 16-bit packet-id ceiling, loudly', async function () {
-            // Every unacknowledged QoS-1 message holds a packet id, so one
-            // connection can never carry more than the id space allows; a
-            // request beyond the 60,000 ceiling is clamped with a warning
+        it( 'clamps maxQueueSize to the in-flight ceiling, loudly', async function () {
+            // The ceiling is 33,000. MQTT_INFLIGHT_ID_LIMIT in constants.js
+            // carries both reasons: the 16-bit packet-id space, and the
+            // libuv limit on pieces per socket write call (Node 24/26).
+            // 40,000 was allowed under the old 60,000 ceiling, so this
+            // request pins the new one. It is clamped with a warning
             // (same behavior the LevelDB store had, kept in the emitter).
             const warnStub = sinon.stub( console, 'warn' );
             try {
-                emitter = await makeEmitter( { maxQueueSize: 70000 } );
+                emitter = await makeEmitter( { maxQueueSize: 40000 } );
                 fireConnect( mock.eventHandlers );
                 emitter.publishNow( 'jig/t', { i: 0 } );
 
                 expect( warnStub.calledOnce ).to.equal( true );
-                expect( warnStub.firstCall.args[ 0 ] ).to.contain( '70000' );
-                expect( warnStub.firstCall.args[ 0 ] ).to.contain( '60000' );
+                expect( warnStub.firstCall.args[ 0 ] ).to.contain( '40000' );
+                expect( warnStub.firstCall.args[ 0 ] ).to.contain( '33000' );
                 // The clamped cap, not the requested one, is the pressure
-                // denominator: 1 in flight over 60,000.
-                expect( emitter.getPressure() ).to.be.closeTo( 1 / 60000, 1e-12 );
+                // denominator: 1 in flight over 33,000.
+                expect( emitter.getPressure() ).to.be.closeTo( 1 / 33000, 1e-12 );
             } finally {
                 warnStub.restore();
             }

@@ -267,7 +267,7 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
             .emitter( mqttEmitter, {
                 brokerUrl: MQTT_BROKER_URL,
                 codec: jsonCodec,
-                maxQueueSize: 50000,     // sized well above the 10 k burst
+                maxQueueSize: 30000,     // sized well above the 10 k burst, below the 33,000 ceiling
                 onDeliveryFailure: function ( err, ctx ) {
                     deliveryFailures.push( {
                         code: err && err.code,
@@ -359,12 +359,13 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
         //   - Does the unacked accounting drift at scale?
         //   - Does drain throughput hit a cliff at a full in-flight
         //     window?
-        //   - Is heap growth still bounded with 60 k messages held
+        //   - Is heap growth still bounded with 30 k messages held
         //     in the client's memory store?
         //
-        // `maxQueueSize` sits at the MQTT id-space ceiling (60,000 —
-        // see MQTT_INFLIGHT_ID_LIMIT): packet ids are 16-bit, so no
-        // MQTT client can have more unacknowledged publishes than that.
+        // `maxQueueSize` sits at the in-flight ceiling (33,000 — see
+        // MQTT_INFLIGHT_ID_LIMIT for both reasons: the 16-bit packet-id
+        // space, and the libuv limit of 1,048,576 pieces per socket
+        // write call on Node 24 and 26).
         // A 100 k instantaneous burst therefore CANNOT all be buffered —
         // the pre-fix version of this test asserted it could, and was
         // satisfied only by the id allocator wrapping and silently
@@ -373,7 +374,7 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
         //   - everything the pre-flight ACCEPTS is delivered — pinned by
         //     handle.shutdown() resolving clean (a clean resolve is a
         //     delivery statement, ADR-018);
-        //   - at least the full in-flight window (0.9 × 60,000) is
+        //   - at least the full in-flight window (0.9 × 33,000) is
         //     accepted and received;
         //   - the overflow is rejected synchronously at publishNow —
         //     never accepted-then-dropped (deliveryFailures stays
@@ -401,7 +402,7 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
             .emitter( mqttEmitter, {
                 brokerUrl: MQTT_BROKER_URL,
                 codec: jsonCodec,
-                maxQueueSize: 60000,
+                maxQueueSize: 33000,
                 onDeliveryFailure: function ( err, ctx ) {
                     deliveryFailures.push( {
                         code: err && err.code,
@@ -476,7 +477,7 @@ describe( 'MQTT Emitter Hardening — sustained throughput and pressure response
         expect( deliveryFailures, 'overflow must reject at pre-flight, never accept-then-drop' )
             .to.deep.equal( [] );
         expect( finalCount, 'at least the full in-flight window must be accepted and delivered' )
-            .to.be.at.least( 0.9 * 60000 );
+            .to.be.at.least( 0.9 * 33000 );
         expect( captured.duplicates.length, 'zero duplicates — id scrambling regression marker' )
             .to.equal( 0 );
 

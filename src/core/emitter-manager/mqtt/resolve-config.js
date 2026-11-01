@@ -213,11 +213,11 @@ const resolveGrace = function ( config ) {
 }; // resolveGrace()
 
 /**
- * Resolves the unacked cap. Clamped to the 16-bit packet-id space:
- * every unacknowledged QoS-1 message holds a packet id, so one
- * connection can never carry more than 65,535; 60,000 leaves working
- * headroom (same clamp the LevelDB store applied, kept with the same
- * warning).
+ * Resolves the unacked cap, clamped to MQTT_INFLIGHT_ID_LIMIT. Two
+ * limits set that ceiling: the 16-bit packet-id space, and the libuv
+ * cap on buffer pieces per socket write. constants.js carries both
+ * with their sources. The clamp prints the same warning the LevelDB
+ * store applied.
  *
  * @param {Object} config - emitter config
  * @returns {number} the effective cap
@@ -227,7 +227,7 @@ const resolveQueueSize = function ( config ) {
     if ( requestedQueueSize > MQTT_INFLIGHT_ID_LIMIT ) {
         logger.warn(
             `winkComposer/mqttEmitter: maxQueueSize ${requestedQueueSize} exceeds the MQTT ` +
-            `packet-id ceiling — clamped to ${MQTT_INFLIGHT_ID_LIMIT}`
+            `in-flight ceiling — clamped to ${MQTT_INFLIGHT_ID_LIMIT}`
         );
     }
     return Math.min( requestedQueueSize, MQTT_INFLIGHT_ID_LIMIT );

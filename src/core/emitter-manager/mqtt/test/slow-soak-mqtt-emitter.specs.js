@@ -82,11 +82,11 @@
  *                       `process.memoryUsage()` snapshot — no GC
  *                       trigger (see "no programmatic GC" note above).
  *
- *   maxQueueSize        50000 (passed to createEmitter) — generous
+ *   maxQueueSize        30000 (passed to createEmitter) — generous
  *                       headroom above the producer's BATCH × in-
  *                       flight count so pre-flight reject is rare.
- *                       Soak tests for high-rate scenarios may need
- *                       larger; tests for backpressure should use
+ *                       The ceiling is 33,000 (MQTT_INFLIGHT_ID_LIMIT);
+ *                       tests for backpressure should use
  *                       smaller.
  *
  * --------------------------------------------------------------------
@@ -485,7 +485,7 @@ describe( 'MQTT Emitter Soak — sustained run', function () {
         const emitter = await createEmitter( {
             brokerUrl: MQTT_BROKER_URL,
             codec: jsonCodec,
-            maxQueueSize: 50000,
+            maxQueueSize: 30000,
             onDeliveryFailure: function ( err, ctx ) {
                 deliveryFailures.push( { code: err.code, message: err.message, topic: ctx.topic } );
             },

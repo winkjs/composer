@@ -104,14 +104,15 @@ const EMPTY_PAYLOAD = Buffer.alloc( 0 );
  */
 export const createMQTTStore = function ( path, options = {} ) {
     // Configurable limits with defaults. maxQueueSize is clamped to the
-    // MQTT id-space ceiling — see MQTT_INFLIGHT_ID_LIMIT in constants.js
-    // for the full rationale. Clamped loudly, not silently: the operator
-    // asked for capacity the protocol cannot provide.
+    // MQTT in-flight ceiling — see MQTT_INFLIGHT_ID_LIMIT in constants.js
+    // for both reasons (the packet-id space and the libuv write limit).
+    // Clamped loudly, not silently: the operator asked for capacity the
+    // transport cannot provide.
     const requestedQueueSize = options.maxQueueSize || DEFAULT_MAX_QUEUE_SIZE;
     if ( requestedQueueSize > MQTT_INFLIGHT_ID_LIMIT ) {
         console.warn(
             `winkComposer/mqttStore: maxQueueSize ${requestedQueueSize} exceeds the MQTT ` +
-            `16-bit packet-id space; clamped to ${MQTT_INFLIGHT_ID_LIMIT}`
+            `in-flight ceiling; clamped to ${MQTT_INFLIGHT_ID_LIMIT}`
         );
     }
     const limits = {

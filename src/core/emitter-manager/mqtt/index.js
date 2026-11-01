@@ -65,7 +65,9 @@
  *
  *   `brokerUrl` falls back to `MQTT_BROKER_URL`. The reconnect period
  *   gains a random share of up to 20% per client (`utils/jitter`).
- *   The cap is clamped to 60,000, the packet-id ceiling.
+ *   The cap is clamped to 33,000, the in-flight ceiling. constants.js
+ *   carries its two reasons: the packet-id space and the libuv write
+ *   limit.
  *
  * Related decisions beyond ADR-018 and ADR-021. ADR-022: this adapter
  * writes the `winkDedupId` the source dedups on. ADR-023: `publishNow`

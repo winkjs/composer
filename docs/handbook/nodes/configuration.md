@@ -103,7 +103,7 @@ flow('pipeline')
 | `codec` | object | required | Codec with `pack( msg )` method returning Buffer |
 | `clientId` | string | auto-generated | MQTT client identifier. One unique name per client on the broker, so an emitter never shares a name with a source. See [Choose the name carefully](../resilience.md#choose-the-name-carefully) |
 | `connectGraceMs` | number | `500` (`MQTT_CONNECT_GRACE_MS` env var) | How long flow startup waits for the broker's first connection acknowledgment, in milliseconds. The flow starts either way — an unreachable broker never fails startup. `0` skips the wait |
-| `maxQueueSize` | number | `10000` | Max undelivered messages held in memory (hard ceiling 60,000 — see Delivery guarantees below) |
+| `maxQueueSize` | number | `10000` | Max undelivered messages held in memory (hard ceiling 33,000 — see Delivery guarantees below) |
 | `debug` | boolean | `false` | Enable debug logging |
 | `will` | object | `null` | MQTT Last Will and Testament (see below) |
 | `onCritical` | function | `null` | Fires once when buffer pressure, the share of `maxQueueSize` in flight from 0 to 1, climbs past 80%. It fires again only after pressure has fallen below 66% and climbed past 80% a second time |
@@ -151,7 +151,7 @@ will: {
 
 Every accepted publish counts as in flight until the broker acknowledges it.
 
-- The buffer holds at most 60,000 messages, whatever `maxQueueSize` says. The ceiling comes from the MQTT protocol: every unacknowledged message needs a packet id, a packet id is a 16-bit number, and one connection can therefore never carry more than 65,535 of them. A `maxQueueSize` above 60,000 is clamped back with a printed warning. For how long 60,000 lasts at your message rate, see [Environment Variables → the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-60000-messages).
+- The buffer holds at most 33,000 messages, whatever `maxQueueSize` says, and two limits set that ceiling. First, the MQTT protocol gives every unacknowledged message a 16-bit packet id, so one connection can never carry more than 65,535 of them. Second, the MQTT library sends a whole burst of messages in one socket write. Node.js 24 and 26 refuse a write with more than 1,048,576 buffer pieces. A `maxQueueSize` above 33,000 is clamped back with a printed warning. For the arithmetic, and for how long 33,000 lasts at your message rate, see [Environment Variables → the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-33000-messages).
 - The ceiling does not limit throughput. In steady operation the number of unacknowledged messages equals your message rate times the broker's response time. Measured against a local broker at about 14,300 messages per second, that number stayed between 312 and 400.
 - At 90% of buffer capacity, the emitter refuses new messages with a `STORAGE_FULL` error. The refusal is immediate. composer never accepts a message it would later drop in silence.
 - A message the codec cannot encode (for example, a value JSON cannot represent) is refused on the spot with an `ENCODE_ERROR`. The message never occupies buffer space, later messages are unaffected, and the running count appears in `stats.encodeErrors`. Fix the flow that produces the value; the transport is fine.

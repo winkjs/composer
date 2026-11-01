@@ -100,12 +100,12 @@ describe( 'mqtt-store', function () {
             expect( typeof store.close ).to.equal( 'function' );
         } );
 
-        it( 'clamps maxQueueSize above the MQTT id space to the in-flight limit, loudly', async function () {
-            // MQTT packet ids are 16-bit: at most 65,535 publishes can be
-            // unacknowledged at once. A queue sized beyond that promises
-            // capacity the protocol cannot deliver (the id
-            // allocator wraps and destroys unacked entries). The store
-            // clamps to 60,000 — margin below the ceiling — and says so.
+        it( 'clamps maxQueueSize above the in-flight limit, loudly', async function () {
+            // The store shares MQTT_INFLIGHT_ID_LIMIT (33,000) with the
+            // emitter. constants.js carries both reasons: the 16-bit
+            // packet-id space, and the libuv limit on pieces per socket
+            // write call. A request above it is clamped, and the
+            // warning says so.
             const warnSpy = sinon.spy( console, 'warn' );
             storeHandle = createMQTTStore( storePath, { maxQueueSize: 200000 } );
 
@@ -114,8 +114,8 @@ describe( 'mqtt-store', function () {
                 ( e ) => ( e ? rej( e ) : res() )
             ) );
 
-            expect( storeHandle.getPressure() ).to.be.closeTo( 1 / 60000, 1e-12 );
-            expect( warnSpy.calledWithMatch( /maxQueueSize.*60000/ ) ).to.equal( true );
+            expect( storeHandle.getPressure() ).to.be.closeTo( 1 / 33000, 1e-12 );
+            expect( warnSpy.calledWithMatch( /maxQueueSize.*33000/ ) ).to.equal( true );
         } );
 
         it( 'close() is idempotent — a second close calls back without touching the db', async function () {
@@ -129,15 +129,16 @@ describe( 'mqtt-store', function () {
         } );
 
         it( 'leaves maxQueueSize at or below the in-flight limit untouched', async function () {
+            // Exactly at the limit (33,000): kept as requested, no warning.
             const warnSpy = sinon.spy( console, 'warn' );
-            storeHandle = createMQTTStore( storePath, { maxQueueSize: 50000 } );
+            storeHandle = createMQTTStore( storePath, { maxQueueSize: 33000 } );
 
             await new Promise( ( res, rej ) => storeHandle.store.put(
                 { cmd: 'publish', topic: 't', payload: Buffer.from( 'x' ), qos: 1, messageId: 1 },
                 ( e ) => ( e ? rej( e ) : res() )
             ) );
 
-            expect( storeHandle.getPressure() ).to.be.closeTo( 1 / 50000, 1e-12 );
+            expect( storeHandle.getPressure() ).to.be.closeTo( 1 / 33000, 1e-12 );
             expect( warnSpy.called ).to.equal( false );
         } );
 

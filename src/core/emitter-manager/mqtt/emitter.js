@@ -105,9 +105,10 @@
  * - Pre-flight reject fires at `pressure >= STORAGE_PRESSURE_LIMIT` (0.9),
  *   leaving 10% headroom for in-flight drain on shutdown and a clean band
  *   between the yellow-health threshold (0.66) and exhaustion (1.0).
- * - The cap is `maxQueueSize`, clamped to 60,000: every unacknowledged
- *   QoS-1 message holds a 16-bit packet id, so one connection can never
- *   carry more (see MQTT_INFLIGHT_ID_LIMIT).
+ * - The cap is `maxQueueSize`, clamped to MQTT_INFLIGHT_ID_LIMIT
+ *   (33,000). Two limits set that ceiling: the 16-bit packet-id space,
+ *   and the libuv cap on buffer pieces per socket write. constants.js
+ *   carries both with their sources.
  * - The old byte-axis limit (`maxQueueBytes`) died with the disk store;
  *   the count cap bounds memory at cap × payload size.
  *

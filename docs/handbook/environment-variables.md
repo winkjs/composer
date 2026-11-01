@@ -59,26 +59,30 @@ Flows fed by the MQTT source do not need this at all. Each incoming message alre
 | `MQTT_CONNECT_TIMEOUT_MS` | `30000` | Connect timeout, milliseconds |
 | `MQTT_CONNECT_GRACE_MS` | `500` | How long flow startup waits for the emitter's first broker acknowledgment, milliseconds. The wait ends the moment the broker answers; if it does not answer in time the flow starts anyway and messages buffer. `0` skips the wait. Per-flow override: the emitter's `connectGraceMs` option |
 | `MQTT_SESSION_EXPIRY_S` | `604800` | Persistent-session expiry, seconds (7 days). Read by the MQTT source only — the emitter asks for a clean session, because a publish-only client has nothing for a broker session to keep |
-| `MQTT_MAX_QUEUE_SIZE` | `10000` | Cap on undelivered messages held in memory (hard ceiling 60,000 — see below) |
+| `MQTT_MAX_QUEUE_SIZE` | `10000` | Cap on undelivered messages held in memory (hard ceiling 33,000 — see below) |
 | `MQTT_SOURCE_DEDUP_WINDOW_MS` | `120000` | Source-side duplicate filter: how long a message id is remembered (see below) |
 | `MQTT_SOURCE_DEDUP_MAX_ENTRIES` | `65536` | Source-side duplicate filter: the most ids remembered at once (see below) |
 
-### The MQTT queue ceiling: 60,000 messages
+### The MQTT queue ceiling: 33,000 messages
 
 The MQTT emitter keeps every message it has not yet delivered in an in-memory buffer. During a broker outage, messages accumulate in the buffer and are sent when the connection returns. The buffer is process memory: if the process crashes or loses power, whatever is still undelivered is lost. At typical edge rates that is at most one burst, usually 0–2 messages.
 
-The buffer can hold at most 60,000 messages. That ceiling is not a composer choice. Every undelivered MQTT message occupies a packet id. A packet id is a 16-bit number, so one connection can never carry more than 65,535 unacknowledged messages. composer stops at 60,000 to keep working room below the protocol limit. Setting `MQTT_MAX_QUEUE_SIZE` (or the emitter's `maxQueueSize` option) above 60,000 clamps it back to 60,000 and prints a warning.
+The buffer can hold at most 33,000 messages. Two limits set that ceiling, and neither is a composer choice. The first limit is the MQTT protocol. Every undelivered message occupies a packet id. A packet id is a 16-bit number, so one connection can never carry more than 65,535 unacknowledged messages.
 
-The cap matters in exactly one situation: the broker is unreachable and messages keep coming. Two numbers decide how long you can ride that out. The **default cap is 10,000** (`MQTT_MAX_QUEUE_SIZE`), raiseable up to the 60,000 ceiling. And new publishes are refused once the buffer reaches **90% of its cap**, so the usable window is 0.9 × cap. How long that lasts depends only on your message rate:
+The second limit is tighter, and it comes from Node.js. Node.js 24 and 26 refuse one socket write that carries more than 1,048,576 buffer pieces. The connection then drops with a `write EINVAL` error. When messages arrive in a burst, the MQTT library passes the whole burst to the network in one write. One message is 29 pieces, so one write can carry about 36,000 messages at most. composer stops at 33,000 to keep working room below that number.
 
-| Message rate | Default cap (10,000) | At the 60,000 ceiling |
+The ceiling is the same on every Node.js line, including Node.js 22, which does not have the write limit. Setting `MQTT_MAX_QUEUE_SIZE` (or the emitter's `maxQueueSize` option) above 33,000 clamps it back to 33,000 and prints a warning.
+
+The cap matters in exactly one situation: the broker is unreachable and messages keep coming. Two numbers decide how long you can ride that out. The **default cap is 10,000** (`MQTT_MAX_QUEUE_SIZE`), raiseable up to the 33,000 ceiling. And new publishes are refused once the buffer reaches **90% of its cap**, so the usable window is 0.9 × cap. How long that lasts depends only on your message rate:
+
+| Message rate | Default cap (10,000) | At the 33,000 ceiling |
 |--------------|----------------------|-----------------------|
-| 1 msg/s | about 2.5 hours | about 15 hours |
-| 10 msg/s | about 15 minutes | about 1.5 hours |
-| 100 msg/s | about 90 seconds | about 9 minutes |
-| 1,000 msg/s | about 9 seconds | about 54 seconds |
+| 1 msg/s | about 2.5 hours | about 8 hours |
+| 10 msg/s | about 15 minutes | about 50 minutes |
+| 100 msg/s | about 90 seconds | about 5 minutes |
+| 1,000 msg/s | about 9 seconds | about 30 seconds |
 
-Three knobs when that is too short for your outages. Raise `MQTT_MAX_QUEUE_SIZE` toward the ceiling. Send fewer, richer messages: a digest node turns many raw ticks into one summary. Or split traffic across several emitters — each connection has its own 60,000.
+Three knobs when that is too short for your outages. Raise `MQTT_MAX_QUEUE_SIZE` toward the ceiling. Send fewer, richer messages: a digest node turns many raw ticks into one summary. Or split traffic across several emitters — each connection has its own 33,000.
 
 The ceiling does **not** limit sustained throughput. While the broker is reachable, the number of unacknowledged messages equals your message rate times the broker's response time. Measured against a local broker at about 14,300 messages per second, that number stayed between 312 and 400 — nowhere near the ceiling.
 

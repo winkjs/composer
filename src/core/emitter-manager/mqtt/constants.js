@@ -61,11 +61,27 @@ export const QUEUE_CRITICAL_THRESHOLD = 0.8;
  *
  * The emitter uses the client's UniqueMessageIdProvider, which never
  * reissues an id that is in use. So the unacked window must never
- * hold more messages than the id space has ids. 60,000 leaves margin
- * for ids stuck on packets that are never acknowledged.
+ * hold more messages than the id space has ids. The id space alone
+ * would allow about 60,000.
+ *
+ * A second, tighter limit sets the value. libuv 1.52 and later (the
+ * version inside Node 24 and Node 26) refuses one socket write call
+ * that carries more than 1,048,576 buffer pieces. The call fails
+ * with `write EINVAL` and the connection drops. Source:
+ * `uv__check_before_write` in libuv `src/unix/stream.c`, added by
+ * libuv PR #5014. mqtt-packet corks the socket, so every publish
+ * accepted inside one event-loop turn leaves in ONE write call. One
+ * MQTT 5 publish with this emitter's properties is 29 pieces. The
+ * accepted window is 0.9 × maxQueueSize, and the whole window must
+ * fit one call: 33,000 × 0.9 × 29 = 861,300 pieces, 82% of the
+ * limit. Even the full cap fits: 33,000 × 29 = 957,000, 91%.
+ * mqtt.js resends a stored backlog one packet per acknowledgement,
+ * but it releases the publishes queued during that resend in one
+ * turn, so the window bounds that path too. The constant keeps its
+ * original name. The id space is still the first of its two reasons.
  * @type {number}
  */
-export const MQTT_INFLIGHT_ID_LIMIT = 60000;
+export const MQTT_INFLIGHT_ID_LIMIT = 33000;
 
 // Message expiry intervals (seconds), indexed by the caller's
 // `options.type`. A dictionary indexed by an external key has no

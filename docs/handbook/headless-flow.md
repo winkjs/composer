@@ -110,9 +110,9 @@ winkComposer/wiring: emitter 'mqtt' shutdown failed [SHUTDOWN_TIMEOUT]: winkComp
 
 To handle delivery failures in code rather than by reading logs, give the emitter or storage an `onDeliveryFailure` function in its config. It is called with the classified error for each failure. See [Configuration](./nodes/configuration.md#emitter).
 
-One sizing note for edge boxes. During a broker outage, undelivered MQTT messages wait in an in-memory buffer. The default cap is 10,000 messages (`MQTT_MAX_QUEUE_SIZE`, raiseable to 60,000), and new publishes are refused from 90% of the cap. At defaults that rides out about 2.5 hours of outage at 1 message per second. With the cap at the ceiling it is about 15 hours.
+One sizing note for edge boxes. During a broker outage, undelivered MQTT messages wait in an in-memory buffer. The default cap is 10,000 messages (`MQTT_MAX_QUEUE_SIZE`, raiseable to 33,000), and new publishes are refused from 90% of the cap. At defaults that rides out about 2.5 hours of outage at 1 message per second. With the cap at the ceiling it is about 8 hours.
 
-The buffer is process memory, so a crash or power cut during the outage loses what it held. See [Environment Variables → the MQTT queue ceiling](./environment-variables.md#the-mqtt-queue-ceiling-60000-messages) for the full table and what to do when it is too short.
+The buffer is process memory, so a crash or power cut during the outage loses what it held. See [Environment Variables → the MQTT queue ceiling](./environment-variables.md#the-mqtt-queue-ceiling-33000-messages) for the full table and what to do when it is too short.
 
 ## `whenComplete()` tracks the source, not your feed
 

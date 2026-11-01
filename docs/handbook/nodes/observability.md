@@ -229,7 +229,7 @@ winkComposer/emitIf: publish failed (node=alert, insightType=faultAlert, code=ST
 
 A publish can return four codes:
 
-- `STORAGE_FULL` — the emitter's buffer is at its limit. See [the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-60000-messages).
+- `STORAGE_FULL` — the emitter's buffer is at its limit. See [the queue ceiling](../environment-variables.md#the-mqtt-queue-ceiling-33000-messages).
 - `ENCODE_ERROR` — the codec could not encode the message. The message never entered the buffer.
 - `SHUTTING_DOWN` — the publish arrived during shutdown.
 - `MALFORMED_RESULT` — a third-party emitter broke its return contract. Built-in emitters never produce this.
