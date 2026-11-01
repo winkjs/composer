@@ -74,7 +74,6 @@ describe( 'E2E — dispatch guard on a real broker', function () {
     let publisher = null;
 
     before( async function () {
-        this.timeout( 5000 );
         mosquittoUp = await isMosquittoAvailable();
         if ( !mosquittoUp ) {
             console.log( '  [SKIP] Mosquitto not available - skipping E2E fault-containment tests' );
@@ -99,8 +98,6 @@ describe( 'E2E — dispatch guard on a real broker', function () {
     } );
 
     it( 'skips one wire-real poison message mid-stream and keeps detecting', async function () {
-        this.timeout( 15000 );
-
         const statuses = [];
         let metrics = null;
 

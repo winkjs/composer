@@ -93,9 +93,6 @@ const waitFor = async function ( conditionFn, maxWaitMs = 5000, checkInterval = 
 
 describe( 'MQTT Source E2E Tests', function () {
 
-    // E2E tests may take longer
-    this.timeout( 30000 );
-
     let mosquittoAvailable = false;
 
     before( async function () {

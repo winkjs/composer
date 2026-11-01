@@ -1,4 +1,4 @@
-/* eslint-disable camelcase, no-empty-function, no-sync, no-invalid-this */
+/* eslint-disable camelcase, no-empty-function, no-sync */
 // flow/test/flow.specs.js
 
 import { expect } from 'chai';
@@ -568,8 +568,6 @@ describe( 'flow — integration with source and emitter', function () {
     } );
 
     it( 'processes CSV and emits messages via mock emitter', async function () {
-        this.timeout( 5000 );
-
         // 1. Capture array for emitted messages
         const captured = [];
 
@@ -624,8 +622,6 @@ describe( 'flow — integration with source and emitter', function () {
     } );
 
     it( 'returns pipeline handle with shutdown method', async function () {
-        this.timeout( 5000 );
-
         const mockEmitter = {
             id: 'mqtt',
             durabilityClass: 'best-effort',

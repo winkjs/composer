@@ -28,7 +28,7 @@
  * their trigger counts; the assertion applies the bound.
  */
 
-/* eslint-disable no-sync, no-throw-literal, no-invalid-this */
+/* eslint-disable no-sync, no-throw-literal */
 
 import { expect } from 'chai';
 import { describe, it, beforeEach, afterEach } from 'mocha';
@@ -577,8 +577,6 @@ const SITES = [
 // ---------------------------------------------------------------------------
 
 describe( 'callback guard contract (cross-adapter, ADR-018)', function () {
-
-    this.timeout( 10000 );
 
     // Any unhandled rejection during a case is a containment failure —
     // the guard's whole job is that user faults never reach this hook.

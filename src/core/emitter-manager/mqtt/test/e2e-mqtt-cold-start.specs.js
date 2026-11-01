@@ -115,8 +115,6 @@ const subscribeAndCollect = function ( topicFilter ) {
 
 describe( 'MQTT emitter E2E — cold start (grace + pre-connack pin)', function () {
 
-    this.timeout( 30000 );
-
     let mosquittoAvailable = false;
     let activeEmitter = null;
     let activeSubscriber = null;

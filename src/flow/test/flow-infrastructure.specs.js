@@ -35,8 +35,6 @@ describe( 'flow — infrastructure coverage', function () {
     describe( 'partition manager yielding', function () {
 
         it( 'yields when processing exceeds threshold', async function () {
-            this.timeout( 5000 ); // eslint-disable-line no-invalid-this
-
             // Create flow with very low yield threshold to trigger yielding
             pipelineHandle = await flow( 'yieldTest' )
                 .assetId( 'id' )
@@ -127,8 +125,6 @@ describe( 'flow — infrastructure coverage', function () {
         } );
 
         it( 'returns a Promise on yield path (forces yield)', async function () {
-            this.timeout( 5000 ); // eslint-disable-line no-invalid-this
-
             pipelineHandle = await flow( 'yieldPath' )
                 .assetId( 'id' )
                 .yield( { threshold: 1 } )
@@ -154,8 +150,6 @@ describe( 'flow — infrastructure coverage', function () {
         } );
 
         it( 'processes the yield-tick message before later messages (order preserved)', async function () {
-            this.timeout( 5000 ); // eslint-disable-line no-invalid-this
-
             pipelineHandle = await flow( 'yieldOrder' )
                 .assetId( 'id' )
                 .yield( { threshold: 1 } )

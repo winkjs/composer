@@ -140,8 +140,6 @@ const waitForRows = async function ( client, tableName, expected, maxMs = 5000 )
 
 describe( 'QuestDB E2E — record-reuse pattern through a real flow', function () {
 
-    this.timeout( 30000 );
-
     let qdbUp = false;
     let pgClient = null;
 

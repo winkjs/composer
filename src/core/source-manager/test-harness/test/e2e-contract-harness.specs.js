@@ -190,8 +190,6 @@ const normalizeQdbRow = function ( row, assetClass ) {
 
 describe( 'testHarness E2E — three-sink contract check', function () {
 
-    this.timeout( 30000 );
-
     let mqttUp = false;
     let qdbUp = false;
     let pgClient = null;

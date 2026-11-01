@@ -84,8 +84,6 @@ const expectThrowsCode = async function ( fn, expectedCode ) {
 
 describe( 'QuestDB E2E — setup-time error classification', function () {
 
-    this.timeout( 15000 );
-
     let qdbUp = false;
 
     before( async function () {

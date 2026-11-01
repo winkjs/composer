@@ -134,9 +134,6 @@ const waitForRows = async function ( client, tableName, expectedRows, maxWaitMs 
 
 describe( 'QuestDB E2E Tests', function () {
 
-    // E2E tests may take longer
-    this.timeout( 30000 );
-
     let questdbAvailable = false;
     let pgClient = null;
 

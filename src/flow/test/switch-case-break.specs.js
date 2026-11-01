@@ -1,4 +1,4 @@
-/* eslint-disable camelcase, no-empty-function, no-sync, no-invalid-this */
+/* eslint-disable camelcase, no-empty-function, no-sync */
 // flow/test/switch-case-break.specs.js
 
 /**
@@ -745,8 +745,6 @@ describe( 'flow — switch/case/break: integration lifecycle', function () {
     } );
 
     it( 'starts multi-specialization pipeline with .run()', async function () {
-        this.timeout( 5000 );
-
         const mockEmitter = {
             id: 'mqtt',
             createEmitter: function ( _config ) {
@@ -795,8 +793,6 @@ describe( 'flow — switch/case/break: integration lifecycle', function () {
     } );
 
     it( 'returns pipeline handle with processMessage for multi-specialization', async function () {
-        this.timeout( 5000 );
-
         const mockEmitter = {
             id: 'mqtt',
             createEmitter: function ( _config ) {

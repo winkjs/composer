@@ -121,8 +121,6 @@ const rejection = async function ( promise ) {
 
 describe( 'QuestDB E2E — address family (ADR-030)', function () {
 
-    this.timeout( 20000 );
-
     let pgClient = null;
     let v6PgAnswers = false;
     const tablesToCleanUp = [];

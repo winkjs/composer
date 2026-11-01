@@ -135,8 +135,6 @@ const waitForRows = async function ( client, tableName, expected, maxMs = 5000 )
 
 describe( 'QuestDB E2E — flush + shutdown behaviour', function () {
 
-    this.timeout( 30000 );
-
     let qdbUp = false;
     let pgClient = null;
     const tablesToCleanUp = [];
