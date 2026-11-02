@@ -5,23 +5,40 @@
 /**
  * @fileoverview Allocation soak for the stream-preparation utilities. Streams
  * millions of rows through each utility and through the composed inlet, and
- * asserts the process's resident memory stays flat — the mechanical check
+ * asserts that the live heap stays flat. The live heap is the memory still
+ * reachable after a full garbage collection. This is the mechanical check
  * behind the family's zero-per-row-allocation clause (ADR-025). A utility
- * that allocated per row and retained would grow RSS by tens of MB over a
- * run; the gate allows a small settling margin.
+ * that allocated per row and kept the allocation would grow the live heap
+ * by tens of MB over a run.
  *
- * Method: sample `process.memoryUsage().rss` every SAMPLE_EVERY rows and
- * compare the early-third median against the late-third median (the same
- * trend test the MQTT emitter soak uses — medians ignore GC spikes).
- * Transient garbage the GC reclaims does not move the medians; retained
- * growth does.
+ * Method: every SAMPLE_EVERY rows, force a full collection with
+ * `global.gc()` and read `process.memoryUsage().heapUsed`. After a full
+ * collection, heapUsed is the live heap and nothing else. Compare the
+ * early-third median against the late-third median. This is the
+ * medians-of-thirds trend test the QuestDB long-outage spec uses for heap.
+ * A kept per-row allocation grows the live heap on every pass. Transient
+ * garbage reads zero.
  *
- * Named slow-* so `npm test` skips it; runs under `npm run test:hardening`.
- * Row count scales via STREAM_PREP_SOAK_ROWS (default 2,000,000 per case).
+ * Why not resident memory (RSS). Until 2026-11-02 the gate was RSS growth
+ * under 12 MB. RSS includes the engine's memory pools. Those pools grow to
+ * their working size during the first allocation-heavy loop a process
+ * runs. That happens after start, or after a long quiet phase such as a
+ * soak. The medians then read that growth as a leak.
+ *
+ * The numbers behind the change. In a cold process the first two cases
+ * read 8 MB and 22 MB of RSS growth with no leak. After a five-minute
+ * soak the first case read 3 MB to 13 MB, on either side of the gate. The
+ * live heap reads 0.01 MB in the same cold process. RSS is still printed
+ * for the record, not asserted. The utilities are pure JavaScript, so
+ * nothing can grow outside the heap.
+ *
+ * Needs `node --expose-gc`, which `npm run test:hardening` passes. The
+ * suite fails fast without it. Named slow-* so `npm test` skips it. Row
+ * count scales via STREAM_PREP_SOAK_ROWS (default 2,000,000 per case).
  */
 
 import { expect } from 'chai';
-import { describe, it } from 'mocha';
+import { before, describe, it } from 'mocha';
 import { coerceNumeric } from '../coerce-numeric.js';
 import { normalizeTimestamp } from '../normalize-timestamp.js';
 import { filterRows } from '../filter-rows.js';
@@ -31,7 +48,10 @@ import { stampPeriod } from '../stamp-period.js';
 
 const ROWS = Number( process.env.STREAM_PREP_SOAK_ROWS ) || 2000000;
 const SAMPLE_EVERY = 100000;
-const RSS_GROWTH_LIMIT = 12 * 1024 * 1024;    // 12 MB settling margin
+// 1 MB. A clean case reads about 0.01 MB (2026-11-02, cold process on Node
+// 22, 24 and 26). The smallest possible per-row leak, one 8-byte number kept
+// per row, reads about 10 MB over the default row count.
+const HEAP_GROWTH_LIMIT = 1024 * 1024;
 const T0 = 1786579200000;                     // 2026-08-13T00:00:00Z
 
 const median = function ( values ) {
@@ -39,9 +59,13 @@ const median = function ( values ) {
     return sorted[ Math.floor( sorted.length / 2 ) ];
 };
 
+const toMB = ( bytes ) => ( bytes / 1048576 ).toFixed( 2 );
+
 /**
  * Drive one prepared transform over ROWS mutations of a single reused row
- * object, sampling RSS, and assert the early-vs-late median trend is flat.
+ * object. Sample the live heap after a forced full collection, and assert
+ * the early-vs-late median trend is flat. RSS is sampled and printed for
+ * the record only.
  *
  * @param {function( Object ): (Object|null)} transform - utility under soak
  * @param {function( Object, number ): void} mutate - writes the i-th row's
@@ -49,27 +73,39 @@ const median = function ( values ) {
  */
 const soak = function ( transform, mutate ) {
     const row = {};
+    const heapSamples = [];
     const rssSamples = [];
     for ( let i = 0; i < ROWS; i += 1 ) {
         mutate( row, i );
         transform( row );
         if ( ( i % SAMPLE_EVERY ) === 0 ) {
-            rssSamples.push( process.memoryUsage().rss );
+            global.gc();
+            const mem = process.memoryUsage();
+            heapSamples.push( mem.heapUsed );
+            rssSamples.push( mem.rss );
         }
     }
-    const third = Math.floor( rssSamples.length / 3 );
-    const early = median( rssSamples.slice( 0, third ) );
-    const late = median( rssSamples.slice( -third ) );
-    const growth = late - early;
-    console.log( `      rss early ${( early / 1048576 ).toFixed( 1 )} MB -> late ${( late / 1048576 ).toFixed( 1 )} MB (growth ${( growth / 1048576 ).toFixed( 2 )} MB over ${ROWS} rows)` );
-    expect( growth < RSS_GROWTH_LIMIT ).to.equal( true );
+    const third = Math.floor( heapSamples.length / 3 );
+    const earlyHeap = median( heapSamples.slice( 0, third ) );
+    const lateHeap = median( heapSamples.slice( -third ) );
+    const heapGrowth = lateHeap - earlyHeap;
+    const rssGrowth = median( rssSamples.slice( -third ) ) - median( rssSamples.slice( 0, third ) );
+    console.log( `      live heap early ${toMB( earlyHeap )} MB -> late ${toMB( lateHeap )} MB (growth ${toMB( heapGrowth )} MB over ${ROWS} rows; rss growth ${toMB( rssGrowth )} MB, not asserted)` );
+    expect( heapGrowth, 'live heap growth over the run' ).to.be.lessThan( HEAP_GROWTH_LIMIT );
 };
 
 describe( `stream-prep allocation soak (${ROWS} rows per case)`, function () {
 
     this.timeout( 300000 );
 
-    it( 'coerceNumeric holds flat RSS', function () {
+    before( function () {
+        if ( typeof global.gc === 'function' ) {
+            return;
+        }
+        throw new Error( 'slow-allocation.specs.js needs node --expose-gc; run it through npm run test:hardening.' );
+    } );
+
+    it( 'coerceNumeric holds a flat live heap', function () {
         const transform = coerceNumeric( [ 'a', 'b', 'c' ], { sentinelAbs: 1e30 } );
         soak( transform, function ( row, i ) {
             row.a = ( ( i % 7 ) === 0 ) ? '' : i;
@@ -78,14 +114,14 @@ describe( `stream-prep allocation soak (${ROWS} rows per case)`, function () {
         } );
     } );
 
-    it( 'normalizeTimestamp (unit s) holds flat RSS', function () {
+    it( 'normalizeTimestamp (unit s) holds a flat live heap', function () {
         const transform = normalizeTimestamp( { unit: 's' } );
         soak( transform, function ( row, i ) {
             row.timestamp = 1755043200 + i;
         } );
     } );
 
-    it( 'normalizeTimestamp (pattern) holds flat RSS', function () {
+    it( 'normalizeTimestamp (pattern) holds a flat live heap', function () {
         const transform = normalizeTimestamp( { pattern: 'YYYY-MM-DD HH:mm:ss', offsetMinutes: 330 } );
         soak( transform, function ( row, i ) {
             // The feed side must build a string (that is what a historian
@@ -94,21 +130,21 @@ describe( `stream-prep allocation soak (${ROWS} rows per case)`, function () {
         } );
     } );
 
-    it( 'filterRows holds flat RSS', function () {
+    it( 'filterRows holds a flat live heap', function () {
         const transform = filterRows( { from: T0, to: T0 + ( ROWS / 2 ) } );
         soak( transform, function ( row, i ) {
             row.timestamp = T0 + i;
         } );
     } );
 
-    it( 'labelShift holds flat RSS', function () {
+    it( 'labelShift holds a flat live heap', function () {
         const transform = labelShift( { offsetMinutes: 330, boundariesMin: [ 0, 480, 960 ], labels: [ 'S1', 'S2', 'S3' ] } );
         soak( transform, function ( row, i ) {
             row.timestamp = T0 + ( i * 1000 );
         } );
     } );
 
-    it( 'trackActivity holds flat RSS', function () {
+    it( 'trackActivity holds a flat live heap', function () {
         const transform = trackActivity( {
             from: [ 'p1', 'p2', 'p3' ],
             windowSec: 1200,
@@ -122,14 +158,14 @@ describe( `stream-prep allocation soak (${ROWS} rows per case)`, function () {
         } );
     } );
 
-    it( 'stampPeriod (shift) holds flat RSS', function () {
+    it( 'stampPeriod (shift) holds a flat live heap', function () {
         const transform = stampPeriod( { period: 'shift', offsetMinutes: 330, boundariesMin: [ 0, 480, 960 ] } );
         soak( transform, function ( row, i ) {
             row.timestamp = T0 + ( i * 60000 );
         } );
     } );
 
-    it( 'the composed inlet holds flat RSS', function () {
+    it( 'the composed inlet holds a flat live heap', function () {
         // The realistic hot path: the utilities sequenced the way a flow's
         // transform would compose them.
         const coerce = coerceNumeric( [ 'tempC', 'pulse' ] );
