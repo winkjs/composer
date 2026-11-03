@@ -38,7 +38,7 @@ The Quick Start below builds one such pipeline end to end.
 
 ## Quick Start
 
-Requires Node.js 22 or newer.
+Requires Node.js 22 or newer. Each release is certified on the newest long-term support line of Node.js, 26 today, and tested on 22 and 24.
 
 The Quick Start flow replays a CSV feed of pump motor temperatures. It cleans each reading, flags a hot motor, confirms the heat is not a blip, and prints an alert. One command scaffolds it as a runnable project:
 
@@ -106,15 +106,15 @@ The example above replays a CSV file. A live deployment reads from an MQTT broke
 
 The numbers below come from a pure compute benchmark — every step a live message takes through an 8-node flow, from arrival to final output. **Storage and MQTT I/O are excluded** — these are compute ceilings, not full-deployment numbers.
 
-| Configuration        | Throughput              |
-|----------------------|-------------------------|
-| Raspberry Pi 5       | ~100K messages/second   |
-| MacBook Pro (M4 Max) | ~1.1M messages/second   |
-| Tracking 10K assets  | ~500K messages/second   |
+| Configuration                 | Throughput              |
+|-------------------------------|-------------------------|
+| Revolution Pi Connect 5 (CM5) | 200K+ messages/second   |
+| MacBook Pro (M4 Max)          | ~1.1M messages/second   |
+| Tracking 10K assets           | ~500K messages/second   |
 
-Both non-Pi rows were measured on a MacBook Pro (M4 Max) under Node.js 22. Every figure is single-core.
+The first row was measured on a Revolution Pi Connect 5, an industrial computer built on the Raspberry Pi Compute Module 5. The other two rows were measured on a MacBook Pro (M4 Max). All three ran under Node.js 26. Every figure is single-core.
 
-Two configurations produced these numbers. The first two rows interleave 10 asset pipelines in random order — 4.5 million messages (10 pipelines × 900 data points × 500 iterations). The third row runs the same flow with 10,000 assets — 10,000 isolated states alive at once, 9 million messages, under 140 MB of heap. Pipelines are created dynamically as each asset first appears; timing uses `process.hrtime.bigint()`. The same pipeline [runs in your browser](https://composer.winkjs.org/docs/benchmark) — browser performance varies from native Node.js due to JIT differences.
+Two configurations produced these numbers. The first two rows interleave 10 asset pipelines in random order — 4.5 million messages (10 pipelines × 900 data points × 500 iterations). The third row runs the same flow with 10,000 assets — 10,000 isolated states alive at once, 9 million messages, about 150 MB of heap. Pipelines are created dynamically as each asset first appears; timing uses `process.hrtime.bigint()`. The same pipeline [runs in your browser](https://composer.winkjs.org/docs/benchmark) — browser performance varies from native Node.js due to JIT differences.
 
 Reproduce them from a repo clone. `node benchmark/compare.js 10 500` reports the median of three rounds. `node benchmark/run-benchmark.js static 10000 1` gives the 10K-asset row.
 

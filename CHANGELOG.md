@@ -28,6 +28,58 @@
   always names its replacement.
 -->
 
+# [Node.js 26 and MQTT security](https://github.com/winkjs/composer/releases/tag/0.8.1)
+## Version 0.8.1 — November 3, 2026
+
+### 🐛 Fixes
+
+- The MQTT emitter's hard ceiling on undelivered messages moves from
+  60,000 to 33,000. Node.js 24 and 26 refuse one socket write that
+  carries more than 1,048,576 buffer pieces. The MQTT library sends a
+  whole burst of messages in one write, and one message is 29 pieces.
+  So a backlog above about 36,000 messages dropped the connection
+  with `write EINVAL`. The ceiling is the same on every Node.js line.
+- A `maxQueueSize` or `MQTT_MAX_QUEUE_SIZE` above 33,000 is now
+  clamped back to 33,000 with a printed warning. Action: if you
+  raised the cap above 33,000, re-check your outage window against
+  the handbook's table. Send fewer, richer messages, or split traffic
+  across several emitters.
+
+### ⚙️ Updates
+
+- Each release is now certified on the newest long-term support (LTS)
+  line of Node.js, which is 26 today, and tested on 22 and 24. The
+  `engines` field stays at 22 or newer. Both release workflows publish
+  from Node.js 26.
+- The test tools move to mocha 12 and c8 12, because c8 10 cannot
+  start on Node.js 26. A contributor's `npm test` needs no change.
+
+### 🔒 Security
+
+- mqtt moves from 5.15.1 to 5.16.1. The
+  [5.16.0 release](https://github.com/mqttjs/MQTT.js/releases/tag/v5.16.0)
+  fixes six advisories that a malicious or misbehaving broker can
+  trigger. Three of them end the client's process with one packet.
+  A fourth stops the client from receiving anything, and a reconnect
+  does not clear it. `npm audit` does not report them, because they
+  are repository advisories without a CVE. The dependency range now
+  starts at 5.16.1, so `npm update @winkjs/composer` brings the fix
+  into an existing project.
+- The six, by severity:
+  [GHSA-gfxc-3w7m-8ch4](https://github.com/mqttjs/MQTT.js/security/advisories/GHSA-gfxc-3w7m-8ch4) (High),
+  [GHSA-c8jq-r765-cq7g](https://github.com/mqttjs/MQTT.js/security/advisories/GHSA-c8jq-r765-cq7g) (High),
+  [GHSA-rj8f-4655-cgg2](https://github.com/mqttjs/MQTT.js/security/advisories/GHSA-rj8f-4655-cgg2) (High),
+  [GHSA-fwrw-4mhv-wxvm](https://github.com/mqttjs/MQTT.js/security/advisories/GHSA-fwrw-4mhv-wxvm) (High),
+  [GHSA-8phv-jwjm-93rr](https://github.com/mqttjs/MQTT.js/security/advisories/GHSA-8phv-jwjm-93rr) (Medium),
+  [GHSA-h8jm-hm87-fqw3](https://github.com/mqttjs/MQTT.js/security/advisories/GHSA-h8jm-hm87-fqw3) (Low).
+- glob moves from 13 to 14, which clears
+  [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)
+  and, through minimatch 11,
+  [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+  composer calls glob only at startup, over its own patterns, so it
+  was not exposed. A fresh install of 0.8.0 still printed both
+  findings, and 0.8.1 is clean.
+
 # [Retired QuestDB keys](https://github.com/winkjs/composer/releases/tag/0.8.0)
 ## Version 0.8.0 — September 21, 2026
 

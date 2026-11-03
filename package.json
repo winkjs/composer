@@ -1,6 +1,6 @@
 {
     "name": "@winkjs/composer",
-    "version": "0.8.0",
+    "version": "0.8.1",
     "description": "Composable Streaming Intelligence — turn streaming data into actionable insights, from edge to cloud",
     "keywords": [
         "streaming",
@@ -72,7 +72,7 @@
     "dependencies": {
         "@questdb/nodejs-client": "~4.2.0",
         "glob": "^14.0.3",
-        "mqtt": "^5.15.1",
+        "mqtt": "^5.16.1",
         "msgpackr": "^1.11.10",
         "pg": "^8.20.0"
     },
