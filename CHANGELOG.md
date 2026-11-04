@@ -29,7 +29,7 @@
 -->
 
 # [Node.js 26 and MQTT security](https://github.com/winkjs/composer/releases/tag/0.8.1)
-## Version 0.8.1 — November 3, 2026
+## Version 0.8.1 — November 4, 2026
 
 ### 🐛 Fixes
 
