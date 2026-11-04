@@ -32,6 +32,29 @@
   option always names its replacement.
 -->
 
+# [New projects start on composer 0.8.1](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.4)
+## Version 0.2.4 — November 4, 2026
+
+Bundled templates pin `@winkjs/composer` 0.8.1.
+
+### ⚙️ Updates
+
+- Scaffolded projects now install composer 0.8.1. That release has
+  no breaking change. It is certified on Node.js 26 and tested on 22
+  and 24. The hello-flow template needs no change, because it runs
+  without a broker or a database.
+- The scaffolder's own code is unchanged from 0.2.3.
+
+### 🔒 Security
+
+- Composer 0.8.1 moves its mqtt dependency to 5.16.1, which fixes six
+  advisories that a malicious broker can trigger. Three of them end
+  the client's process. The hello-flow template never opens an MQTT
+  connection, so a scaffolded project was not exposed. A project that
+  later adds an MQTT emitter starts from the fixed version. The
+  [composer 0.8.1 release notes](https://github.com/winkjs/composer/releases/tag/0.8.1)
+  list each advisory.
+
 # [New projects start on composer 0.8.0](https://github.com/winkjs/composer/releases/tag/create-composer-0.2.3)
 ## Version 0.2.3 — September 21, 2026
 
